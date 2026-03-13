@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Steuer-Modul – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <h1><i class="ri-government-line" style="color:var(--accent);margin-right:8px;"></i>Steuer-Modul</h1>
+            <p>Werbungskosten, Erstattungsschätzer, Jahresübersicht & Dokumente</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <select id="jahrSelect" style="padding:8px 14px;border-radius:var(--radius-md);background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.85rem;cursor:pointer;" onchange="jahrWechseln()">
+            </select>
+        </div>
+    </div>
+
+    <!-- Tab-Navigation -->
+    <div class="steuer-tabs">
+        <button class="steuer-tab active" data-tab="uebersicht" onclick="switchTab('uebersicht',this)">
+            <i class="ri-bar-chart-box-line"></i> Jahresübersicht
+        </button>
+        <button class="steuer-tab" data-tab="schaetzer" onclick="switchTab('schaetzer',this)">
+            <i class="ri-calculator-line"></i> Erstattungsschätzer
+        </button>
+        <button class="steuer-tab" data-tab="werbungskosten" onclick="switchTab('werbungskosten',this)">
+            <i class="ri-briefcase-4-line"></i> Werbungskosten
+        </button>
+        <button class="steuer-tab" data-tab="assistent" onclick="switchTab('assistent',this)">
+            <i class="ri-checkbox-multiple-line"></i> Steuererklärung
+        </button>
+        <button class="steuer-tab" data-tab="dokumente" onclick="switchTab('dokumente',this)">
+            <i class="ri-folder-open-line"></i> Steuer-Dokumente
+        </button>
+    </div>
+
+    <!-- ══ TAB: JAHRESÜBERSICHT ══ -->
+    <div id="tab-uebersicht" class="steuer-tab-content active">
+        <div id="uebersichtRoot">
+            <div class="steuer-loading"><i class="ri-loader-4-line steuer-spin"></i> Lade Daten…</div>
+        </div>
+    </div>
+
+    <!-- ══ TAB: ERSTATTUNGSSCHÄTZER ══ -->
+    <div id="tab-schaetzer" class="steuer-tab-content" style="display:none;">
+        <div class="steuer-2col">
+
+            <!-- Eingaben -->
+            <div class="card" style="padding:24px;">
+                <h3 style="margin:0 0 20px;display:flex;align-items:center;gap:8px;"><i class="ri-calculator-line" style="color:var(--accent);"></i> Eingaben</h3>
+
+                <div class="steuer-form-section">
+                    <div class="steuer-form-label">Einkommensdaten</div>
+
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Bruttoeinkommen (Jahr)</label>
+                        <input type="number" id="schaetzerBrutto" placeholder="z.B. 42000" step="100" oninput="berechneSchaetzer()">
+                    </div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Steuerklasse</label>
+                        <select id="schaetzerStklasse" onchange="berechneSchaetzer()">
+                            <option value="1">Klasse I – Ledig</option>
+                            <option value="2">Klasse II – Alleinerziehend</option>
+                            <option value="3">Klasse III – Verheiratet (höheres Einkommen)</option>
+                            <option value="4">Klasse IV – Verheiratet (gleich)</option>
+                            <option value="5">Klasse V – Verheiratet (geringeres Einkommen)</option>
+                            <option value="6">Klasse VI – Nebenjob</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Kirchensteuer</label>
+                        <select id="schaetzerKirche" onchange="berechneSchaetzer()">
+                            <option value="0">Keine</option>
+                            <option value="8">Bayern/Baden-Württemberg (8%)</option>
+                            <option value="9">Andere Bundesländer (9%)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="steuer-form-section">
+                    <div class="steuer-form-label">Abzüge & Werbungskosten</div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Werbungskosten gesamt (Jahr) <span class="form-hint">Pauschbetrag: 1.230 €</span></label>
+                        <input type="number" id="schaetzerWerbung" placeholder="1230" step="50" oninput="berechneSchaetzer()">
+                    </div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Sonderausgaben (Versicherungen etc.)</label>
+                        <input type="number" id="schaetzerSonder" placeholder="0" step="50" oninput="berechneSchaetzer()">
+                    </div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Außergewöhnliche Belastungen</label>
+                        <input type="number" id="schaetzerBelastung" placeholder="0" step="50" oninput="berechneSchaetzer()">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Gezahlte Lohnsteuer (laut Lohnsteuerbescheinigung)</label>
+                        <input type="number" id="schaetzerGezahlt" placeholder="0" step="50" oninput="berechneSchaetzer()">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ergebnis -->
+            <div style="display:flex;flex-direction:column;gap:16px;">
+                <div class="card" style="padding:24px;" id="schaetzerErgebnis">
+                    <div style="text-align:center;color:var(--text-3);padding:40px 0;">
+                        <i class="ri-calculator-line" style="font-size:2.5rem;display:block;margin-bottom:12px;opacity:0.3;"></i>
+                        Gib dein Bruttoeinkommen ein, um eine Schätzung zu erhalten.
+                    </div>
+                </div>
+
+                <div class="card" style="padding:20px;">
+                    <div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">Hinweis</div>
+                    <p style="font-size:0.82rem;color:var(--text-2);margin:0;line-height:1.7;">
+                        Dies ist eine vereinfachte Schätzung auf Basis des deutschen Einkommensteuertarifs 2024. 
+                        Für eine exakte Berechnung empfehlen wir die Nutzung von ELSTER oder einen Steuerberater. 
+                        Kirchensteuerpflichtige erhalten eine angepasste Berechnung.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ TAB: WERBUNGSKOSTEN ══ -->
+    <div id="tab-werbungskosten" class="steuer-tab-content" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+            <div id="wbkSumBadge" style="display:flex;gap:10px;flex-wrap:wrap;"></div>
+            <button class="btn-primary" onclick="openWbkModal()">
+                <i class="ri-add-line"></i> Posten hinzufügen
+            </button>
+        </div>
+
+        <!-- Kategorie-Filter -->
+        <div class="steuer-kat-tabs" id="wbkKatTabs">
+            <button class="steuer-kat-tab active" onclick="filterWbk('alle',this)">Alle</button>
+            <button class="steuer-kat-tab" onclick="filterWbk('fahrtkosten',this)"><i class="ri-car-line"></i> Fahrtkosten</button>
+            <button class="steuer-kat-tab" onclick="filterWbk('arbeitsmittel',this)"><i class="ri-tools-line"></i> Arbeitsmittel</button>
+            <button class="steuer-kat-tab" onclick="filterWbk('fortbildung',this)"><i class="ri-book-open-line"></i> Fortbildung</button>
+            <button class="steuer-kat-tab" onclick="filterWbk('homeoffice',this)"><i class="ri-home-office-line"></i> Homeoffice</button>
+            <button class="steuer-kat-tab" onclick="filterWbk('bewerbung',this)"><i class="ri-mail-send-line"></i> Bewerbungen</button>
+            <button class="steuer-kat-tab" onclick="filterWbk('sonstiges',this)"><i class="ri-more-line"></i> Sonstiges</button>
+        </div>
+
+        <div id="wbkRoot">
+            <div class="steuer-loading"><i class="ri-loader-4-line steuer-spin"></i> Lade Werbungskosten…</div>
+        </div>
+    </div>
+
+    <!-- ══ TAB: STEUERERKLÄRUNG-ASSISTENT ══ -->
+    <div id="tab-assistent" class="steuer-tab-content" style="display:none;">
+        <div class="steuer-2col">
+            <div id="assistentRoot">
+                <div class="steuer-loading"><i class="ri-loader-4-line steuer-spin"></i> Lade…</div>
+            </div>
+            <div id="assistentSidebar">
+                <div class="card" style="padding:20px;">
+                    <div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:14px;">Fortschritt</div>
+                    <div id="assistentProgress" style="margin-bottom:16px;">
+                        <div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:6px;">
+                            <span style="color:var(--text-3);">Erledigt</span>
+                            <span id="progressText" style="font-weight:700;">0 / 0</span>
+                        </div>
+                        <div style="background:var(--surface-2);border-radius:4px;height:8px;overflow:hidden;">
+                            <div id="progressBar" style="height:100%;background:var(--accent);border-radius:4px;transition:width 0.4s;width:0%;"></div>
+                        </div>
+                    </div>
+                    <div id="assistentTipps" style="font-size:0.8rem;color:var(--text-3);line-height:1.6;"></div>
+                </div>
+
+                <div class="card" style="padding:20px;margin-top:16px;">
+                    <div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">Wichtige Fristen</div>
+                    <div class="steuer-frist-row"><i class="ri-calendar-line" style="color:#f59e0b;"></i><div><div style="font-weight:600;font-size:0.83rem;">Steuererklärung (ohne Berater)</div><div style="font-size:0.75rem;color:var(--text-3);">31. Juli des Folgejahres</div></div></div>
+                    <div class="steuer-frist-row"><i class="ri-calendar-line" style="color:#3b82f6;"></i><div><div style="font-weight:600;font-size:0.83rem;">Steuererklärung (mit Berater)</div><div style="font-size:0.75rem;color:var(--text-3);">28. Februar des übernächsten Jahres</div></div></div>
+                    <div class="steuer-frist-row"><i class="ri-calendar-line" style="color:#22c55e;"></i><div><div style="font-weight:600;font-size:0.83rem;">Einspruchsfrist</div><div style="font-size:0.75rem;color:var(--text-3);">1 Monat nach Steuerbescheid</div></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ TAB: STEUER-DOKUMENTE ══ -->
+    <div id="tab-dokumente" class="steuer-tab-content" style="display:none;">
+        <div id="dokRoot">
+            <div class="steuer-loading"><i class="ri-loader-4-line steuer-spin"></i> Lade Dokumente…</div>
+        </div>
+    </div>
+
+    <!-- ════ MODAL: Werbungskosten hinzufügen ════ -->
+    <div class="steuer-overlay" id="wbkModal" onclick="closeWbkModal(event)">
+        <div class="steuer-modal" onclick="event.stopPropagation()">
+            <div class="steuer-modal-header">
+                <h3 id="wbkModalTitle"><i class="ri-briefcase-4-line"></i> Werbungskosten-Posten</h3>
+                <button class="steuer-close" onclick="closeWbkModal()"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="steuer-modal-body">
+                <input type="hidden" id="wbkId">
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Kategorie</label>
+                    <select id="wbkKat">
+                        <option value="fahrtkosten">Fahrtkosten</option>
+                        <option value="arbeitsmittel">Arbeitsmittel</option>
+                        <option value="fortbildung">Fortbildung</option>
+                        <option value="homeoffice">Homeoffice</option>
+                        <option value="bewerbung">Bewerbungen</option>
+                        <option value="sonstiges">Sonstiges</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Bezeichnung *</label>
+                    <input type="text" id="wbkBezeichnung" placeholder="z.B. Monatskarte ÖPNV, Laptop, Kurs…">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label class="form-label">Betrag (€)</label>
+                        <input type="number" id="wbkBetrag" step="0.01" placeholder="0,00">
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label class="form-label">Datum</label>
+                        <input type="date" id="wbkDatum">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Steuerjahr</label>
+                    <select id="wbkJahr"></select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">Notiz</label>
+                    <textarea id="wbkNotiz" placeholder="Optional: Zusatzinfos…" style="min-height:60px;"></textarea>
+                </div>
+            </div>
+            <div class="steuer-modal-footer">
+                <button class="btn-ghost" onclick="closeWbkModal()">Abbrechen</button>
+                <button class="btn-primary" id="wbkSaveBtn" onclick="saveWbk()"><i class="ri-save-line"></i> Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    /* ── Tabs ─────────────────────────────────────────────── */
+    .steuer-tabs {
+        display: flex; gap: 4px; flex-wrap: wrap;
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-lg); padding: 6px; margin-bottom: 20px;
+    }
+    .steuer-tab {
+        display: flex; align-items: center; gap: 7px;
+        padding: 9px 16px; border-radius: var(--radius-md);
+        background: none; border: none; color: var(--text-2);
+        font-size: 0.83rem; font-weight: 500; cursor: pointer;
+        transition: var(--transition); font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .steuer-tab:hover { background: var(--surface-2); color: var(--text-1); }
+    .steuer-tab.active { background: rgba(99,88,230,0.12); color: var(--accent); border: 1px solid rgba(99,88,230,0.2); font-weight: 700; }
+    .steuer-tab-content { display: none; }
+    .steuer-tab-content.active { display: block; }
+
+    /* ── Kategorie-Tabs (klein) ───────────────────────────── */
+    .steuer-kat-tabs {
+        display: flex; gap: 4px; flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+    .steuer-kat-tab {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 6px 12px; border-radius: var(--radius-md);
+        background: var(--surface-2); border: 1px solid var(--border);
+        color: var(--text-2); font-size: 0.78rem; font-weight: 600;
+        cursor: pointer; transition: var(--transition);
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .steuer-kat-tab:hover { border-color: var(--border-accent); color: var(--text-1); }
+    .steuer-kat-tab.active { background: rgba(99,88,230,0.1); color: var(--accent); border-color: rgba(99,88,230,0.3); }
+
+    /* ── Grid-Layouts ─────────────────────────────────────── */
+    .steuer-2col {
+        display: grid;
+        grid-template-columns: 1fr 380px;
+        gap: 20px;
+        align-items: start;
+    }
+    @media (max-width: 1000px) { .steuer-2col { grid-template-columns: 1fr; } }
+
+    .steuer-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 14px;
+        margin-bottom: 20px;
+    }
+    .steuer-stat-card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-lg); padding: 18px 20px;
+        display: flex; align-items: center; gap: 14px;
+        transition: var(--transition);
+    }
+    .steuer-stat-card:hover { border-color: var(--border-accent); transform: translateY(-2px); }
+    .steuer-stat-icon {
+        width: 44px; height: 44px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem; flex-shrink: 0;
+    }
+    .steuer-stat-label { font-size: 0.72rem; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .steuer-stat-value { font-size: 1.3rem; font-weight: 800; margin-top: 3px; }
+
+    /* ── Werbungskosten ───────────────────────────────────── */
+    .wbk-item {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 14px 0; border-bottom: 1px solid var(--border);
+    }
+    .wbk-item:last-child { border-bottom: none; }
+    .wbk-kat-icon {
+        width: 38px; height: 38px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1rem; flex-shrink: 0;
+    }
+
+    /* ── Assistent ────────────────────────────────────────── */
+    .assistent-check-item {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 12px 0; border-bottom: 1px solid var(--border);
+    }
+    .assistent-check-item:last-child { border-bottom: none; }
+    .assistent-checkbox {
+        width: 22px; height: 22px; border-radius: 6px;
+        border: 2px solid var(--border); display: flex;
+        align-items: center; justify-content: center;
+        cursor: pointer; flex-shrink: 0; margin-top: 2px;
+        transition: var(--transition);
+    }
+    .assistent-checkbox:hover { border-color: var(--accent); }
+    .assistent-checkbox.checked { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .assistent-group-label {
+        font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.07em; color: var(--accent); margin: 20px 0 10px;
+    }
+
+    /* ── Jahresübersicht ──────────────────────────────────── */
+    .steuer-jahres-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    @media (max-width: 768px) { .steuer-jahres-grid { grid-template-columns: 1fr; } }
+
+    /* ── Schätzer Ergebnis ────────────────────────────────── */
+    .schaetzer-result-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 0; border-bottom: 1px solid var(--border);
+        font-size: 0.83rem;
+    }
+    .schaetzer-result-row:last-child { border-bottom: none; }
+    .schaetzer-result-row.total {
+        padding-top: 12px; border-top: 2px solid var(--border);
+        margin-top: 4px; font-weight: 800; font-size: 0.95rem;
+    }
+
+    /* ── Form helpers ─────────────────────────────────────── */
+    .steuer-form-section { margin-bottom: 20px; }
+    .steuer-form-label {
+        font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.07em; color: var(--text-3); margin-bottom: 12px;
+        padding-bottom: 6px; border-bottom: 1px solid var(--border);
+        display: block;
+    }
+    .form-hint {
+        font-size: 0.72rem; color: var(--accent); font-weight: 400;
+        margin-left: 6px;
+    }
+
+    /* ── Modal ────────────────────────────────────────────── */
+    .steuer-overlay {
+        display: none; position: fixed; inset: 0;
+        background: rgba(0,0,0,0.7); z-index: 1000;
+        align-items: center; justify-content: center;
+        padding: 20px; backdrop-filter: blur(4px);
+    }
+    .steuer-overlay.active { display: flex; }
+    .steuer-modal {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-xl); width: 100%; max-width: 500px;
+        max-height: 90vh; display: flex; flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+        animation: steuerIn 0.22s ease;
+    }
+    @keyframes steuerIn { from { opacity:0;transform:translateY(18px) scale(.97)} to{opacity:1;transform:none} }
+    .steuer-modal-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 20px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .steuer-modal-header h3 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1rem; }
+    .steuer-close {
+        background: none; border: none; color: var(--text-3); cursor: pointer;
+        font-size: 1.3rem; padding: 4px; border-radius: var(--radius-sm);
+        transition: var(--transition);
+    }
+    .steuer-close:hover { background: var(--surface-2); color: var(--text-1); }
+    .steuer-modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+    .steuer-modal-footer {
+        display: flex; gap: 10px; justify-content: flex-end;
+        padding: 16px 24px; border-top: 1px solid var(--border); flex-shrink: 0;
+    }
+
+    /* ── Fristen-Row ──────────────────────────────────────── */
+    .steuer-frist-row {
+        display: flex; align-items: flex-start; gap: 10px;
+        padding: 9px 0; border-bottom: 1px solid var(--border);
+    }
+    .steuer-frist-row:last-child { border-bottom: none; }
+    .steuer-frist-row i { font-size: 1.1rem; margin-top: 1px; flex-shrink: 0; }
+
+    /* ── Loading ──────────────────────────────────────────── */
+    .steuer-loading {
+        text-align: center; padding: 60px 24px; color: var(--text-3);
+        display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .steuer-spin { animation: spin 1s linear infinite; font-size: 1.2rem; }
+
+    /* ── Dokument-Badges ──────────────────────────────────── */
+    .steuer-dok-row {
+        display: flex; align-items: center; gap: 12px;
+        padding: 12px 0; border-bottom: 1px solid var(--border);
+    }
+    .steuer-dok-row:last-child { border-bottom: none; }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script src="/steuern.js"></script>
+</body>
+</html>

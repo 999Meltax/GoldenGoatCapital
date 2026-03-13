@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>To-do-Liste – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="./assets/goldengoat.png">
+</head>
+
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <h1>To-do-Liste</h1>
+            <p>Behalte den Überblick über deine Aufgaben</p>
+        </div>
+        <button class="btn-primary" onclick="openAddModal()">
+            <i class="ri-add-line"></i> Aufgabe hinzufügen
+        </button>
+    </div>
+
+    <!-- ── Stats ──────────────────────────────────────────── -->
+    <div class="todo-stats" id="todoStats">
+        <div class="todo-stat-card">
+            <div class="todo-stat-icon" style="background:rgba(99,88,230,0.15);color:#8b7ff5;"><i class="ri-list-check-3"></i></div>
+            <div><div class="todo-stat-label">Gesamt</div><div class="todo-stat-val" id="statTotal">0</div></div>
+        </div>
+        <div class="todo-stat-card">
+            <div class="todo-stat-icon" style="background:rgba(245,158,11,0.15);color:#f59e0b;"><i class="ri-time-line"></i></div>
+            <div><div class="todo-stat-label">Offen</div><div class="todo-stat-val" id="statOpen">0</div></div>
+        </div>
+        <div class="todo-stat-card">
+            <div class="todo-stat-icon" style="background:rgba(239,68,68,0.15);color:#ef4444;"><i class="ri-alarm-warning-line"></i></div>
+            <div><div class="todo-stat-label">Überfällig</div><div class="todo-stat-val" id="statOverdue">0</div></div>
+        </div>
+        <div class="todo-stat-card">
+            <div class="todo-stat-icon" style="background:rgba(34,197,94,0.15);color:#22c55e;"><i class="ri-checkbox-circle-line"></i></div>
+            <div><div class="todo-stat-label">Erledigt</div><div class="todo-stat-val" id="statDone">0</div></div>
+        </div>
+    </div>
+
+    <!-- ── Toolbar ────────────────────────────────────────── -->
+    <div class="todo-toolbar">
+        <div class="todo-search-wrap">
+            <i class="ri-search-line"></i>
+            <input type="text" id="todoSearch" placeholder="Aufgabe suchen…" oninput="renderTodos()">
+        </div>
+        <div class="todo-filter-tabs" id="todoFilterTabs">
+            <button class="todo-filter-tab active" data-filter="alle"     onclick="setFilter('alle',this)">Alle</button>
+            <button class="todo-filter-tab"         data-filter="offen"   onclick="setFilter('offen',this)">Offen</button>
+            <button class="todo-filter-tab"         data-filter="heute"   onclick="setFilter('heute',this)">Heute fällig</button>
+            <button class="todo-filter-tab"         data-filter="hoch"    onclick="setFilter('hoch',this)"><span class="prio-dot hoch"></span>Hoch</button>
+            <button class="todo-filter-tab"         data-filter="erledigt" onclick="setFilter('erledigt',this)">Erledigt</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <select id="todoSort" onchange="renderTodos()" class="todo-sort-select">
+                <option value="prio">Nach Priorität</option>
+                <option value="due">Nach Fälligkeit</option>
+                <option value="name">Nach Name</option>
+                <option value="created">Zuletzt hinzugefügt</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- ── Todo-Liste ─────────────────────────────────────── -->
+    <div id="todoListWrap"></div>
+
+    <!-- ══════════════════════════════════════════════════════
+         ADD / EDIT MODAL
+    ══════════════════════════════════════════════════════ -->
+    <div class="todo-overlay" id="todoModal" onclick="closeModal(event)">
+        <div class="todo-modal" onclick="event.stopPropagation()">
+            <div class="todo-modal-header">
+                <h3 id="modalTitle"><i class="ri-add-circle-line"></i> Aufgabe hinzufügen</h3>
+                <button onclick="closeModal()" class="todo-close-btn"><i class="ri-close-line"></i></button>
+            </div>
+
+            <input type="hidden" id="editId">
+
+            <div class="todo-modal-body">
+                <!-- Aufgabe -->
+                <div class="form-group">
+                    <label class="form-label">Aufgabe *</label>
+                    <input type="text" id="fTask" placeholder="Was möchtest du erledigen?" required>
+                </div>
+
+                <!-- Notiz -->
+                <div class="form-group">
+                    <label class="form-label">Notiz</label>
+                    <textarea id="fNotes" rows="2" placeholder="Weitere Details…"></textarea>
+                </div>
+
+                <div class="todo-form-row">
+                    <!-- Priorität -->
+                    <div class="form-group">
+                        <label class="form-label">Priorität</label>
+                        <div class="todo-prio-picker" id="prioPicker">
+                            <button type="button" class="todo-prio-btn hoch"   data-prio="hoch"   onclick="pickPrio('hoch')"><span class="prio-dot hoch"></span>Hoch</button>
+                            <button type="button" class="todo-prio-btn mittel active" data-prio="mittel" onclick="pickPrio('mittel')"><span class="prio-dot mittel"></span>Mittel</button>
+                            <button type="button" class="todo-prio-btn niedrig" data-prio="niedrig" onclick="pickPrio('niedrig')"><span class="prio-dot niedrig"></span>Niedrig</button>
+                        </div>
+                    </div>
+
+                    <!-- Fälligkeitsdatum -->
+                    <div class="form-group">
+                        <label class="form-label">Fällig am</label>
+                        <input type="date" id="fDueDate">
+                    </div>
+                </div>
+
+                <div class="todo-form-row">
+                    <!-- Label -->
+                    <div class="form-group">
+                        <label class="form-label">Label / Tag</label>
+                        <input type="text" id="fLabel" placeholder="z.B. Finanzen, Privat…" maxlength="30">
+                    </div>
+
+                    <!-- Menge -->
+                    <div class="form-group">
+                        <label class="form-label">Menge (optional)</label>
+                        <input type="number" id="fQuantity" placeholder="z.B. 5" min="0">
+                    </div>
+                </div>
+            </div>
+
+            <div class="todo-modal-footer">
+                <button onclick="closeModal()" class="todo-btn-ghost">Abbrechen</button>
+                <button onclick="saveTodo()" class="btn-primary" id="saveBtn">
+                    <i class="ri-save-line"></i> Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    /* ── Stats ───────────────────────────────────────────── */
+    .todo-stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 20px;
+    }
+    .todo-stat-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 16px 18px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .todo-stat-icon {
+        width: 40px; height: 40px;
+        border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.1rem; flex-shrink: 0;
+    }
+    .todo-stat-label { font-size: 0.74rem; color: var(--text-3); font-weight: 500; }
+    .todo-stat-val   { font-size: 1.4rem; font-weight: 800; color: var(--text-1); line-height: 1.1; }
+
+    /* ── Toolbar ─────────────────────────────────────────── */
+    .todo-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 18px;
+        flex-wrap: wrap;
+    }
+    .todo-search-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 8px 14px;
+        flex: 1; min-width: 180px;
+    }
+    .todo-search-wrap i { color: var(--text-3); }
+    .todo-search-wrap input {
+        background: none; border: none; outline: none;
+        color: var(--text-1); font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.88rem; width: 100%;
+    }
+    .todo-filter-tabs {
+        display: flex;
+        gap: 4px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 4px;
+    }
+    .todo-filter-tab {
+        padding: 5px 12px;
+        border-radius: calc(var(--radius-md) - 2px);
+        border: none;
+        background: none;
+        color: var(--text-3);
+        cursor: pointer;
+        font-size: 0.82rem;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-weight: 500;
+        transition: var(--transition);
+        display: flex; align-items: center; gap: 5px;
+    }
+    .todo-filter-tab:hover  { color: var(--text-1); background: var(--surface-2); }
+    .todo-filter-tab.active { background: var(--accent-glow); color: var(--accent-2); }
+    .todo-sort-select {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        color: var(--text-2);
+        padding: 8px 12px;
+        font-size: 0.83rem;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        cursor: pointer;
+        outline: none;
+    }
+
+    /* ── Priority dots / badges ──────────────────────────── */
+    .prio-dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+    .prio-dot.hoch    { background: #ef4444; }
+    .prio-dot.mittel  { background: #f59e0b; }
+    .prio-dot.niedrig { background: #22c55e; }
+
+    .prio-badge {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 2px 9px; border-radius: 10px;
+        font-size: 0.72rem; font-weight: 700;
+    }
+    .prio-badge.hoch    { background: rgba(239,68,68,0.12);  color: #ef4444; }
+    .prio-badge.mittel  { background: rgba(245,158,11,0.12); color: #f59e0b; }
+    .prio-badge.niedrig { background: rgba(34,197,94,0.12);  color: #22c55e; }
+
+    /* ── Todo-Karte ──────────────────────────────────────── */
+    .todo-section-label {
+        font-size: 0.72rem; color: var(--text-3); font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.07em;
+        margin: 20px 0 8px;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .todo-section-label::after {
+        content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    .todo-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 14px 16px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        transition: var(--transition);
+        position: relative;
+        overflow: hidden;
+    }
+    .todo-card::before {
+        content: '';
+        position: absolute;
+        left: 0; top: 0; bottom: 0;
+        width: 3px;
+        border-radius: 3px 0 0 3px;
+    }
+    .todo-card.prio-hoch::before    { background: #ef4444; }
+    .todo-card.prio-mittel::before  { background: #f59e0b; }
+    .todo-card.prio-niedrig::before { background: #22c55e; }
+    .todo-card.completed {
+        opacity: 0.55;
+    }
+    .todo-card.completed .todo-card-title {
+        text-decoration: line-through;
+        color: var(--text-3);
+    }
+    .todo-card:hover {
+        border-color: var(--border-accent);
+        box-shadow: 0 2px 12px rgba(99,88,230,0.08);
+    }
+    .todo-card.overdue:not(.completed) {
+        border-color: rgba(239,68,68,0.3);
+        background: rgba(239,68,68,0.03);
+    }
+
+    /* Checkbox */
+    .todo-checkbox {
+        width: 20px; height: 20px;
+        border-radius: 6px;
+        border: 2px solid var(--border-accent);
+        background: none;
+        cursor: pointer;
+        flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        transition: var(--transition);
+        margin-top: 1px;
+    }
+    .todo-checkbox:hover   { background: rgba(99,88,230,0.15); }
+    .todo-checkbox.checked { background: var(--accent); border-color: var(--accent); }
+    .todo-checkbox.checked i { color: #fff; font-size: 0.75rem; }
+
+    /* Content */
+    .todo-card-content { flex: 1; min-width: 0; }
+    .todo-card-title   { font-weight: 600; font-size: 0.92rem; margin-bottom: 4px; line-height: 1.3; }
+    .todo-card-notes   { font-size: 0.78rem; color: var(--text-3); margin-bottom: 6px; line-height: 1.4; white-space: pre-wrap; }
+    .todo-card-meta    { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+    .todo-label-badge {
+        display: inline-flex; align-items: center; gap: 4px;
+        background: rgba(99,88,230,0.1); color: var(--accent-2);
+        border: 1px solid rgba(99,88,230,0.2);
+        padding: 2px 8px; border-radius: 10px;
+        font-size: 0.7rem; font-weight: 600;
+    }
+    .todo-due-badge {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 2px 8px; border-radius: 10px;
+        font-size: 0.7rem; font-weight: 600;
+    }
+    .todo-due-badge.ok       { background: rgba(99,88,230,0.1);  color: var(--accent); }
+    .todo-due-badge.soon     { background: rgba(245,158,11,0.12); color: #f59e0b; }
+    .todo-due-badge.overdue  { background: rgba(239,68,68,0.12);  color: #ef4444; }
+    .todo-due-badge.today    { background: rgba(239,68,68,0.12);  color: #ef4444; }
+
+    /* Progress bar */
+    .todo-progress-wrap  { margin-top: 6px; }
+    .todo-progress-track { background: var(--surface-2); border-radius: 4px; height: 5px; overflow: hidden; margin-top: 3px; }
+    .todo-progress-fill  { height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.3s; }
+
+    /* Actions */
+    .todo-card-actions {
+        display: flex; gap: 4px;
+        opacity: 0;
+        transition: opacity 0.18s;
+        flex-shrink: 0;
+    }
+    .todo-card:hover .todo-card-actions { opacity: 1; }
+    .todo-act-btn {
+        width: 30px; height: 30px;
+        border-radius: 8px;
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text-3);
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.85rem;
+        transition: var(--transition);
+    }
+    .todo-act-btn:hover       { background: var(--surface-2); color: var(--text-1); }
+    .todo-act-btn.del:hover   { background: rgba(239,68,68,0.1); color: #ef4444; border-color: rgba(239,68,68,0.3); }
+    .todo-act-btn.inc:hover   { background: rgba(34,197,94,0.1); color: #22c55e; border-color: rgba(34,197,94,0.3); }
+
+    /* Empty */
+    .todo-empty {
+        text-align: center;
+        padding: 60px 24px;
+        color: var(--text-3);
+    }
+    .todo-empty i { font-size: 3rem; display: block; margin-bottom: 16px; opacity: 0.35; }
+    .todo-empty h3 { margin: 0 0 8px; font-size: 1rem; color: var(--text-2); }
+    .todo-empty p  { margin: 0; font-size: 0.85rem; }
+
+    /* ── Modal ───────────────────────────────────────────── */
+    .todo-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.72);
+        z-index: 1000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        backdrop-filter: blur(4px);
+    }
+    .todo-overlay.active { display: flex; }
+    .todo-modal {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        width: 100%;
+        max-width: 520px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .todo-modal-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 20px 24px 16px;
+        border-bottom: 1px solid var(--border);
+    }
+    .todo-modal-header h3 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+    .todo-close-btn {
+        background: none; border: none; cursor: pointer;
+        color: var(--text-3); font-size: 1.2rem;
+        width: 28px; height: 28px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 6px; transition: var(--transition);
+    }
+    .todo-close-btn:hover { background: var(--surface-2); color: var(--text-1); }
+    .todo-modal-body   { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+    .todo-modal-footer {
+        padding: 16px 24px;
+        border-top: 1px solid var(--border);
+        display: flex; justify-content: flex-end; gap: 10px;
+    }
+    .todo-btn-ghost {
+        padding: 9px 18px; border-radius: var(--radius-md);
+        background: var(--surface-2); color: var(--text-2);
+        border: 1px solid var(--border);
+        cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.88rem; transition: var(--transition);
+    }
+    .todo-btn-ghost:hover { background: var(--surface); color: var(--text-1); }
+
+    .todo-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    textarea#fNotes {
+        background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: var(--radius-md); padding: 10px 12px;
+        color: var(--text-1); font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.87rem; resize: vertical; width: 100%;
+        outline: none; transition: border-color 0.2s;
+    }
+    textarea#fNotes:focus { border-color: var(--accent); }
+
+    /* Prio picker */
+    .todo-prio-picker { display: flex; gap: 6px; }
+    .todo-prio-btn {
+        flex: 1; padding: 7px 10px;
+        border-radius: var(--radius-md);
+        background: var(--surface-2); border: 1px solid var(--border);
+        color: var(--text-3); cursor: pointer;
+        font-size: 0.8rem; font-family: 'Plus Jakarta Sans', sans-serif;
+        font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 5px;
+        transition: var(--transition);
+    }
+    .todo-prio-btn:hover { color: var(--text-1); }
+    .todo-prio-btn.active.hoch    { background: rgba(239,68,68,0.12);  color: #ef4444; border-color: rgba(239,68,68,0.3); }
+    .todo-prio-btn.active.mittel  { background: rgba(245,158,11,0.12); color: #f59e0b; border-color: rgba(245,158,11,0.3); }
+    .todo-prio-btn.active.niedrig { background: rgba(34,197,94,0.12);  color: #22c55e; border-color: rgba(34,197,94,0.3); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .todo-stats { grid-template-columns: repeat(2, 1fr); }
+        .todo-toolbar { flex-direction: column; align-items: stretch; }
+        .todo-filter-tabs { overflow-x: auto; }
+        .todo-form-row { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 480px) {
+        .todo-stats { grid-template-columns: 1fr 1fr; }
+    }
+    </style>
+
+    <script src="/todo.js"></script>
+    <script src="/common.js"></script>
+    <script src="/navheader.js"></script>
+</body>
+
+</html>

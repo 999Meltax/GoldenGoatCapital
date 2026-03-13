@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Versicherungen – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <h1>Versicherungen</h1>
+            <p>Alle Verträge auf einen Blick — Beiträge, Laufzeiten & Kündigungsfristen</p>
+        </div>
+        <button class="btn-primary" onclick="openAddModal()">
+            <i class="ri-shield-plus-line"></i> Versicherung hinzufügen
+        </button>
+    </div>
+
+    <!-- ── Stat-Karten ─────────────────────────────────── -->
+    <div class="vs-stats">
+        <div class="vs-stat-card" onclick="switchKat('alle', document.querySelector('[data-kat=alle]'))">
+            <div class="vs-stat-icon" style="background:rgba(99,88,230,0.15);color:#8b7ff5;"><i class="ri-shield-check-line"></i></div>
+            <div><div class="vs-stat-label">Aktive Verträge</div><div class="vs-stat-val" id="sAktiv">—</div></div>
+        </div>
+        <div class="vs-stat-card">
+            <div class="vs-stat-icon" style="background:rgba(34,197,94,0.15);color:#22c55e;"><i class="ri-money-euro-circle-line"></i></div>
+            <div><div class="vs-stat-label">Jahreskosten gesamt</div><div class="vs-stat-val" id="sJahr">—</div></div>
+        </div>
+        <div class="vs-stat-card">
+            <div class="vs-stat-icon" style="background:rgba(59,130,246,0.15);color:#3b82f6;"><i class="ri-calendar-line"></i></div>
+            <div><div class="vs-stat-label">Monatliche Kosten</div><div class="vs-stat-val" id="sMonat">—</div></div>
+        </div>
+        <div class="vs-stat-card" id="sWarnCard">
+            <div class="vs-stat-icon" style="background:rgba(239,68,68,0.12);color:#ef4444;"><i class="ri-alarm-warning-line"></i></div>
+            <div><div class="vs-stat-label">Handlungsbedarf</div><div class="vs-stat-val" id="sWarn" style="font-size:0.9rem;">Alles OK</div></div>
+        </div>
+    </div>
+
+    <!-- ── Kategorie-Tabs ──────────────────────────────── -->
+    <div class="vs-tabs">
+        <button class="vs-tab active" data-kat="alle" onclick="switchKat('alle',this)"><i class="ri-apps-line"></i> Alle</button>
+        <button class="vs-tab" data-kat="kranken" onclick="switchKat('kranken',this)"><i class="ri-heart-pulse-line"></i> Kranken</button>
+        <button class="vs-tab" data-kat="haftpflicht" onclick="switchKat('haftpflicht',this)"><i class="ri-shield-user-line"></i> Haftpflicht</button>
+        <button class="vs-tab" data-kat="kfz" onclick="switchKat('kfz',this)"><i class="ri-car-line"></i> KFZ</button>
+        <button class="vs-tab" data-kat="leben" onclick="switchKat('leben',this)"><i class="ri-user-heart-line"></i> Leben & Rente</button>
+        <button class="vs-tab" data-kat="hausrat" onclick="switchKat('hausrat',this)"><i class="ri-home-3-line"></i> Hausrat</button>
+        <button class="vs-tab" data-kat="berufs" onclick="switchKat('berufs',this)"><i class="ri-briefcase-line"></i> Berufsunfähig</button>
+        <button class="vs-tab" data-kat="sonstiges" onclick="switchKat('sonstiges',this)"><i class="ri-more-line"></i> Sonstiges</button>
+    </div>
+
+    <!-- ── Karten-Grid ─────────────────────────────────── -->
+    <div class="vs-grid" id="vsGrid"></div>
+    <div id="vsEmpty" style="display:none;" class="vs-empty">
+        <i class="ri-shield-line"></i>
+        <h3>Noch keine Versicherungen</h3>
+        <p>Füge deine erste Police hinzu, um den Überblick zu behalten.</p>
+        <button class="btn-primary" onclick="openAddModal()" style="margin-top:16px;"><i class="ri-shield-plus-line"></i> Jetzt hinzufügen</button>
+    </div>
+
+    <!-- ════════════════════════════════════════════════
+         ADD / EDIT MODAL
+    ════════════════════════════════════════════════ -->
+    <div class="vs-overlay" id="vsModal" onclick="closeModal(event)">
+        <div class="vs-modal" onclick="event.stopPropagation()">
+            <div class="vs-modal-header">
+                <h3 id="modalHeadline"><i class="ri-shield-plus-line"></i> Versicherung hinzufügen</h3>
+                <button class="vs-close" onclick="closeModal()"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="vs-modal-body">
+                <input type="hidden" id="fId">
+
+                <div class="form-group" style="margin-bottom:20px;">
+                    <label class="form-label">Kategorie *</label>
+                    <div class="vs-kat-picker" id="katPicker"></div>
+                </div>
+
+                <div class="vs-form-grid">
+                    <div class="form-group vs-full">
+                        <label class="form-label">Versicherungsname *</label>
+                        <input type="text" id="fName" placeholder="z.B. TK Krankenversicherung">
+                    </div>
+                    <div class="form-group vs-full">
+                        <label class="form-label">Anbieter / Gesellschaft</label>
+                        <input type="text" id="fAnbieter" placeholder="z.B. Techniker Krankenkasse">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Vertragsnummer</label>
+                        <input type="text" id="fVertragsnr" placeholder="z.B. VN-123456">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select id="fStatus">
+                            <option value="aktiv">Aktiv</option>
+                            <option value="pausiert">Pausiert</option>
+                            <option value="gekuendigt">Gekündigt</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Beitrag (€)</label>
+                        <input type="number" id="fBeitrag" placeholder="0,00" step="0.01" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Zahlungsrhythmus</label>
+                        <select id="fRhythmus">
+                            <option value="monatlich">Monatlich</option>
+                            <option value="vierteljaehrlich">Vierteljährlich</option>
+                            <option value="halbjaehrlich">Halbjährlich</option>
+                            <option value="jaehrlich">Jährlich</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Vertragsbeginn</label>
+                        <input type="date" id="fBeginn">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Vertragsende / Verlängerung</label>
+                        <input type="date" id="fEnde">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Kündigungsfrist</label>
+                        <select id="fKfrist">
+                            <option value="">Keine / unbekannt</option>
+                            <option value="1 Monat">1 Monat</option>
+                            <option value="2 Monate">2 Monate</option>
+                            <option value="3 Monate">3 Monate</option>
+                            <option value="6 Monate">6 Monate</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Selbstbeteiligung (€)</label>
+                        <input type="number" id="fSB" placeholder="0,00" step="0.01" min="0">
+                    </div>
+                    <div class="form-group vs-full">
+                        <label class="form-label">Versicherungssumme (€)</label>
+                        <input type="number" id="fVS" placeholder="z.B. 100000" step="1" min="0">
+                    </div>
+                    <div class="form-group vs-full">
+                        <label class="form-label">Notiz / Details</label>
+                        <textarea id="fNotiz" placeholder="z.B. Deckungsumfang, Klauseln, Ansprechpartner…" style="min-height:80px;"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="vs-modal-footer">
+                <button class="btn-ghost" onclick="closeModal()">Abbrechen</button>
+                <button class="btn-primary" id="saveBtn" onclick="saveVers()"><i class="ri-save-line"></i> Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════
+         DETAIL MODAL
+    ════════════════════════════════════════════════ -->
+    <div class="vs-overlay" id="vsDetail" onclick="closeDetail(event)">
+        <div class="vs-modal vs-modal-lg" onclick="event.stopPropagation()">
+            <div class="vs-modal-header">
+                <h3 id="dTitle">Details</h3>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn-ghost btn-sm" onclick="editCurrent()"><i class="ri-edit-line"></i> Bearbeiten</button>
+                    <button class="vs-close" onclick="closeDetail()"><i class="ri-close-line"></i></button>
+                </div>
+            </div>
+            <div class="vs-modal-body" id="dBody"></div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    /* ── Stats ─────────────────────────────────── */
+    .vs-stats { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px; margin-bottom:24px; }
+    .vs-stat-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:18px 20px; display:flex; align-items:center; gap:14px; transition:var(--transition); cursor:default; }
+    .vs-stat-card:hover { border-color:var(--border-accent); transform:translateY(-2px); box-shadow:var(--shadow-accent); }
+    .vs-stat-icon { width:42px; height:42px; border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; font-size:1.2rem; flex-shrink:0; }
+    .vs-stat-label { font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-3); margin-bottom:2px; }
+    .vs-stat-val { font-size:1.45rem; font-weight:800; color:var(--text-1); }
+
+    /* ── Tabs ──────────────────────────────────── */
+    .vs-tabs { display:flex; gap:4px; flex-wrap:wrap; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:6px; margin-bottom:20px; }
+    .vs-tab { display:flex; align-items:center; gap:7px; padding:8px 14px; border-radius:var(--radius-md); background:none; border:none; color:var(--text-2); font-size:0.83rem; font-weight:500; cursor:pointer; transition:var(--transition); font-family:'Plus Jakarta Sans',sans-serif; }
+    .vs-tab:hover { background:var(--surface-2); color:var(--text-1); }
+    .vs-tab.active { background:var(--accent-glow); color:var(--accent-2); border:1px solid var(--border-accent); }
+
+    /* ── Grid & Cards ──────────────────────────── */
+    .vs-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+    .vs-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px; cursor:pointer; transition:var(--transition); position:relative; overflow:hidden; display:flex; flex-direction:column; gap:12px; }
+    .vs-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; opacity:0; transition:opacity .2s; }
+    .vs-card:hover { border-color:var(--border-accent); transform:translateY(-2px); box-shadow:var(--shadow-accent); }
+    .vs-card:hover::before { opacity:1; }
+    .vs-card-icon { width:44px; height:44px; border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; font-size:1.25rem; flex-shrink:0; }
+    .vs-card-name { font-weight:700; font-size:0.92rem; color:var(--text-1); }
+    .vs-card-anbieter { font-size:0.76rem; color:var(--text-3); margin-top:1px; }
+    .vs-card-row { display:flex; justify-content:space-between; align-items:center; font-size:0.81rem; }
+    .vs-card-row-lbl { color:var(--text-3); }
+    .vs-card-row-val { font-weight:600; color:var(--text-1); }
+
+    /* Status-Badges */
+    .vs-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:20px; font-size:0.7rem; font-weight:700; }
+    .vs-badge.aktiv     { background:rgba(34,197,94,0.15);  color:var(--green); border:1px solid rgba(34,197,94,0.3); }
+    .vs-badge.pausiert  { background:rgba(245,158,11,0.15); color:var(--amber); border:1px solid rgba(245,158,11,0.3); }
+    .vs-badge.gekuendigt{ background:rgba(239,68,68,0.1);   color:var(--red);   border:1px solid rgba(239,68,68,0.25); }
+
+    /* Warnstreifen */
+    .vs-warn-strip  { background:rgba(239,68,68,0.08);  border:1px solid rgba(239,68,68,0.2);  border-radius:var(--radius-sm); padding:5px 10px; font-size:0.74rem; color:var(--red);   display:flex; align-items:center; gap:6px; }
+    .vs-kuend-strip { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.2); border-radius:var(--radius-sm); padding:5px 10px; font-size:0.74rem; color:var(--amber); display:flex; align-items:center; gap:6px; }
+
+    /* Hover-Aktionen auf Karte */
+    .vs-card-actions { position:absolute; top:12px; right:12px; display:flex; gap:5px; opacity:0; transition:opacity .2s; }
+    .vs-card:hover .vs-card-actions { opacity:1; }
+    .vs-act-btn { width:28px; height:28px; border-radius:var(--radius-sm); background:var(--surface-2); border:1px solid var(--border); color:var(--text-3); cursor:pointer; font-size:0.82rem; display:flex; align-items:center; justify-content:center; transition:var(--transition); }
+    .vs-act-btn:hover { background:var(--surface); color:var(--text-1); border-color:var(--border-accent); }
+    .vs-act-btn.del:hover { background:rgba(239,68,68,0.12); color:var(--red); border-color:rgba(239,68,68,0.3); }
+
+    /* ── Kategorie-Picker im Modal ─────────────── */
+    .vs-kat-picker { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:8px; }
+    .vs-kat-btn { display:flex; flex-direction:column; align-items:center; gap:5px; padding:11px 6px; border-radius:var(--radius-md); background:var(--bg-3); border:1px solid var(--border); color:var(--text-2); cursor:pointer; font-size:0.75rem; font-weight:600; transition:var(--transition); font-family:'Plus Jakarta Sans',sans-serif; }
+    .vs-kat-btn i { font-size:1.25rem; }
+    .vs-kat-btn:hover { border-color:var(--border-accent); color:var(--text-1); }
+    .vs-kat-btn.active { background:var(--accent-glow); color:var(--accent-2); border-color:var(--border-accent); }
+
+    /* ── Form-Grid im Modal ────────────────────── */
+    .vs-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .vs-full { grid-column:1/-1; }
+    @media(max-width:500px){ .vs-form-grid{grid-template-columns:1fr;} .vs-full{grid-column:1;} }
+
+    /* ── Overlay & Modal ───────────────────────── */
+    .vs-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:1000; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(4px); }
+    .vs-overlay.active { display:flex; }
+    .vs-modal { background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius-xl); width:100%; max-width:560px; max-height:92vh; display:flex; flex-direction:column; box-shadow:var(--shadow-lg); animation:vsIn .22s ease; }
+    .vs-modal-lg { max-width:680px; }
+    @keyframes vsIn { from{opacity:0;transform:translateY(18px) scale(.97)} to{opacity:1;transform:none} }
+    .vs-modal-header { display:flex; align-items:center; justify-content:space-between; padding:20px 24px; border-bottom:1px solid var(--border); flex-shrink:0; }
+    .vs-modal-header h3 { margin:0; display:flex; align-items:center; gap:10px; font-size:1.05rem; }
+    .vs-close { background:none; border:none; color:var(--text-3); cursor:pointer; font-size:1.3rem; padding:4px; border-radius:var(--radius-sm); transition:var(--transition); }
+    .vs-close:hover { background:var(--surface-2); color:var(--text-1); }
+    .vs-modal-body { padding:24px; overflow-y:auto; flex:1; }
+    .vs-modal-footer { display:flex; gap:10px; justify-content:flex-end; padding:16px 24px; border-top:1px solid var(--border); flex-shrink:0; }
+
+    /* ── Detail-Inhalt ─────────────────────────── */
+    .vs-detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    @media(max-width:520px){ .vs-detail-grid{grid-template-columns:1fr;} }
+    .vs-detail-field { background:var(--bg-3); border-radius:var(--radius-md); padding:12px 14px; }
+    .vs-detail-lbl { font-size:0.68rem; color:var(--text-3); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px; }
+    .vs-detail-val { font-size:0.88rem; font-weight:600; color:var(--text-1); }
+
+    /* Laufzeit-Fortschritt */
+    .vs-progress-track { background:var(--surface-2); border-radius:4px; height:6px; overflow:hidden; margin-top:5px; }
+    .vs-progress-fill { height:100%; border-radius:4px; transition:width .5s ease; }
+
+    /* Kosten-Balken */
+    .vs-cost-row { display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+    .vs-cost-lbl { font-size:0.79rem; color:var(--text-2); width:110px; flex-shrink:0; }
+    .vs-cost-track { flex:1; background:var(--surface-2); border-radius:4px; height:7px; overflow:hidden; }
+    .vs-cost-fill { height:100%; border-radius:4px; transition:width .45s; }
+    .vs-cost-val { font-size:0.81rem; font-weight:700; width:72px; text-align:right; flex-shrink:0; }
+
+    /* ── Empty State ───────────────────────────── */
+    .vs-empty { text-align:center; padding:80px 24px; color:var(--text-3); }
+    .vs-empty i { font-size:3.8rem; display:block; margin-bottom:18px; opacity:.2; }
+    .vs-empty h3 { color:var(--text-2); margin-bottom:8px; }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script src="/versicherungen.js"></script>
+</body>
+</html>

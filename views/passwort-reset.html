@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neues Passwort – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="./assets/goldengoat.png">
+</head>
+
+<body style="display:block;">
+
+    <div class="auth-wrapper">
+        <div class="auth-card">
+
+            <div class="auth-logo">
+                <img src="/assets/goldengoat.png" alt="Golden Goat Capital">
+                <h2>Neues Passwort setzen</h2>
+                <p>Wähle ein sicheres Passwort für deinen Account</p>
+            </div>
+
+            <div id="tokenError" class="auth-error" style="display:none; margin-bottom:16px;"></div>
+            <div id="resetSuccess" class="auth-success" style="display:none; margin-bottom:16px;"></div>
+
+            <div id="resetForm" class="auth-form">
+                <div class="form-group">
+                    <label class="form-label">Neues Passwort</label>
+                    <input type="password" id="newPw" placeholder="min. 6 Zeichen" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Passwort bestätigen</label>
+                    <input type="password" id="confirmPw" placeholder="••••••••" required>
+                </div>
+
+                <div id="formError" class="auth-error" style="display:none; margin-bottom:12px;"></div>
+
+                <button type="button" onclick="submitReset()" id="resetBtn" class="btn-primary" style="width:100%; justify-content:center; padding:12px;">
+                    <i class="ri-lock-password-line"></i> Passwort speichern
+                </button>
+            </div>
+
+            <div class="auth-footer" style="margin-top:20px;">
+                <a href="/users/login" style="color:var(--accent); text-decoration:none; font-size:0.85rem;">
+                    <i class="ri-arrow-left-line"></i> Zurück zum Login
+                </a>
+            </div>
+
+        </div>
+    </div>
+
+    <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .auth-success {
+        background: rgba(34,197,94,0.1);
+        border: 1px solid rgba(34,197,94,0.25);
+        border-radius: var(--radius-md);
+        padding: 12px 16px;
+        color: #22c55e;
+        font-size: 0.85rem;
+    }
+    </style>
+
+    <script>
+    // Token aus der URL lesen: /users/passwort-reset?token=XYZ
+    const params = new URLSearchParams(window.location.search);
+    const token  = params.get('token');
+
+    if (!token) {
+        document.getElementById('tokenError').textContent = 'Ungültiger oder fehlender Reset-Link. Bitte fordere einen neuen an.';
+        document.getElementById('tokenError').style.display = 'block';
+        document.getElementById('resetForm').style.display  = 'none';
+    }
+
+    async function submitReset() {
+        const pw      = document.getElementById('newPw').value;
+        const confirm = document.getElementById('confirmPw').value;
+        const errEl   = document.getElementById('formError');
+        const btn     = document.getElementById('resetBtn');
+        const okEl    = document.getElementById('resetSuccess');
+
+        errEl.style.display = 'none';
+
+        if (pw.length < 6) {
+            errEl.textContent = 'Das Passwort muss mindestens 6 Zeichen lang sein.';
+            errEl.style.display = 'block';
+            return;
+        }
+        if (pw !== confirm) {
+            errEl.textContent = 'Die Passwörter stimmen nicht überein.';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ri-loader-4-line" style="animation:spin 1s linear infinite;display:inline-block;"></i> Wird gespeichert…';
+
+        try {
+            const res = await fetch('/users/passwort-reset/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, password: pw })
+            });
+            const data = await res.json();
+            if (res.ok && data.ok) {
+                document.getElementById('resetForm').style.display = 'none';
+                okEl.innerHTML = '✅ Passwort erfolgreich geändert! <a href="/users/login" style="color:#22c55e; font-weight:700; text-decoration:none;">Jetzt einloggen →</a>';
+                okEl.style.display = 'block';
+            } else {
+                errEl.textContent = data.message || 'Der Reset-Link ist abgelaufen oder ungültig. Bitte fordere einen neuen an.';
+                errEl.style.display = 'block';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ri-lock-password-line"></i> Passwort speichern';
+            }
+        } catch {
+            errEl.textContent = 'Netzwerkfehler. Bitte versuche es später erneut.';
+            errEl.style.display = 'block';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-lock-password-line"></i> Passwort speichern';
+        }
+    }
+
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Enter') submitReset();
+    });
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zinseszinsrechner – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" type="image/png" href="./assets/goldengoat.png">
+</head>
+
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header">
+        <h1>Zinseszinsrechner</h1>
+        <p>Berechne dein Vermögenswachstum über die Zeit</p>
+    </div>
+
+    <div class="zinseszins-layout">
+
+        <!-- Linke Spalte -->
+        <div>
+            <div class="zinseszins-header">
+                <h5>Gesamtvermögen</h5>
+                <div class="total" id="zinseszinsGesamt">€ 0,00</div>
+                <div class="zinseszins-sub">
+                    <div class="zinseszins-sub-item">
+                        <span>Eingezahlt</span>
+                        <span id="eingezahltZins">€ 0,00</span>
+                    </div>
+                    <div class="zinseszins-sub-item">
+                        <span>Gesamtgewinn</span>
+                        <span id="gesamtgewinnZins">€ 0,00</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>Eingaben</h3>
+                </div>
+                <form id="zinseszinsform">
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label class="form-label">Startbetrag</label>
+                        <input id="amount" type="number" min="0" step="0.01" placeholder="€ 0,00" required/>
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label class="form-label">Anzahl der Jahre</label>
+                        <input id="years" type="number" min="0" step="1" placeholder="z.B. 20" required/>
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label class="form-label">Jährliche Rendite</label>
+                        <input id="percentage" type="number" min="-100" max="100" step="0.01" placeholder="% z.B. 7" required/>
+                    </div>
+                    <div class="form-group" style="margin-bottom:20px;">
+                        <label class="form-label">Monatliche Sparrate</label>
+                        <input id="saveMoney" type="number" min="0" step="0.01" placeholder="€ 0,00" required/>
+                    </div>
+                    <button type="button" class="btn-primary" style="width:100%;justify-content:center;" onclick="updateChart()">
+                        <i class="ri-calculator-line"></i> Berechnen
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Rechte Spalte: Chart -->
+        <div class="card" style="display:flex; flex-direction:column; min-height:clamp(440px, 50vw, 660px);">
+            <div class="card-header">
+                <h3>Finanzverlauf</h3>
+            </div>
+            <div id="chartContainer" style="flex:1; position:relative; min-height:0;">
+                <canvas id="myChart"></canvas>
+            </div>
+        </div>
+
+    </div>
+
+    <%- include('footer.html') %>
+
+    <script src="/common.js"></script>
+    <script src="/zinseszinsrechner.js"></script>
+    <script src="/navheader.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarife – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+        <!-- Header -->
+        <div class="tarife-header">
+            <h1>Dein Tarif</h1>
+            <p>Wähle den Plan der zu dir passt</p>
+            <% if (reason === 'haushalt') { %>
+                <div class="tarife-reason-banner">
+                    <i class="ri-lock-line"></i>
+                    Der Haushaltsmodus ist ab dem <strong>Pro-Tarif</strong> verfügbar.
+                </div>
+            <% } %>
+            <% if (reason === 'steuern') { %>
+                <div class="tarife-reason-banner">
+                    <i class="ri-lock-line"></i>
+                    Das Steuer-Modul ist ab dem <strong>Pro-Tarif</strong> verfügbar.
+                </div>
+            <% } %>
+            <% if (reason === 'outlook') { %>
+                <div class="tarife-reason-banner">
+                    <i class="ri-lock-line"></i>
+                    Die Outlook-Integration ist ab dem <strong>Pro-Tarif</strong> verfügbar.
+                </div>
+            <% } %>
+        </div>
+
+        <!-- Plan Cards -->
+        <div class="tarife-grid">
+
+            <!-- FREE -->
+            <div class="tarife-card <%= currentPlan === 'free' ? 'active' : '' %>">
+                <div class="tarife-card-header">
+                    <div class="tarife-badge free">Aktuell</div>
+                    <div class="tarife-name">Free</div>
+                    <div class="tarife-price">
+                        <span class="tarife-amount">0 €</span>
+                        <span class="tarife-period">/ Monat</span>
+                    </div>
+                    <p class="tarife-desc">Perfekt zum Einstieg – kostenlos und dauerhaft.</p>
+                </div>
+                <ul class="tarife-features">
+                    <li class="ok"><i class="ri-check-line"></i> Bis zu 3 Konten</li>
+                    <li class="ok"><i class="ri-check-line"></i> Ausgabentracker</li>
+                    <li class="ok"><i class="ri-check-line"></i> Budget & Sparziele</li>
+                    <li class="ok"><i class="ri-check-line"></i> Schulden-Tracker</li>
+                    <li class="ok"><i class="ri-check-line"></i> Kalender & Todos</li>
+                    <li class="ok"><i class="ri-check-line"></i> Versicherungsverwaltung</li>
+                    <li class="ok"><i class="ri-check-line"></i> Dokumentenverwaltung</li>
+                    <li class="nok"><i class="ri-close-line"></i> PDF-Export</li>
+                    <li class="nok"><i class="ri-close-line"></i> Haushaltsmodus</li>
+                    <li class="nok"><i class="ri-close-line"></i> E-Mail-Erinnerungen</li>
+                    <li class="nok"><i class="ri-close-line"></i> Steuer-Modul</li>
+                    <li class="nok"><i class="ri-close-line"></i> Outlook-Integration</li>
+                </ul>
+                <% if (currentPlan === 'free') { %>
+                    <button class="tarife-btn current" disabled>
+                        <i class="ri-check-line"></i> Dein aktueller Plan
+                    </button>
+                <% } else { %>
+                    <button class="tarife-btn downgrade" onclick="changePlan('free')">
+                        <i class="ri-arrow-down-line"></i> Zu Free wechseln
+                    </button>
+                <% } %>
+            </div>
+
+            <!-- PRO -->
+            <div class="tarife-card pro <%= currentPlan === 'pro' ? 'active' : '' %>">
+                <div class="tarife-card-header">
+                    <div class="tarife-badge pro">Empfohlen</div>
+                    <div class="tarife-name">Pro</div>
+                    <div class="tarife-price">
+                        <span class="tarife-amount">4,99 €</span>
+                        <span class="tarife-period">/ Monat</span>
+                    </div>
+                    <p class="tarife-desc">Alles was du für die volle Kontrolle brauchst.</p>
+                </div>
+                <ul class="tarife-features">
+                    <li class="ok"><i class="ri-check-line"></i> Alles aus Free</li>
+                    <li class="ok"><i class="ri-check-line"></i> Unbegrenzte Konten</li>
+                    <li class="ok"><i class="ri-check-line"></i> PDF-Export</li>
+                    <li class="ok"><i class="ri-check-line"></i> Haushaltsmodus</li>
+                    <li class="ok"><i class="ri-check-line"></i> E-Mail-Erinnerungen</li>
+                    <li class="ok"><i class="ri-check-line"></i> Steuer-Modul</li>
+                    <li class="ok"><i class="ri-check-line"></i> Outlook-Integration</li>
+                </ul>
+                <% if (currentPlan === 'pro') { %>
+                    <button class="tarife-btn current" disabled>
+                        <i class="ri-check-line"></i> Dein aktueller Plan
+                    </button>
+                <% } else { %>
+                    <button class="tarife-btn upgrade" onclick="changePlan('pro')">
+                        <i class="ri-rocket-line"></i> Jetzt upgraden
+                    </button>
+                <% } %>
+            </div>
+
+        </div>
+
+        <!-- Info -->
+        <p class="tarife-note">
+            <i class="ri-information-line"></i>
+            Du kannst deinen Tarif jederzeit wechseln. Die Abrechnung erfolgt monatlich – Zahlung kommt bald.
+        </p>
+
+    <!-- Toast -->
+    <div id="tarifToast" class="tarif-toast" style="display:none;"></div>
+
+    <%- include('footer.html') %>
+    <script src="/navheader.js"></script>
+
+    <script>
+        // reason aus URL lesen
+        const urlParams = new URLSearchParams(window.location.search);
+        const reason = urlParams.get('reason');
+
+        async function changePlan(plan) {
+            const btn = document.querySelector(plan === 'pro' ? '.tarife-btn.upgrade' : '.tarife-btn.downgrade');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ri-loader-4-line"></i> Wird gewechselt…'; }
+
+            try {
+                const res = await fetch('/users/upgrade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plan })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(plan === 'pro' ? '🎉 Willkommen im Pro-Tarif!' : 'Tarif auf Free geändert.', plan === 'pro' ? 'success' : 'info');
+                    setTimeout(() => location.reload(), 1200);
+                } else {
+                    showToast('Fehler beim Wechsel.', 'error');
+                    if (btn) { btn.disabled = false; }
+                }
+            } catch {
+                showToast('Fehler beim Wechsel.', 'error');
+                if (btn) { btn.disabled = false; }
+            }
+        }
+
+        function showToast(msg, type = 'success') {
+            const t = document.getElementById('tarifToast');
+            t.textContent = msg;
+            t.className = `tarif-toast ${type}`;
+            t.style.display = 'block';
+            setTimeout(() => { t.style.display = 'none'; }, 3000);
+        }
+    </script>
+
+    <style>
+        .tarife-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+        .tarife-header h1 { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 800; margin-bottom: 0.4rem; }
+        .tarife-header p { color: var(--text-muted, #8892a4); font-size: 1rem; }
+
+        .tarife-reason-banner {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            padding: 0.6rem 1.2rem;
+            background: rgba(108,99,255,0.12);
+            border: 1px solid rgba(108,99,255,0.3);
+            border-radius: 0.625rem;
+            color: var(--accent, #6c63ff);
+            font-size: 0.875rem;
+        }
+
+        .tarife-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.25rem;
+            max-width: 780px;
+            margin: 0 auto 2rem;
+        }
+
+        .tarife-card {
+            background: var(--surface, #1a1d27);
+            border: 1px solid var(--border, #2a2d3a);
+            border-radius: 1.25rem;
+            padding: 1.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+        .tarife-card.active {
+            border-color: var(--accent, #6c63ff);
+            box-shadow: 0 0 0 1px var(--accent, #6c63ff), 0 8px 32px rgba(108,99,255,0.12);
+        }
+        .tarife-card.pro {
+            background: linear-gradient(160deg, #1e1b35 0%, var(--surface, #1a1d27) 60%);
+        }
+
+        .tarife-card-header { display: flex; flex-direction: column; gap: 0.5rem; }
+
+        .tarife-badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 0.2rem 0.6rem;
+            border-radius: 20px;
+            width: fit-content;
+        }
+        .tarife-badge.free { background: rgba(148,163,184,0.15); color: #94a3b8; }
+        .tarife-badge.pro  { background: rgba(108,99,255,0.2); color: var(--accent, #6c63ff); }
+
+        .tarife-name { font-size: 1.4rem; font-weight: 800; color: var(--text, #e2e8f0); }
+
+        .tarife-price { display: flex; align-items: baseline; gap: 0.25rem; }
+        .tarife-amount { font-size: 2rem; font-weight: 800; color: var(--text, #e2e8f0); }
+        .tarife-period { font-size: 0.85rem; color: var(--text-muted, #8892a4); }
+
+        .tarife-desc { font-size: 0.875rem; color: var(--text-muted, #8892a4); line-height: 1.5; margin: 0; }
+
+        .tarife-features {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            flex: 1;
+        }
+        .tarife-features li {
+            display: flex;
+            align-items: center;
+            gap: 0.625rem;
+            font-size: 0.875rem;
+        }
+        .tarife-features li.ok { color: var(--text, #e2e8f0); }
+        .tarife-features li.nok { color: var(--text-muted, #8892a4); }
+        .tarife-features li.ok i { color: #22c55e; font-size: 1rem; flex-shrink: 0; }
+        .tarife-features li.nok i { color: #ef4444; font-size: 1rem; flex-shrink: 0; }
+
+        .tarife-btn {
+            width: 100%;
+            padding: 0.875rem;
+            border-radius: 0.75rem;
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        .tarife-btn:active { transform: scale(0.98); }
+        .tarife-btn.upgrade {
+            background: var(--accent, #6c63ff);
+            color: #fff;
+        }
+        .tarife-btn.upgrade:hover { opacity: 0.88; }
+        .tarife-btn.current {
+            background: rgba(148,163,184,0.1);
+            color: var(--text-muted, #8892a4);
+            cursor: default;
+        }
+        .tarife-btn.downgrade {
+            background: transparent;
+            color: var(--text-muted, #8892a4);
+            border: 1px solid var(--border, #2a2d3a);
+        }
+        .tarife-btn.downgrade:hover { border-color: #ef4444; color: #ef4444; }
+        .tarife-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .tarife-note {
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--text-muted, #8892a4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        /* Toast */
+        .tarif-toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            z-index: 9999;
+            animation: fadeUp 0.3s ease;
+        }
+        .tarif-toast.success { background: #22c55e; color: #fff; }
+        .tarif-toast.info    { background: var(--surface, #1a1d27); color: var(--text, #e2e8f0); border: 1px solid var(--border, #2a2d3a); }
+        .tarif-toast.error   { background: #ef4444; color: #fff; }
+        @keyframes fadeUp {
+            from { opacity:0; transform: translateX(-50%) translateY(10px); }
+            to   { opacity:1; transform: translateX(-50%) translateY(0); }
+        }
+    </style>
+</body>
+</html>

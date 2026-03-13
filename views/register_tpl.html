@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registrieren – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="./assets/goldengoat.png">
+</head>
+
+<body style="display:block;">
+
+    <div class="auth-wrapper">
+        <div class="auth-card">
+
+            <div class="auth-logo">
+                <img src="/assets/goldengoat.png" alt="Golden Goat Capital">
+                <h2>Konto erstellen</h2>
+                <p>Starte jetzt mit Golden Goat Capital</p>
+            </div>
+
+            <form method="POST" action="/users/register" class="auth-form">
+                <div class="form-group">
+                    <label class="form-label">E-Mail</label>
+                    <input type="email" name="user" id="inputName" placeholder="deine@email.de" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Passwort</label>
+                    <input type="password" name="pw" id="inputPasswort" placeholder="••••••••" required>
+                </div>
+
+                <% if (errors && errors.length > 0) { %>
+                    <div class="auth-error">
+                        <% errors.forEach(error => { %>
+                            <p style="margin:0; font-size:0.85rem;"><%= error.msg %></p>
+                        <% }) %>
+                    </div>
+                <% } %>
+
+                <% if (success) { %>
+                    <div class="auth-success">
+                        <p style="margin:0 0 0.4rem;font-weight:600;">Registrierung erfolgreich! 🎉</p>
+                        <p style="margin:0;font-size:0.88rem;opacity:0.85;">Wir haben dir eine Bestätigungs-E-Mail geschickt. Bitte klicke auf den Link in der E-Mail, um dein Konto zu aktivieren.</p>
+                    </div>
+                <% } %>
+
+                <button type="submit">Registrieren</button>
+            </form>
+
+            <div class="auth-footer">
+                Bereits ein Konto?
+                <a href="/users/login">Einloggen</a>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="/common.js"></script>
+</body>
+
+</html>

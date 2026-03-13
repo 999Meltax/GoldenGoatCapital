@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Einstellungen – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header">
+        <h1>Einstellungen</h1>
+        <p>Passe Golden Goat Capital nach deinen Wünschen an</p>
+    </div>
+
+    <!-- Toast -->
+    <div id="toastMsg" class="profil-toast" style="display:none;"></div>
+
+    <div class="einstellungen-layout">
+
+        <!-- Linke Nav -->
+        <div class="einstellungen-nav">
+            <button class="einstell-nav-btn active" onclick="showSection('darstellung', this)">
+                <i class="ri-palette-line"></i> Darstellung
+            </button>
+            <button class="einstell-nav-btn" onclick="showSection('sprache', this)">
+                <i class="ri-translate-2"></i> Sprache & Region
+            </button>
+            <button class="einstell-nav-btn" onclick="showSection('benachrichtigungen', this)">
+                <i class="ri-notification-3-line"></i> Benachrichtigungen
+            </button>
+            <button class="einstell-nav-btn" onclick="showSection('sicherheit', this)">
+                <i class="ri-shield-check-line"></i> Sicherheit
+            </button>
+            <button class="einstell-nav-btn" onclick="showSection('datenschutz', this)">
+                <i class="ri-eye-off-line"></i> Datenschutz
+            </button>
+        </div>
+
+        <!-- Rechte Inhalte -->
+        <div class="einstellungen-content">
+
+            <!-- ── Darstellung ── -->
+            <div id="section-darstellung" class="einstell-section active-section">
+                <h3 class="einstell-section-title"><i class="ri-palette-line"></i> Darstellung</h3>
+
+                <div class="einstell-group">
+                    <div class="einstell-group-label">Farbmodus</div>
+
+                    <div class="einstell-theme-grid">
+                        <div class="einstell-theme-card active" id="theme-dark" onclick="selectTheme('dark')">
+                            <div class="einstell-theme-preview dark-preview">
+                                <div class="theme-prev-sidebar"></div>
+                                <div class="theme-prev-content">
+                                    <div class="theme-prev-bar"></div>
+                                    <div class="theme-prev-bar short"></div>
+                                </div>
+                            </div>
+                            <div class="einstell-theme-label">
+                                <i class="ri-moon-line"></i> Dark Mode
+                            </div>
+                        </div>
+
+                        <div class="einstell-theme-card" id="theme-light" onclick="selectTheme('light')">
+                            <div class="einstell-theme-preview light-preview">
+                                <div class="theme-prev-sidebar light"></div>
+                                <div class="theme-prev-content light">
+                                    <div class="theme-prev-bar light"></div>
+                                    <div class="theme-prev-bar short light"></div>
+                                </div>
+                            </div>
+                            <div class="einstell-theme-label">
+                                <i class="ri-sun-line"></i> Light Mode
+                                <span class="einstell-coming-soon">Bald verfügbar</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="einstell-group">
+                    <div class="einstell-group-label">Währung</div>
+                    <div class="einstell-row">
+                        <div>
+                            <div class="einstell-row-title">Anzeigewährung</div>
+                            <div class="einstell-row-desc">Standardwährung für alle Beträge in der App</div>
+                        </div>
+                        <select id="currencySelect" class="einstell-select">
+                            <option value="EUR">€ Euro (EUR)</option>
+                            <option value="USD">$ US-Dollar (USD)</option>
+                            <option value="GBP">£ Britisches Pfund (GBP)</option>
+                            <option value="CHF">₣ Schweizer Franken (CHF)</option>
+                            <option value="JPY">¥ Japanischer Yen (JPY)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="einstell-group">
+                    <div class="einstell-group-label">Datumsformat</div>
+                    <div class="einstell-row">
+                        <div>
+                            <div class="einstell-row-title">Datumsdarstellung</div>
+                            <div class="einstell-row-desc">Wie Datumsangaben in der App angezeigt werden</div>
+                        </div>
+                        <select id="dateFormatSelect" class="einstell-select">
+                            <option value="DD.MM.YYYY">31.12.2025 (DE)</option>
+                            <option value="MM/DD/YYYY">12/31/2025 (US)</option>
+                            <option value="YYYY-MM-DD">2025-12-31 (ISO)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button class="btn-primary" onclick="saveSettings()" style="margin-top:8px;">
+                    <i class="ri-save-line"></i> Darstellung speichern
+                </button>
+            </div>
+
+            <!-- ── Sprache & Region ── -->
+            <div id="section-sprache" class="einstell-section" style="display:none;">
+                <h3 class="einstell-section-title"><i class="ri-translate-2"></i> Sprache & Region</h3>
+
+                <div class="einstell-group">
+                    <div class="einstell-group-label">Sprache</div>
+                    <div class="einstell-row">
+                        <div>
+                            <div class="einstell-row-title">App-Sprache</div>
+                            <div class="einstell-row-desc">Sprache der Benutzeroberfläche (weitere Sprachen folgen)</div>
+                        </div>
+                        <select id="languageSelect" class="einstell-select">
+                            <option value="de">🇩🇪 Deutsch</option>
+                            <option value="en">🇬🇧 English</option>
+                            <option value="fr">🇫🇷 Français</option>
+                            <option value="es">🇪🇸 Español</option>
+                            <option value="it">🇮🇹 Italiano</option>
+                            <option value="pl">🇵🇱 Polski</option>
+                            <option value="tr">🇹🇷 Türkçe</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="einstell-info-banner">
+                    <i class="ri-information-line"></i>
+                    <span>Die vollständige Mehrsprachigkeit wird in einer zukünftigen Version umgesetzt. Deine Auswahl wird bereits gespeichert.</span>
+                </div>
+
+                <button class="btn-primary" onclick="saveSettings()" style="margin-top:8px;">
+                    <i class="ri-save-line"></i> Sprache speichern
+                </button>
+            </div>
+
+            <!-- ── Benachrichtigungen ── -->
+            <div id="section-benachrichtigungen" class="einstell-section" style="display:none;">
+                <h3 class="einstell-section-title"><i class="ri-notification-3-line"></i> Benachrichtigungen</h3>
+
+                <!-- Haupt-Schalter -->
+                <div class="einstell-group">
+                    <div class="einstell-group-label">Kanäle</div>
+
+                    <div class="einstell-toggle-row">
+                        <div>
+                            <div class="einstell-row-title"><i class="ri-mail-send-line" style="margin-right:6px;color:var(--accent);"></i>E-Mail-Benachrichtigungen</div>
+                            <div class="einstell-row-desc">Aktiviert den täglichen Reminder-Dienst — alle Erinnerungen unten werden per E-Mail gesendet</div>
+                        </div>
+                        <label class="einstell-toggle">
+                            <input type="checkbox" id="notifEmail" onchange="toggleReminderSection()">
+                            <span class="einstell-toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="einstell-toggle-row">
+                        <div>
+                            <div class="einstell-row-title"><i class="ri-computer-line" style="margin-right:6px;color:var(--accent);"></i>Browser-Benachrichtigungen</div>
+                            <div class="einstell-row-desc">Push-Benachrichtigungen direkt im Browser für Kalender-Erinnerungen</div>
+                        </div>
+                        <label class="einstell-toggle">
+                            <input type="checkbox" id="notifBrowser">
+                            <span class="einstell-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Erinnerungs-Typen (nur sichtbar wenn E-Mail aktiv) -->
+                <div id="reminderSection" style="display:none;">
+
+                    <div class="einstell-group">
+                        <div class="einstell-group-label">E-Mail-Erinnerungen konfigurieren</div>
+
+                        <!-- Rechnungen -->
+                        <div class="einstell-toggle-row">
+                            <div>
+                                <div class="einstell-row-title">
+                                    <i class="ri-file-text-line" style="margin-right:6px;color:#ef4444;"></i>Rechnungserinnerungen
+                                </div>
+                                <div class="einstell-row-desc">
+                                    Erinnerung 14, 7, 3 und 1 Tag vor Fälligkeit offener Rechnungen
+                                </div>
+                                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                                    <span class="reminder-chip"><i class="ri-time-line"></i> 14 Tage vorher</span>
+                                    <span class="reminder-chip"><i class="ri-time-line"></i> 7 Tage vorher</span>
+                                    <span class="reminder-chip"><i class="ri-alert-line" style="color:#f59e0b;"></i> 3 Tage vorher</span>
+                                    <span class="reminder-chip"><i class="ri-alarm-warning-line" style="color:#ef4444;"></i> 1 Tag vorher</span>
+                                </div>
+                            </div>
+                            <label class="einstell-toggle">
+                                <input type="checkbox" id="reminderRechnungen" checked>
+                                <span class="einstell-toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <!-- Budget -->
+                        <div class="einstell-toggle-row">
+                            <div>
+                                <div class="einstell-row-title">
+                                    <i class="ri-pie-chart-line" style="margin-right:6px;color:#f59e0b;"></i>Budgetwarnungen
+                                </div>
+                                <div class="einstell-row-desc">
+                                    E-Mail sobald eine Budget-Kategorie ≥ 80 % erreicht oder überschritten ist (max. 1× pro Monat pro Kategorie)
+                                </div>
+                                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                                    <span class="reminder-chip"><i class="ri-error-warning-line" style="color:#f59e0b;"></i> Ab 80 % verbraucht</span>
+                                    <span class="reminder-chip"><i class="ri-close-circle-line" style="color:#ef4444;"></i> Bei Überschreitung</span>
+                                </div>
+                            </div>
+                            <label class="einstell-toggle">
+                                <input type="checkbox" id="reminderBudget" checked>
+                                <span class="einstell-toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <!-- Sparziele -->
+                        <div class="einstell-toggle-row">
+                            <div>
+                                <div class="einstell-row-title">
+                                    <i class="ri-funds-line" style="margin-right:6px;color:#22c55e;"></i>Sparziel-Erinnerungen
+                                </div>
+                                <div class="einstell-row-desc">
+                                    Monatliche Übersicht am 1. jeden Monats mit Fortschritt aller aktiven Sparziele
+                                </div>
+                                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                                    <span class="reminder-chip"><i class="ri-calendar-check-line" style="color:#22c55e;"></i> Jeden 1. des Monats</span>
+                                </div>
+                            </div>
+                            <label class="einstell-toggle">
+                                <input type="checkbox" id="reminderSparziele" checked>
+                                <span class="einstell-toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Test-Mail -->
+                    <div class="einstell-group">
+                        <div class="einstell-group-label">Test-E-Mail</div>
+                        <div class="einstell-row">
+                            <div>
+                                <div class="einstell-row-title"><i class="ri-send-plane-line" style="margin-right:6px;color:var(--accent);"></i>Erinnerungen jetzt auslösen</div>
+                                <div class="einstell-row-desc">Sendet sofort alle fälligen Erinnerungen an deine E-Mail-Adresse — gut zum Testen der Konfiguration</div>
+                            </div>
+                            <button class="btn-primary" onclick="runReminderTest()" id="reminderTestBtn" style="white-space:nowrap;font-size:0.83rem;padding:8px 16px;">
+                                <i class="ri-mail-send-line"></i> Test senden
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+
+                <button class="btn-primary" onclick="saveSettings()" style="margin-top:8px;">
+                    <i class="ri-save-line"></i> Benachrichtigungen speichern
+                </button>
+            </div>
+
+            <!-- ── Sicherheit ── -->
+            <div id="section-sicherheit" class="einstell-section" style="display:none;">
+                <h3 class="einstell-section-title"><i class="ri-shield-check-line"></i> Sicherheit</h3>
+
+                <div class="einstell-group">
+                    <div class="einstell-group-label">Zwei-Faktor-Authentifizierung</div>
+
+                    <div class="einstell-toggle-row">
+                        <div>
+                            <div class="einstell-row-title"><i class="ri-shield-keyhole-line" style="margin-right:6px;color:var(--accent);"></i>2FA aktivieren</div>
+                            <div class="einstell-row-desc">Schütze deinen Account mit einem zweiten Faktor beim Login (kommt bald)</div>
+                        </div>
+                        <label class="einstell-toggle">
+                            <input type="checkbox" id="twoFactor">
+                            <span class="einstell-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="einstell-group">
+                    <div class="einstell-group-label">Aktive Sitzungen</div>
+                    <div class="einstell-session-card">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <div style="width:40px;height:40px;border-radius:10px;background:rgba(99,88,230,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1.2rem;">
+                                <i class="ri-computer-line"></i>
+                            </div>
+                            <div>
+                                <div style="font-weight:600;font-size:0.87rem;">Aktuelle Sitzung</div>
+                                <div style="font-size:0.75rem;color:var(--text-3);">Dieser Browser · Jetzt aktiv</div>
+                            </div>
+                        </div>
+                        <span style="font-size:0.75rem;color:#22c55e;font-weight:600;">● Aktiv</span>
+                    </div>
+                </div>
+
+                <div class="einstell-group">
+                    <div class="einstell-group-label">Passwort</div>
+                    <div class="einstell-row">
+                        <div>
+                            <div class="einstell-row-title">Passwort ändern</div>
+                            <div class="einstell-row-desc">Gehe zu deinem Profil, um dein Passwort zu ändern</div>
+                        </div>
+                        <a href="/users/profil" class="btn-primary" style="text-decoration:none;white-space:nowrap;font-size:0.83rem;padding:8px 16px;">
+                            <i class="ri-external-link-line"></i> Zum Profil
+                        </a>
+                    </div>
+                </div>
+
+                <button class="btn-primary" onclick="saveSettings()" style="margin-top:8px;">
+                    <i class="ri-save-line"></i> Sicherheit speichern
+                </button>
+            </div>
+
+            <!-- ── Datenschutz ── -->
+            <div id="section-datenschutz" class="einstell-section" style="display:none;">
+                <h3 class="einstell-section-title"><i class="ri-eye-off-line"></i> Datenschutz</h3>
+
+                <div class="einstell-group">
+                    <div class="einstell-group-label">Datenexport</div>
+                    <div class="einstell-row">
+                        <div>
+                            <div class="einstell-row-title"><i class="ri-download-line" style="margin-right:6px;color:var(--accent);"></i>Meine Daten exportieren</div>
+                            <div class="einstell-row-desc">Exportiere alle deine Transaktionen und Daten als CSV-Datei</div>
+                        </div>
+                        <button class="btn-primary" onclick="exportData()" style="white-space:nowrap;font-size:0.83rem;padding:8px 16px;">
+                            <i class="ri-file-download-line"></i> Exportieren
+                        </button>
+                    </div>
+                </div>
+
+                <div class="einstell-group">
+                    <div class="einstell-group-label">Cookies & Tracking</div>
+                    <div class="einstell-toggle-row">
+                        <div>
+                            <div class="einstell-row-title">Notwendige Cookies</div>
+                            <div class="einstell-row-desc">Für die Grundfunktionen der App erforderlich (nicht deaktivierbar)</div>
+                        </div>
+                        <label class="einstell-toggle">
+                            <input type="checkbox" checked disabled>
+                            <span class="einstell-toggle-slider" style="opacity:0.6;"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="einstell-info-banner" style="margin-top:16px;">
+                    <i class="ri-shield-line"></i>
+                    <span>Deine Daten werden ausschließlich auf unseren Servern gespeichert und niemals an Dritte weitergegeben.</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    .einstellungen-layout {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: 24px;
+        align-items: start;
+    }
+    @media (max-width: 768px) {
+        .einstellungen-layout { grid-template-columns: 1fr; }
+        .einstellungen-nav { display: flex; flex-wrap: wrap; gap: 8px; }
+        .einstell-nav-btn { flex: 1; min-width: 130px; }
+    }
+
+    .einstellungen-nav {
+        display: flex; flex-direction: column; gap: 4px;
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 10px;
+        position: sticky; top: 100px;
+    }
+
+    .einstell-nav-btn {
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 14px;
+        border-radius: var(--radius-md);
+        border: none; background: transparent;
+        color: var(--text-2); font-size: 0.87rem; font-weight: 500;
+        cursor: pointer; text-align: left;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        transition: background 0.15s, color 0.15s;
+    }
+    .einstell-nav-btn:hover { background: var(--surface-2); color: var(--text-1); }
+    .einstell-nav-btn.active { background: rgba(99,88,230,0.12); color: var(--accent); font-weight: 700; }
+
+    .einstellungen-content { display: flex; flex-direction: column; }
+
+    .einstell-section-title {
+        display: flex; align-items: center; gap: 10px;
+        font-size: 1.05rem; margin: 0 0 24px;
+        color: var(--text-1);
+    }
+
+    .einstell-group {
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+        margin-bottom: 16px;
+    }
+    .einstell-group-label {
+        font-size: 0.72rem; font-weight: 700;
+        color: var(--text-3); text-transform: uppercase;
+        letter-spacing: 0.07em; margin-bottom: 16px;
+    }
+
+    .einstell-row {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 20px;
+    }
+    .einstell-row-title { font-weight: 600; font-size: 0.88rem; margin-bottom: 2px; }
+    .einstell-row-desc  { font-size: 0.78rem; color: var(--text-3); }
+
+    .einstell-select {
+        padding: 8px 12px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border);
+        background: var(--surface-2);
+        color: var(--text-1);
+        font-size: 0.85rem;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        cursor: pointer;
+        min-width: 180px;
+    }
+
+    /* Theme-Karten */
+    .einstell-theme-grid { display: flex; gap: 16px; flex-wrap: wrap; }
+    .einstell-theme-card {
+        border: 2px solid var(--border);
+        border-radius: var(--radius-lg);
+        overflow: hidden; cursor: pointer;
+        transition: border-color 0.2s;
+        min-width: 140px;
+    }
+    .einstell-theme-card.active  { border-color: var(--accent); }
+    .einstell-theme-card:hover:not(.active) { border-color: var(--text-3); }
+    .einstell-theme-preview {
+        height: 80px; display: flex;
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
+        overflow: hidden;
+    }
+    .dark-preview  { background: #13131a; }
+    .light-preview { background: #f0f2f5; }
+    .theme-prev-sidebar { width: 36px; height: 100%; background: #1a1a2e; flex-shrink: 0; }
+    .theme-prev-sidebar.light { background: #e8eaf0; }
+    .theme-prev-content { flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .theme-prev-content.light { background: #f8f9fb; }
+    .theme-prev-bar { height: 8px; border-radius: 4px; background: #2a2a40; }
+    .theme-prev-bar.light { background: #d4d7e0; }
+    .theme-prev-bar.short { width: 60%; }
+    .einstell-theme-label {
+        display: flex; align-items: center; gap: 8px;
+        padding: 10px 12px;
+        font-size: 0.83rem; font-weight: 600;
+        background: var(--surface-2);
+    }
+    .einstell-coming-soon {
+        font-size: 0.68rem; background: rgba(99,88,230,0.15);
+        color: var(--accent); padding: 2px 7px; border-radius: 8px;
+        font-weight: 600; margin-left: auto;
+    }
+
+    /* Toggle Switch */
+    .einstell-toggle-row {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 20px; padding: 12px 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .einstell-toggle-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .einstell-toggle-row:first-child { padding-top: 0; }
+
+    .einstell-toggle {
+        position: relative; display: inline-block;
+        width: 46px; height: 24px; flex-shrink: 0;
+    }
+    .einstell-toggle input { opacity: 0; width: 0; height: 0; }
+    .einstell-toggle-slider {
+        position: absolute; inset: 0;
+        background: var(--surface-2);
+        border-radius: 24px; cursor: pointer;
+        border: 1px solid var(--border);
+        transition: background 0.2s;
+    }
+    .einstell-toggle-slider::before {
+        content: ''; position: absolute;
+        width: 18px; height: 18px;
+        left: 2px; top: 2px;
+        background: var(--text-3);
+        border-radius: 50%;
+        transition: transform 0.2s, background 0.2s;
+    }
+    .einstell-toggle input:checked + .einstell-toggle-slider { background: var(--accent); border-color: var(--accent); }
+    .einstell-toggle input:checked + .einstell-toggle-slider::before { transform: translateX(22px); background: #fff; }
+
+    /* Session Card */
+    .einstell-session-card {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 12px 14px;
+        border-radius: var(--radius-md);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+    }
+
+    /* Info Banner */
+    .einstell-info-banner {
+        display: flex; align-items: flex-start; gap: 10px;
+        background: rgba(99,88,230,0.08);
+        border: 1px solid rgba(99,88,230,0.2);
+        border-radius: var(--radius-md);
+        padding: 12px 16px;
+        font-size: 0.82rem; color: var(--text-2);
+        margin-bottom: 16px;
+    }
+    .einstell-info-banner i { color: var(--accent); margin-top: 1px; flex-shrink: 0; }
+
+    /* Reminder Chips */
+    .reminder-chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 0.72rem; font-weight: 600;
+        padding: 3px 9px; border-radius: 20px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        color: var(--text-3);
+    }
+
+    /* Info Banner code */
+    .einstell-info-banner code {
+        font-family: 'Courier New', monospace;
+        color: #a5b4fc;
+    }
+
+    /* Toast (shared with profil.html) */
+    .profil-toast {
+        position: fixed; bottom: 28px; right: 28px;
+        padding: 12px 22px;
+        border-radius: var(--radius-md);
+        font-size: 0.88rem; font-weight: 600;
+        z-index: 9999;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        animation: slideUp 0.3s ease;
+    }
+    .profil-toast.success { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+    .profil-toast.error   { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+    @keyframes slideUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+    </style>
+
+    <script>
+    let currentTheme = 'dark';
+
+    function showSection(id, btn) {
+        document.querySelectorAll('.einstell-section').forEach(s => s.style.display = 'none');
+        document.querySelectorAll('.einstell-nav-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('section-' + id).style.display = 'block';
+        btn.classList.add('active');
+    }
+
+    function selectTheme(theme) {
+        currentTheme = theme;
+        document.getElementById('theme-dark').classList.toggle('active',  theme === 'dark');
+        document.getElementById('theme-light').classList.toggle('active', theme === 'light');
+    }
+
+    function toggleReminderSection() {
+        const active = document.getElementById('notifEmail')?.checked;
+        const section = document.getElementById('reminderSection');
+        if (section) section.style.display = active ? 'block' : 'none';
+    }
+
+    async function loadSettings() {
+        try {
+            const res = await fetch('/users/einstellungen/data');
+            const data = await res.json();
+
+            currentTheme = data.theme || 'dark';
+            selectTheme(currentTheme);
+
+            const lang = document.getElementById('languageSelect');
+            if (lang) lang.value = data.language || 'de';
+
+            const currency = document.getElementById('currencySelect');
+            if (currency) currency.value = data.currency || 'EUR';
+
+            const dateFormat = document.getElementById('dateFormatSelect');
+            if (dateFormat) dateFormat.value = data.date_format || 'DD.MM.YYYY';
+
+            const notifEmail = document.getElementById('notifEmail');
+            if (notifEmail) notifEmail.checked = !!data.notifications_email;
+
+            const notifBrowser = document.getElementById('notifBrowser');
+            if (notifBrowser) notifBrowser.checked = !!data.notifications_browser;
+
+            const twoFactor = document.getElementById('twoFactor');
+            if (twoFactor) twoFactor.checked = !!data.two_factor;
+
+            // Reminder-Checkboxen (default: an)
+            const reminderR = document.getElementById('reminderRechnungen');
+            if (reminderR) reminderR.checked = data.reminder_rechnungen !== 0;
+
+            const reminderB = document.getElementById('reminderBudget');
+            if (reminderB) reminderB.checked = data.reminder_budget !== 0;
+
+            const reminderS = document.getElementById('reminderSparziele');
+            if (reminderS) reminderS.checked = data.reminder_sparziele !== 0;
+
+            toggleReminderSection();
+
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    async function saveSettings() {
+        const payload = {
+            theme:                  currentTheme,
+            language:               document.getElementById('languageSelect')?.value   || 'de',
+            currency:               document.getElementById('currencySelect')?.value   || 'EUR',
+            date_format:            document.getElementById('dateFormatSelect')?.value || 'DD.MM.YYYY',
+            notifications_email:    document.getElementById('notifEmail')?.checked     || false,
+            notifications_browser:  document.getElementById('notifBrowser')?.checked   || false,
+            two_factor:             document.getElementById('twoFactor')?.checked      || false,
+            reminder_rechnungen:    document.getElementById('reminderRechnungen')?.checked !== false,
+            reminder_budget:        document.getElementById('reminderBudget')?.checked     !== false,
+            reminder_sparziele:     document.getElementById('reminderSparziele')?.checked  !== false,
+        };
+
+        try {
+            const res = await fetch('/users/einstellungen/update', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error();
+            showToast('Einstellungen gespeichert!', 'success');
+        } catch {
+            showToast('Fehler beim Speichern', 'error');
+        }
+    }
+
+    async function runReminderTest() {
+        const btn = document.getElementById('reminderTestBtn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ri-loader-4-line"></i> Wird gesendet…'; }
+        try {
+            const res = await fetch('/users/reminders/run');
+            const data = await res.json();
+            showToast(data.ok ? 'Test-Erinnerungen ausgelöst! Prüfe deine E-Mails.' : 'Fehler: ' + data.message, data.ok ? 'success' : 'error');
+        } catch {
+            showToast('Fehler beim Auslösen', 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ri-mail-send-line"></i> Test senden'; }
+        }
+    }
+
+    async function exportData() {
+        try {
+            const res = await fetch('/users/getTransactions');
+            const data = await res.json();
+            if (!data.length) return showToast('Keine Daten zum Exportieren', 'error');
+
+            const headers = ['ID', 'Name', 'Kategorie', 'Betrag', 'Datum', 'Typ'];
+            const rows = data.map(t => [t.id, t.name, t.category, t.amount, t.date, t.type]);
+            const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'golden-goat-export.csv';
+            a.click(); URL.revokeObjectURL(url);
+            showToast('Export erfolgreich!', 'success');
+        } catch {
+            showToast('Fehler beim Exportieren', 'error');
+        }
+    }
+
+    function showToast(msg, type) {
+        const el = document.getElementById('toastMsg');
+        el.textContent = msg;
+        el.className = 'profil-toast ' + type;
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 3500);
+    }
+
+    document.addEventListener('DOMContentLoaded', loadSettings);
+    </script>
+
+    <script src="/navheader.js"></script>
+</body>
+</html>

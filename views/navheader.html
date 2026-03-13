@@ -1,0 +1,214 @@
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+        <div class="sidebar-logo-inner">
+            <img src="/assets/goldengoat.png" alt="Golden Goat">
+            <div class="sidebar-logo-text">
+                <span>Golden Goat</span>
+                <span>Capital</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Modus-Toggle ──────────────────────────────────────── -->
+    <div class="sidebar-mode-toggle" id="sidebarModeToggle">
+        <button class="mode-btn" id="modeBtnPrivat" onclick="setMode('privat')">
+            <i class="ri-user-line"></i>
+            <span>Privat</span>
+        </button>
+        <button class="mode-btn" id="modeBtnHaushalt" onclick="setMode('haushalt')">
+            <i class="ri-home-heart-line"></i>
+            <span>Haushalt</span>
+        </button>
+    </div>
+
+    <!-- ── PRIVAT-NAV ─────────────────────────────────────────── -->
+    <nav class="sidebar-nav" id="privatNav">
+
+        <div class="sidebar-section-label">Übersicht</div>
+        <a href="/users/overview" class="sidebar-link">
+            <i class="ri-dashboard-line"></i>
+            Dashboard
+        </a>
+
+        <button class="sidebar-link sidebar-dropdown-toggle" onclick="toggleSidebarSection('finanzSection', this)">
+            <i class="ri-wallet-3-line"></i>
+            Finanzen
+        </button>
+        <div class="sidebar-dropdown-items" id="finanzSection">
+            <a href="/users/meine-finanzen" class="sidebar-link">
+                <i class="ri-pie-chart-2-line"></i>
+                Meine Finanzen
+            </a>
+            <a href="/users/ausgabentracker" class="sidebar-link">
+                <i class="ri-exchange-dollar-line"></i>
+                Ausgabentracker
+            </a>
+            <a href="/users/budget" class="sidebar-link">
+                <i class="ri-bar-chart-box-line"></i>
+                Budget & Sparziele
+            </a>
+            <a href="/users/schulden" class="sidebar-link">
+                <i class="ri-scales-line"></i>
+                Schulden-Tracker
+            </a>
+            <a href="/users/steuern" class="sidebar-link">
+                <i class="ri-government-line"></i>
+                Steuer-Modul
+            </a>
+        </div>
+
+        <button class="sidebar-link sidebar-dropdown-toggle" onclick="toggleSidebarSection('verwaltungSection', this)">
+            <i class="ri-folder-shield-2-line"></i>
+            Verwaltung
+        </button>
+        <div class="sidebar-dropdown-items" id="verwaltungSection">
+            <a href="/users/versicherungen" class="sidebar-link">
+                <i class="ri-shield-check-line"></i>
+                Versicherungen
+            </a>
+            <a href="/users/dokumente" class="sidebar-link">
+                <i class="ri-folder-line"></i>
+                Dokumente
+            </a>
+        </div>
+
+        <a href="/users/todo" class="sidebar-link">
+            <i class="ri-list-check-2"></i>
+            To-do-Liste
+        </a>
+
+        <a href="/users/kalender" class="sidebar-link">
+            <i class="ri-calendar-line"></i>
+            Kalender
+        </a>
+
+        <a href="/users/zinseszinsrechner" class="sidebar-link">
+            <i class="ri-percent-line"></i>
+            Zinseszinsrechner
+        </a>
+
+    </nav>
+
+    <!-- ── HAUSHALT-NAV ───────────────────────────────────────── -->
+    <nav class="sidebar-nav" id="haushaltNav" style="display:none;">
+
+        <div class="sidebar-section-label" style="color:var(--haus-accent);">Haushalt</div>
+        <a href="/users/haushalt" class="sidebar-link sidebar-link-haus">
+            <i class="ri-home-heart-line"></i>
+            Dashboard
+        </a>
+
+        <a href="/users/haushalt/tracker" class="sidebar-link sidebar-link-haus">
+            <i class="ri-exchange-2-line"></i>
+            Transaktionen
+        </a>
+
+        <a href="/users/haushalt/ausgaben" class="sidebar-link sidebar-link-haus">
+            <i class="ri-calculator-line"></i>
+            Fixkosten & Planung
+        </a>
+
+        <a href="/users/haushalt/konto" class="sidebar-link sidebar-link-haus">
+            <i class="ri-bank-card-line"></i>
+            Haushaltskonto
+        </a>
+
+        <a href="/users/haushalt/todos" class="sidebar-link sidebar-link-haus">
+            <i class="ri-checkbox-line"></i>
+            Aufgaben
+        </a>
+
+        <a href="/users/haushalt/dokumente" class="sidebar-link sidebar-link-haus">
+            <i class="ri-folder-2-line"></i>
+            Dokumente
+        </a>
+
+        <a href="/users/haushalt/einstellungen" class="sidebar-link sidebar-link-haus">
+            <i class="ri-settings-3-line"></i>
+            Einstellungen
+        </a>
+
+    </nav>
+
+    <div class="sidebar-footer">
+        <% if (isLoggedIn) { %>
+            <a href="/users/tarife" class="sidebar-plan-link" id="sidebarPlanLink">
+                <span id="sidebarPlanBadge" class="sidebar-plan-badge" style="display:none;"></span>
+                <span class="sidebar-plan-label">Tarif verwalten</span>
+                <i class="ri-arrow-right-s-line"></i>
+            </a>
+            <a href="/users/profil" class="sidebar-link">
+                <i class="ri-user-line"></i>
+                Profil
+            </a>
+            <a href="/users/einstellungen" class="sidebar-link" style="margin-top: 4px;">
+                <i class="ri-settings-3-line"></i>
+                Einstellungen
+            </a>
+            <a href="/users/logout" class="sidebar-link" style="margin-top: 4px;">
+                <i class="ri-logout-box-line"></i>
+                Logout
+            </a>
+        <% } else { %>
+            <a href="/users/login" class="sidebar-link">
+                <i class="ri-login-box-line"></i>
+                Login
+            </a>
+            <a href="/users/register" class="sidebar-link" style="margin-top: 4px;">
+                <i class="ri-user-add-line"></i>
+                Registrieren
+            </a>
+        <% } %>
+    </div>
+</aside>
+
+<div class="page-wrapper" id="pageWrapper">
+    <div class="page-content">
+
+<style>
+.sidebar-plan-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 0.625rem;
+    text-decoration: none;
+    background: var(--surface-2, rgba(108,99,255,0.08));
+    border: 1px solid rgba(108,99,255,0.2);
+    margin-bottom: 6px;
+    transition: border-color 0.2s, background 0.2s;
+}
+.sidebar-plan-link:hover {
+    border-color: var(--accent, #6c63ff);
+    background: rgba(108,99,255,0.13);
+}
+.sidebar-plan-link .ri-arrow-right-s-line {
+    margin-left: auto;
+    color: var(--text-muted, #8892a4);
+    font-size: 1rem;
+}
+.sidebar-plan-label {
+    font-size: 0.8rem;
+    color: var(--text-muted, #8892a4);
+    font-weight: 500;
+}
+.sidebar-plan-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.15rem 0.45rem;
+    border-radius: 20px;
+    flex-shrink: 0;
+}
+.sidebar-plan-badge.free {
+    background: rgba(148,163,184,0.15);
+    color: #94a3b8;
+    border: 1px solid rgba(148,163,184,0.2);
+}
+.sidebar-plan-badge.pro {
+    background: rgba(108,99,255,0.2);
+    color: var(--accent, #6c63ff);
+    border: 1px solid rgba(108,99,255,0.35);
+}
+</style>

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haushalt Dokumente – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <h1><i class="ri-folder-2-line" style="color:var(--haus-accent);margin-right:8px;"></i>Haushalt Dokumente</h1>
+            <p>Gemeinsame Dokumente, Rechnungen und Verträge des Haushalts</p>
+        </div>
+        <button onclick="showUpload()" class="btn-primary" id="uploadToggleBtn">
+            <i class="ri-upload-line"></i> Dokument hochladen
+        </button>
+    </div>
+
+    <!-- Upload-Bereich (ausklappbar) -->
+    <div id="uploadArea" class="card" style="display:none;padding:24px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <h3 style="margin:0;">Dokument hinzufügen</h3>
+            <button onclick="hideUpload()" style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:1.2rem;"><i class="ri-close-line"></i></button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+            <div class="form-group">
+                <label class="form-label">Typ</label>
+                <select id="upTyp" onchange="updateUploadFields()">
+                    <option value="sonstiges">Sonstiges</option>
+                    <option value="rechnung">Rechnung</option>
+                    <option value="vertrag">Vertrag</option>
+                    <option value="versicherung">Versicherung</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Bezeichnung</label>
+                <input type="text" id="upName" placeholder="z.B. Stromrechnung März">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Datum</label>
+                <input type="date" id="upDatum">
+            </div>
+        </div>
+
+        <!-- Rechnungs-Felder (nur bei Typ rechnung) -->
+        <div id="rechnungFields" style="display:none;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+            <div class="form-group">
+                <label class="form-label">Betrag (€)</label>
+                <input type="number" id="upBetrag" step="0.01" placeholder="0,00">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Fällig am</label>
+                <input type="date" id="upFaellig">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Aussteller</label>
+                <input type="text" id="upAussteller" placeholder="z.B. Stadtwerke">
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+            <div class="form-group">
+                <label class="form-label">Kategorie</label>
+                <input type="text" id="upKategorie" placeholder="z.B. Energie, Wohnen…">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Notiz</label>
+                <input type="text" id="upNotiz" placeholder="Optional">
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px;">
+            <label class="form-label">Datei (PDF oder Bild)</label>
+            <input type="file" id="upFile" accept=".pdf,.jpg,.jpeg,.png,.webp" style="color:var(--text-2);">
+        </div>
+
+        <div style="display:flex;gap:8px;">
+            <button onclick="uploadDokument()" class="btn-primary" id="uploadBtn">
+                <i class="ri-upload-line"></i> Hochladen
+            </button>
+            <button onclick="hideUpload()" style="padding:10px 20px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
+                Abbrechen
+            </button>
+        </div>
+        <div id="uploadMsg" style="margin-top:10px;font-size:0.85rem;"></div>
+    </div>
+
+    <!-- Filter-Tabs -->
+    <div style="display:flex;gap:4px;background:var(--surface-2);border-radius:var(--radius-md);padding:4px;margin-bottom:20px;width:fit-content;flex-wrap:wrap;">
+        <button class="hdok-tab active" onclick="setFilter('alle',this)">Alle</button>
+        <button class="hdok-tab" onclick="setFilter('rechnung',this)">Rechnungen</button>
+        <button class="hdok-tab" onclick="setFilter('vertrag',this)">Verträge</button>
+        <button class="hdok-tab" onclick="setFilter('versicherung',this)">Versicherungen</button>
+        <button class="hdok-tab" onclick="setFilter('sonstiges',this)">Sonstiges</button>
+    </div>
+
+    <div id="dokRoot"></div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    .hdok-tab {
+        padding: 8px 14px; border: none; background: transparent;
+        color: var(--text-3); border-radius: var(--radius-md);
+        cursor: pointer; font-size: 0.83rem;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-weight: 600; transition: var(--transition);
+    }
+    .hdok-tab.active { background: var(--haus-accent); color: #fff; }
+    .hdok-tab:hover:not(.active) { background: var(--surface); color: var(--text-1); }
+
+    .hdok-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+    }
+    .hdok-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 18px;
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex; flex-direction: column; gap: 10px;
+    }
+    .hdok-card:hover {
+        border-color: var(--haus-accent);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 20px rgba(16,185,129,0.1);
+    }
+    .hdok-icon {
+        width: 44px; height: 44px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem; flex-shrink: 0;
+    }
+    .hdok-status {
+        font-size: 0.72rem; font-weight: 700;
+        padding: 2px 8px; border-radius: 10px; width: fit-content;
+    }
+    .hdok-status.offen    { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .hdok-status.bezahlt  { background: rgba(34,197,94,0.12);  color: #22c55e; }
+    .hdok-status.sonstiges { background: var(--surface-2); color: var(--text-3); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script>
+    let dokumente = [];
+    let currentFilter = 'alle';
+    let mitglieder = [];
+
+    const typIcons = {
+        rechnung:    { icon: 'ri-bill-line',          bg: 'rgba(245,158,11,0.12)', color: '#f59e0b' },
+        vertrag:     { icon: 'ri-file-text-line',      bg: 'rgba(59,130,246,0.12)', color: '#3b82f6' },
+        versicherung:{ icon: 'ri-shield-check-line',   bg: 'rgba(99,88,230,0.12)',  color: '#6358e6' },
+        sonstiges:   { icon: 'ri-folder-line',         bg: 'rgba(16,185,129,0.12)', color: '#10b981' },
+    };
+
+    async function init() {
+        try {
+            const res = await fetch('/users/haushalt/status');
+            if (res.ok) {
+                const data = await res.json();
+                mitglieder = data.mitglieder || [];
+            }
+        } catch (e) {
+            // Mitglieder konnten nicht geladen werden, Dokumente trotzdem anzeigen
+        }
+        await loadDokumente();
+    }
+
+    async function loadDokumente() {
+        dokumente = await fetch('/users/haushalt/dokumente/data').then(r => r.json()).catch(() => []);
+        render();
+    }
+
+    function setFilter(filter, btn) {
+        currentFilter = filter;
+        document.querySelectorAll('.hdok-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        render();
+    }
+
+    function render() {
+        const root = document.getElementById('dokRoot');
+        let filtered = dokumente;
+        if (currentFilter !== 'alle') {
+            filtered = dokumente.filter(d => d.typ === currentFilter);
+        }
+
+        if (filtered.length === 0) {
+            root.innerHTML =
+                '<div class="card" style="text-align:center;padding:48px;color:var(--text-3);">' +
+                    '<i class="ri-folder-2-line" style="font-size:2.5rem;display:block;margin-bottom:12px;opacity:0.3;color:var(--haus-accent);"></i>' +
+                    'Noch keine Dokumente in dieser Kategorie.' +
+                '</div>';
+            return;
+        }
+
+        // Stat-Zeile oben
+        const offeneRechnungen = dokumente.filter(d => d.typ === 'rechnung' && d.status === 'offen');
+        const offeneSumme = offeneRechnungen.reduce((s, d) => s + (d.betrag || 0), 0);
+        const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+
+        let statsHtml = '';
+        if (offeneRechnungen.length > 0) {
+            statsHtml =
+                '<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:var(--radius-md);padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:0.85rem;">' +
+                    '<i class="ri-error-warning-line" style="color:#f59e0b;font-size:1.1rem;"></i>' +
+                    '<span><strong style="color:#f59e0b;">' + offeneRechnungen.length + ' offene Rechnungen</strong> · Gesamtbetrag: ' + fmt.format(offeneSumme) + '</span>' +
+                '</div>';
+        }
+
+        root.innerHTML = statsHtml + '<div class="hdok-grid">' +
+            filtered.map(d => renderCard(d, fmt)).join('') +
+        '</div>';
+
+        // Klick-Delegation für Karten-Navigation
+        root.querySelectorAll('.hdok-card[data-dokid]').forEach(card => {
+            card.addEventListener('click', () => {
+                window.location.href = '/users/haushalt/dokumente/' + card.dataset.dokid + '/detail';
+            });
+        });
+    }
+
+    function renderCard(d, fmt) {
+        const ti = typIcons[d.typ] || typIcons.sonstiges;
+        const hochlader = mitglieder.find(m => m.user_id === d.hochgeladen_von);
+        const hochladerName = hochlader ? (hochlader.anzeigename || hochlader.display_name || 'Unbekannt') : 'Unbekannt';
+
+        const statusBadge = d.typ === 'rechnung'
+            ? '<span class="hdok-status ' + (d.status||'offen') + '">' + (d.status === 'bezahlt' ? '✓ Bezahlt' : '⏳ Offen') + '</span>'
+            : '<span class="hdok-status sonstiges">' + d.typ + '</span>';
+
+        return '<div class="hdok-card" data-dokid="' + d.id + '">' +
+            '<div style="display:flex;align-items:flex-start;gap:12px;">' +
+                '<div class="hdok-icon" style="background:' + ti.bg + ';color:' + ti.color + ';">' +
+                    '<i class="' + ti.icon + '"></i>' +
+                '</div>' +
+                '<div style="flex:1;min-width:0;">' +
+                    '<div style="font-weight:700;font-size:0.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHtml(d.name) + '</div>' +
+                    '<div style="font-size:0.75rem;color:var(--text-3);">' +
+                        (d.datum ? new Date(d.datum).toLocaleDateString('de-DE') : '–') +
+                        (d.aussteller ? ' · ' + escHtml(d.aussteller) : '') +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+                statusBadge +
+                (d.betrag ? '<span style="font-weight:800;font-size:0.95rem;">' + fmt.format(d.betrag) + '</span>' : '') +
+            '</div>' +
+            (d.faellig_datum && d.status !== 'bezahlt' ? renderFaellig(d.faellig_datum) : '') +
+            '<div style="font-size:0.72rem;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px;">' +
+                'Hochgeladen von ' + escHtml(hochladerName) +
+            '</div>' +
+        '</div>';
+    }
+
+    function renderFaellig(datum) {
+        const diff = Math.ceil((new Date(datum) - new Date()) / 86400000);
+        let color = '#22c55e', icon = 'ri-calendar-check-line', text = 'Fällig ' + new Date(datum).toLocaleDateString('de-DE');
+        if (diff < 0)      { color = '#ef4444'; icon = 'ri-error-warning-line'; text = 'Überfällig seit ' + Math.abs(diff) + ' Tagen'; }
+        else if (diff <= 7){ color = '#f59e0b'; icon = 'ri-alarm-warning-line'; text = 'Fällig in ' + diff + ' Tagen'; }
+        return '<div style="font-size:0.75rem;color:' + color + ';display:flex;align-items:center;gap:4px;">' +
+            '<i class="' + icon + '"></i>' + text +
+        '</div>';
+    }
+
+    // ── Upload ────────────────────────────────────────────────────
+
+    function showUpload() {
+        document.getElementById('uploadArea').style.display = '';
+        document.getElementById('uploadToggleBtn').style.display = 'none';
+        document.getElementById('upDatum').value = new Date().toISOString().substring(0, 10);
+    }
+
+    function hideUpload() {
+        document.getElementById('uploadArea').style.display = 'none';
+        document.getElementById('uploadToggleBtn').style.display = '';
+        document.getElementById('uploadMsg').textContent = '';
+    }
+
+    function updateUploadFields() {
+        const typ = document.getElementById('upTyp').value;
+        const rf = document.getElementById('rechnungFields');
+        rf.style.display = typ === 'rechnung' ? 'grid' : 'none';
+    }
+
+    async function uploadDokument() {
+        const btn  = document.getElementById('uploadBtn');
+        const msg  = document.getElementById('uploadMsg');
+        const name = document.getElementById('upName').value.trim();
+        const typ  = document.getElementById('upTyp').value;
+
+        if (!name) { msg.style.color = '#ef4444'; msg.textContent = 'Bitte Bezeichnung eingeben.'; return; }
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ri-loader-4-line" style="animation:spin 1s linear infinite;"></i> Wird hochgeladen…';
+
+        const fileInput = document.getElementById('upFile');
+        let file_data = '', file_ext = '', file_mime = '';
+
+        if (fileInput.files && fileInput.files[0]) {
+            const file = fileInput.files[0];
+            file_ext = file.name.split('.').pop().toLowerCase();
+            file_mime = file.type;
+            file_data = await new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onload = e => res(e.target.result);
+                r.onerror = () => rej(new Error('Lesefehler'));
+                r.readAsDataURL(file);
+            });
+        }
+
+        const payload = {
+            typ, name,
+            datum:        document.getElementById('upDatum').value || null,
+            kategorie:    document.getElementById('upKategorie').value.trim(),
+            notiz:        document.getElementById('upNotiz').value.trim(),
+            file_data, file_ext, file_mime,
+            betrag:       typ === 'rechnung' ? (parseFloat(document.getElementById('upBetrag').value) || null) : null,
+            faellig_datum:typ === 'rechnung' ? (document.getElementById('upFaellig').value || null) : null,
+            aussteller:   typ === 'rechnung' ? document.getElementById('upAussteller').value.trim() : '',
+            status:       'offen',
+        };
+
+        try {
+            const res = await fetch('/users/haushalt/dokumente/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error('Fehler beim Hochladen');
+            msg.style.color = '#10b981';
+            msg.textContent = 'Dokument gespeichert!';
+            // Formular zurücksetzen
+            ['upName','upDatum','upKategorie','upNotiz','upBetrag','upFaellig','upAussteller'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            fileInput.value = '';
+            document.getElementById('upTyp').value = 'sonstiges';
+            updateUploadFields();
+            await loadDokumente();
+            setTimeout(hideUpload, 1200);
+        } catch (err) {
+            msg.style.color = '#ef4444';
+            msg.textContent = err.message;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-upload-line"></i> Hochladen';
+        }
+    }
+
+
+    function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    init();
+    </script>
+    <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</body>
+</html>

@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haushalt Ausgaben – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <h1><i class="ri-exchange-funds-line" style="color:var(--haus-accent);margin-right:8px;"></i>Ausgaben & Kosten</h1>
+            <p>Fixkosten, Aufteilung und freie Ausgaben des Haushalts</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <label class="form-label" style="margin:0;">Monat:</label>
+            <input type="month" id="monatPicker" style="padding:7px 12px;border-radius:var(--radius-md);background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.85rem;">
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:4px;background:var(--surface-2);border-radius:var(--radius-md);padding:4px;margin-bottom:20px;width:fit-content;">
+        <button class="aus-tab active" onclick="showTab('fixkosten',this)">Gemeinsame Fixkosten</button>
+        <button class="aus-tab" onclick="showTab('persoenlich',this)">Persönliche Fixkosten</button>
+        <button class="aus-tab" onclick="showTab('gehaelter',this)">Gehälter & Sparen</button>
+        <a href="/users/haushalt/tracker" class="aus-tab-link"><i class="ri-exchange-2-line"></i> Transaktionen</a>
+        <button class="aus-tab" onclick="showTab('uebersicht',this)">Monatsübersicht</button>
+    </div>
+
+    <div id="tabContent"></div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    .aus-tab {
+        padding: 8px 16px; border: none; background: transparent;
+        color: var(--text-3); border-radius: var(--radius-md);
+        cursor: pointer; font-size: 0.83rem; font-family: 'Plus Jakarta Sans', sans-serif;
+        font-weight: 600; transition: var(--transition);
+    }
+    .aus-tab.active { background: var(--haus-accent); color: #fff; }
+    .aus-tab:hover:not(.active) { background: var(--surface); color: var(--text-1); }
+
+    .split-slider-row {
+        display: flex; align-items: center; gap: 12px; margin-top: 8px;
+    }
+    .split-label { font-size: 0.78rem; color: var(--text-3); min-width: 30px; text-align: center; }
+    .split-slider { flex: 1; accent-color: var(--haus-accent); }
+
+    .aus-row {
+        display: flex; align-items: center; gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.84rem;
+    }
+    .aus-row:last-child { border-bottom: none; }
+
+    .ueber-person {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+    }
+    .ueber-row {
+        display: flex; justify-content: space-between;
+        padding: 7px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.84rem;
+    }
+    .ueber-row:last-child { border-bottom: none; }
+    .ueber-total {
+        display: flex; justify-content: space-between;
+        padding-top: 10px; margin-top: 4px;
+        border-top: 2px solid var(--border);
+        font-weight: 800; font-size: 0.95rem;
+    }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script>
+    const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    let currentTab = 'fixkosten';
+    let haushalt = null;
+    let mitglieder = [];
+    let user1 = {}, user2 = null;
+
+    // Monat-Picker initialisieren
+    const picker = document.getElementById('monatPicker');
+    picker.value = new Date().toISOString().substring(0,7);
+    picker.addEventListener('change', () => loadTab(currentTab));
+
+    async function init() {
+        const res = await fetch('/users/haushalt/status');
+        const data = await res.json();
+        haushalt = data.haushalt;
+        mitglieder = data.mitglieder || [];
+        user1 = mitglieder[0] || {};
+        user2 = mitglieder[1] || null;
+        loadTab('fixkosten');
+    }
+
+    function showTab(tab, btn) {
+        document.querySelectorAll('.aus-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentTab = tab;
+        loadTab(tab);
+    }
+
+    function loadTab(tab) {
+        const root = document.getElementById('tabContent');
+        root.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-3);"><i class="ri-loader-4-line" style="animation:spin 1s linear infinite;font-size:1.5rem;"></i></div>';
+        const fns = { fixkosten: loadFixkosten, persoenlich: loadPersoenlich, gehaelter: loadGehaelter, uebersicht: loadUebersicht };
+        if (fns[tab]) fns[tab](root);
+    }
+
+    // ── Tab: Gemeinsame Fixkosten ─────────────────────────────────
+    async function loadFixkosten(root) {
+        const monat = picker.value;
+        const [fixkRes, overrideRes] = await Promise.all([
+            fetch('/users/haushalt/fixkosten').then(r=>r.json()).catch(()=>[]),
+            fetch('/users/haushalt/fixkosten/monat/' + monat).then(r=>r.json()).catch(()=>[]),
+        ]);
+        const name1 = user1.anzeigename || 'Person 1';
+        const name2 = user2 ? (user2.anzeigename || 'Person 2') : null;
+
+        const kategorien = ['wohnen','lebensmittel','transport','freizeit','versicherung','sonstiges'];
+        const katLabels = { wohnen:'🏠 Wohnen', lebensmittel:'🛒 Lebensmittel', transport:'🚗 Transport', freizeit:'🎉 Freizeit', versicherung:'🛡️ Versicherung', sonstiges:'📦 Sonstiges' };
+
+        let html =
+            '<div class="card" style="padding:20px;margin-bottom:16px;">' +
+                '<div class="card-header"><h3>Gemeinsame Fixkosten</h3>' +
+                    '<button onclick="openFixkostModal()" class="btn-primary" style="font-size:0.82rem;padding:7px 14px;">' +
+                        '<i class="ri-add-line"></i> Hinzufügen' +
+                    '</button>' +
+                '</div>' +
+                '<p style="font-size:0.83rem;color:var(--text-3);margin-bottom:16px;">Diese Kosten gelten standardmäßig für jeden Monat. Für ' + monat + ' kannst du einzelne Einträge überschreiben.</p>';
+
+        if (fixkRes.length === 0) {
+            html += '<p style="color:var(--text-3);text-align:center;padding:24px;">Noch keine gemeinsamen Fixkosten hinterlegt.</p>';
+        } else {
+            const byKat = {};
+            fixkRes.forEach(f => { if (!byKat[f.kategorie]) byKat[f.kategorie] = []; byKat[f.kategorie].push(f); });
+            Object.entries(byKat).forEach(([kat, items]) => {
+                html += '<div style="margin-bottom:16px;">' +
+                    '<div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;margin-bottom:8px;">' + (katLabels[kat] || kat) + '</div>';
+                items.forEach(f => {
+                    const override = overrideRes.find(o => o.fixkosten_id == f.id);
+                    const eff = { betrag: override?.betrag ?? f.betrag, a1: override?.anteil_user1 ?? f.anteil_user1, a2: override?.anteil_user2 ?? f.anteil_user2 };
+                    const hasOverride = !!override;
+                    html += '<div class="aus-row" id="fixrow-' + f.id + '">' +
+                        '<div style="flex:1;">' +
+                            '<div style="font-weight:600;">' + escHtml(f.name) + (hasOverride ? ' <span style="font-size:0.7rem;color:var(--haus-accent);background:rgba(16,185,129,0.1);padding:1px 6px;border-radius:6px;">Monat-Override</span>' : '') + '</div>' +
+                            '<div style="font-size:0.75rem;color:var(--text-3);">' + fmt.format(eff.betrag) + ' · ' + f.rhythmus + '</div>' +
+                        '</div>' +
+                        '<div style="text-align:right;">' +
+                            '<div style="font-size:0.8rem;color:#10b981;">' + name1 + ': ' + fmt.format(eff.betrag * eff.a1 / 100) + ' (' + eff.a1 + '%)</div>' +
+                            (name2 ? '<div style="font-size:0.8rem;color:#3b82f6;">' + name2 + ': ' + fmt.format(eff.betrag * eff.a2 / 100) + ' (' + eff.a2 + '%)</div>' : '') +
+                        '</div>' +
+                        '<div style="display:flex;gap:6px;">' +
+                            '<button onclick="openFixkostOverride(' + f.id + ',\'' + escHtml(f.name) + '\',' + eff.betrag + ',' + eff.a1 + ',' + eff.a2 + ')" title="Monat überschreiben" style="width:30px;height:30px;border-radius:8px;background:rgba(16,185,129,0.1);color:#10b981;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;">' +
+                                '<i class="ri-calendar-event-line"></i>' +
+                            '</button>' +
+                            (hasOverride ? '<button onclick="removeOverride(' + f.id + ')" title="Override entfernen" style="width:30px;height:30px;border-radius:8px;background:rgba(245,158,11,0.1);color:#f59e0b;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;">' +
+                                '<i class="ri-arrow-go-back-line"></i>' +
+                            '</button>' : '') +
+                            '<button onclick="openFixkostModal(' + f.id + ')" title="Bearbeiten" style="width:30px;height:30px;border-radius:8px;background:var(--surface-2);color:var(--text-2);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;">' +
+                                '<i class="ri-edit-line"></i>' +
+                            '</button>' +
+                            '<button onclick="deleteFixkost(' + f.id + ')" title="Löschen" style="width:30px;height:30px;border-radius:8px;background:rgba(239,68,68,0.1);color:#ef4444;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;">' +
+                                '<i class="ri-delete-bin-line"></i>' +
+                            '</button>' +
+                        '</div>' +
+                    '</div>';
+                });
+                html += '</div>';
+            });
+        }
+        html += '</div>';
+        root.innerHTML = html;
+        window._fixkRes = fixkRes;
+    }
+
+    async function openFixkostModal(id) {
+        const existing = id ? (window._fixkRes || []).find(f => f.id == id) : null;
+        const modal = createModal('Fixkosten ' + (existing ? 'bearbeiten' : 'hinzufügen'),
+            '<div class="form-group" style="margin-bottom:12px;">' +
+                '<label class="form-label">Bezeichnung</label>' +
+                '<input type="text" id="mfName" value="' + escHtml(existing?.name || '') + '" placeholder="z.B. Miete">' +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Betrag (€)</label>' +
+                    '<input type="number" id="mfBetrag" value="' + (existing?.betrag || '') + '" step="0.01" placeholder="0,00">' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Rhythmus</label>' +
+                    '<select id="mfRhythmus">' +
+                        ['monatlich','vierteljaehrlich','halbjaehrlich','jaehrlich'].map(r =>
+                            '<option value="' + r + '"' + (existing?.rhythmus === r ? ' selected' : '') + '>' + r + '</option>'
+                        ).join('') +
+                    '</select>' +
+                '</div>' +
+            '</div>' +
+            '<div class="form-group" style="margin-bottom:12px;">' +
+                '<label class="form-label">Kategorie</label>' +
+                '<select id="mfKat">' +
+                    ['wohnen','lebensmittel','transport','freizeit','versicherung','sonstiges'].map(k =>
+                        '<option value="' + k + '"' + (existing?.kategorie === k ? ' selected' : '') + '>' + k + '</option>'
+                    ).join('') +
+                '</select>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">Aufteilung: <span id="splitLabel1">50</span>% ' + (user1.anzeigename||'Person 1') + ' / <span id="splitLabel2">50</span>% ' + ((user2?.anzeigename)||'Person 2') + '</label>' +
+                '<div class="split-slider-row">' +
+                    '<span class="split-label" style="color:#10b981;">' + (user1.anzeigename||'P1') + '</span>' +
+                    '<input type="range" id="mfSplit" class="split-slider" min="0" max="100" value="' + (existing?.anteil_user1 ?? 50) + '" oninput="updateSplitLabel(this.value)">' +
+                    '<span class="split-label" style="color:#3b82f6;">' + ((user2?.anzeigename)||'P2') + '</span>' +
+                '</div>' +
+            '</div>',
+            async () => {
+                const payload = {
+                    name: document.getElementById('mfName').value.trim(),
+                    betrag: parseFloat(document.getElementById('mfBetrag').value) || 0,
+                    rhythmus: document.getElementById('mfRhythmus').value,
+                    kategorie: document.getElementById('mfKat').value,
+                    anteil_user1: parseInt(document.getElementById('mfSplit').value),
+                    anteil_user2: 100 - parseInt(document.getElementById('mfSplit').value),
+                };
+                if (!payload.name) { alert('Bitte Bezeichnung eingeben.'); return false; }
+                const url = id ? '/users/haushalt/fixkosten/' + id : '/users/haushalt/fixkosten/add';
+                const method = id ? 'PUT' : 'POST';
+                const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+                if (!res.ok) { alert('Fehler beim Speichern.'); return false; }
+                return true;
+            },
+            () => loadTab('fixkosten')
+        );
+        // Split-Label initial setzen
+        updateSplitLabel(existing?.anteil_user1 ?? 50);
+    }
+
+    function updateSplitLabel(val) {
+        const el1 = document.getElementById('splitLabel1');
+        const el2 = document.getElementById('splitLabel2');
+        if (el1) el1.textContent = val;
+        if (el2) el2.textContent = 100 - val;
+    }
+
+    async function openFixkostOverride(id, name, betrag, a1, a2) {
+        const monat = picker.value;
+        createModal('Override für ' + name + ' (' + monat + ')',
+            '<p style="font-size:0.83rem;color:var(--text-3);margin-bottom:14px;">Überschreibe den Betrag und/oder die Aufteilung nur für diesen Monat.</p>' +
+            '<div class="form-group" style="margin-bottom:12px;">' +
+                '<label class="form-label">Betrag für diesen Monat (€)</label>' +
+                '<input type="number" id="ovBetrag" value="' + betrag + '" step="0.01">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">Aufteilung: <span id="ovLabel1">' + a1 + '</span>% ' + (user1.anzeigename||'P1') + ' / <span id="ovLabel2">' + (100-a1) + '</span>% ' + ((user2?.anzeigename)||'P2') + '</label>' +
+                '<div class="split-slider-row">' +
+                    '<span class="split-label" style="color:#10b981;">' + (user1.anzeigename||'P1') + '</span>' +
+                    '<input type="range" id="ovSplit" class="split-slider" min="0" max="100" value="' + a1 + '" oninput="document.getElementById(\'ovLabel1\').textContent=this.value;document.getElementById(\'ovLabel2\').textContent=100-this.value">' +
+                    '<span class="split-label" style="color:#3b82f6;">' + ((user2?.anzeigename)||'P2') + '</span>' +
+                '</div>' +
+            '</div>',
+            async () => {
+                const payload = {
+                    betrag: parseFloat(document.getElementById('ovBetrag').value) || null,
+                    anteil_user1: parseInt(document.getElementById('ovSplit').value),
+                    anteil_user2: 100 - parseInt(document.getElementById('ovSplit').value),
+                };
+                const res = await fetch('/users/haushalt/fixkosten/' + id + '/monat/' + monat, {
+                    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+                });
+                if (!res.ok) { alert('Fehler.'); return false; }
+                return true;
+            },
+            () => loadTab('fixkosten')
+        );
+    }
+
+    async function removeOverride(fixkostenId) {
+        if (!confirm('Override für diesen Monat entfernen?')) return;
+        await fetch('/users/haushalt/fixkosten/' + fixkostenId + '/monat/' + picker.value, { method: 'DELETE' });
+        loadTab('fixkosten');
+    }
+
+    async function deleteFixkost(id) {
+        if (!confirm('Fixkosten-Eintrag löschen?')) return;
+        await fetch('/users/haushalt/fixkosten/' + id, { method: 'DELETE' });
+        loadTab('fixkosten');
+    }
+
+    // ── Tab: Persönliche Fixkosten ────────────────────────────────
+    async function loadPersoenlich(root) {
+        const persRes = await fetch('/users/haushalt/persoenlich').then(r=>r.json()).catch(()=>[]);
+        const name1 = user1.anzeigename || 'Person 1';
+        const name2 = user2 ? (user2.anzeigename || 'Person 2') : null;
+
+        const renderPersonList = (userId, name, color) => {
+            const items = persRes.filter(p => p.user_id === userId);
+            const total = items.reduce((s,p) => s+p.betrag, 0);
+            return '<div class="card" style="padding:20px;">' +
+                '<div class="card-header">' +
+                    '<h3 style="color:' + color + ';">' + escHtml(name) + '</h3>' +
+                    '<div style="display:flex;align-items:center;gap:8px;">' +
+                        '<span style="font-size:0.82rem;color:var(--text-3);">' + fmt.format(total) + '</span>' +
+                        '<button onclick="openPersModal(null,' + userId + ')" style="padding:5px 10px;border-radius:var(--radius-md);background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.25);cursor:pointer;font-size:0.78rem;font-family:\'Plus Jakarta Sans\',sans-serif;"><i class="ri-add-line"></i></button>' +
+                    '</div>' +
+                '</div>' +
+                (items.length === 0 ? '<p style="color:var(--text-3);font-size:0.85rem;">Noch keine persönlichen Fixkosten.</p>' :
+                items.map(p =>
+                    '<div class="aus-row">' +
+                        '<div style="flex:1;">' +
+                            '<div style="font-weight:600;">' + escHtml(p.name) + '</div>' +
+                            '<div style="font-size:0.75rem;color:var(--text-3);">' + p.kategorie + '</div>' +
+                        '</div>' +
+                        '<span style="font-weight:700;color:#ef4444;">' + fmt.format(p.betrag) + '</span>' +
+                        '<div style="display:flex;gap:6px;">' +
+                            '<button onclick="openPersModal(' + p.id + ',' + userId + ')" style="width:28px;height:28px;border-radius:8px;background:var(--surface-2);color:var(--text-2);border:none;cursor:pointer;"><i class="ri-edit-line"></i></button>' +
+                            '<button onclick="deletePers(' + p.id + ')" style="width:28px;height:28px;border-radius:8px;background:rgba(239,68,68,0.1);color:#ef4444;border:none;cursor:pointer;"><i class="ri-delete-bin-line"></i></button>' +
+                        '</div>' +
+                    '</div>'
+                ).join('')) +
+            '</div>';
+        };
+
+        root.innerHTML =
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">' +
+                renderPersonList(user1.user_id, name1, '#10b981') +
+                (user2 ? renderPersonList(user2.user_id, name2, '#3b82f6') : '<div class="card" style="padding:20px;display:flex;align-items:center;justify-content:center;color:var(--text-3);">Noch kein zweites Mitglied</div>') +
+            '</div>';
+        window._persRes = persRes;
+    }
+
+    async function openPersModal(id, userId) {
+        const existing = id ? (window._persRes || []).find(p => p.id == id) : null;
+        createModal('Persönliche Fixkosten ' + (existing ? 'bearbeiten' : 'hinzufügen'),
+            '<div class="form-group" style="margin-bottom:12px;">' +
+                '<label class="form-label">Bezeichnung</label>' +
+                '<input type="text" id="ppName" value="' + escHtml(existing?.name||'') + '" placeholder="z.B. Spotify">' +
+            '</div>' +
+            '<div class="form-group" style="margin-bottom:12px;">' +
+                '<label class="form-label">Betrag (€)</label>' +
+                '<input type="number" id="ppBetrag" value="' + (existing?.betrag||'') + '" step="0.01">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">Kategorie</label>' +
+                '<select id="ppKat">' +
+                    ['abonnement','transport','versicherung','sport','sonstiges'].map(k =>
+                        '<option value="' + k + '"' + (existing?.kategorie===k?' selected':'') + '>' + k + '</option>'
+                    ).join('') +
+                '</select>' +
+            '</div>',
+            async () => {
+                const payload = {
+                    name: document.getElementById('ppName').value.trim(),
+                    betrag: parseFloat(document.getElementById('ppBetrag').value) || 0,
+                    kategorie: document.getElementById('ppKat').value,
+                };
+                if (!payload.name) { alert('Bitte Bezeichnung eingeben.'); return false; }
+                const url = id ? '/users/haushalt/persoenlich/' + id : '/users/haushalt/persoenlich/add';
+                const method = id ? 'PUT' : 'POST';
+                const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+                if (!res.ok) { alert('Fehler.'); return false; }
+                return true;
+            },
+            () => loadTab('persoenlich')
+        );
+    }
+
+    async function deletePers(id) {
+        if (!confirm('Eintrag löschen?')) return;
+        await fetch('/users/haushalt/persoenlich/' + id, { method: 'DELETE' });
+        loadTab('persoenlich');
+    }
+
+    // ── Tab: Gehälter ─────────────────────────────────────────────
+    async function loadGehaelter(root) {
+        const monat = picker.value;
+        const data = await fetch('/users/haushalt/gehaelter?monat=' + monat).then(r=>r.json()).catch(()=>({defaults:[],monat:[]}));
+
+        function getGeh(userId) {
+            const m = data.monat.find(g => g.user_id === userId);
+            if (m) return { ...m, isOverride: true };
+            const d = data.defaults.find(g => g.user_id === userId);
+            return d ? { ...d, isOverride: false } : { gehalt: 0, sparbetrag: 0, isOverride: false };
+        }
+
+        const renderGehCard = (u, color) => {
+            if (!u) return '<div class="card" style="padding:20px;display:flex;align-items:center;justify-content:center;color:var(--text-3);">Noch kein zweites Mitglied</div>';
+            const g = getGeh(u.user_id);
+            const name = u.anzeigename || 'Person';
+            return '<div class="card" style="padding:20px;">' +
+                '<div class="card-header">' +
+                    '<h3 style="color:' + color + ';">' + escHtml(name) + (g.isOverride ? ' <span style="font-size:0.7rem;background:rgba(16,185,129,0.1);color:var(--haus-accent);padding:1px 6px;border-radius:6px;">Monat-Override</span>' : '') + '</h3>' +
+                '</div>' +
+                '<div class="form-group" style="margin-bottom:12px;">' +
+                    '<label class="form-label">Standard-Gehalt (€)</label>' +
+                    '<input type="number" id="gehDefault_' + u.user_id + '" value="' + (data.defaults.find(d=>d.user_id===u.user_id)?.gehalt||0) + '" step="0.01" placeholder="Monatliches Netto-Gehalt">' +
+                '</div>' +
+                '<div class="form-group" style="margin-bottom:12px;">' +
+                    '<label class="form-label">Standard-Sparbetrag (€)</label>' +
+                    '<input type="number" id="sparDefault_' + u.user_id + '" value="' + (data.defaults.find(d=>d.user_id===u.user_id)?.sparbetrag||0) + '" step="0.01">' +
+                '</div>' +
+                '<button onclick="saveGehDefault(' + u.user_id + ')" style="width:100%;padding:9px;border-radius:var(--radius-md);background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.25);cursor:pointer;font-size:0.85rem;font-family:\'Plus Jakarta Sans\',sans-serif;font-weight:600;margin-bottom:12px;">' +
+                    'Standard speichern' +
+                '</button>' +
+                '<div style="border-top:1px solid var(--border);padding-top:12px;">' +
+                    '<div style="font-size:0.72rem;color:var(--text-3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em;">Überschreibung für ' + monat + '</div>' +
+                    '<div class="form-group" style="margin-bottom:10px;">' +
+                        '<label class="form-label">Gehalt (€)</label>' +
+                        '<input type="number" id="gehMonat_' + u.user_id + '" value="' + (g.isOverride ? g.gehalt : '') + '" step="0.01" placeholder="Leer = Standard verwenden">' +
+                    '</div>' +
+                    '<div class="form-group" style="margin-bottom:10px;">' +
+                        '<label class="form-label">Sparbetrag (€)</label>' +
+                        '<input type="number" id="sparMonat_' + u.user_id + '" value="' + (g.isOverride ? g.sparbetrag : '') + '" step="0.01">' +
+                    '</div>' +
+                    '<button onclick="saveGehMonat(' + u.user_id + ')" style="width:100%;padding:9px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-size:0.85rem;font-family:\'Plus Jakarta Sans\',sans-serif;font-weight:600;">' +
+                        'Monats-Override speichern' +
+                    '</button>' +
+                '</div>' +
+            '</div>';
+        };
+
+        root.innerHTML =
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">' +
+                renderGehCard(user1, '#10b981') +
+                renderGehCard(user2, '#3b82f6') +
+            '</div>';
+    }
+
+    async function saveGehDefault(userId) {
+        const gehalt    = parseFloat(document.getElementById('gehDefault_' + userId).value) || 0;
+        const sparbetrag = parseFloat(document.getElementById('sparDefault_' + userId).value) || 0;
+        await fetch('/users/haushalt/gehaelter/default', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ gehalt, sparbetrag }) });
+        loadTab('gehaelter');
+    }
+
+    async function saveGehMonat(userId) {
+        const monat = picker.value;
+        const gehalt    = parseFloat(document.getElementById('gehMonat_' + userId).value) || 0;
+        const sparbetrag = parseFloat(document.getElementById('sparMonat_' + userId).value) || 0;
+        await fetch('/users/haushalt/gehaelter/monat/' + monat, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ gehalt, sparbetrag }) });
+        loadTab('gehaelter');
+    }
+
+    // ── Tab: Monatsübersicht ──────────────────────────────────────
+    async function loadUebersicht(root) {
+        const monat = picker.value;
+        const monatLabel = new Date(monat + '-01').toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+        const [fixkRes, overrideRes, persRes, gehRes, ausgRes] = await Promise.all([
+            fetch('/users/haushalt/fixkosten').then(r=>r.json()).catch(()=>[]),
+            fetch('/users/haushalt/fixkosten/monat/' + monat).then(r=>r.json()).catch(()=>[]),
+            fetch('/users/haushalt/persoenlich').then(r=>r.json()).catch(()=>[]),
+            fetch('/users/haushalt/gehaelter?monat=' + monat).then(r=>r.json()).catch(()=>({defaults:[],monat:[]})),
+            fetch('/users/haushalt/transaktionen').then(r=>r.json()).catch(()=>[]),
+        ]);
+
+        function getGeh(userId) {
+            const m = gehRes.monat.find(g=>g.user_id===userId);
+            return m || gehRes.defaults.find(g=>g.user_id===userId) || { gehalt:0, sparbetrag:0 };
+        }
+
+        const monatsAusg = ausgRes.filter(a=>a.type==='Ausgaben' && (a.date||a.datum||'').startsWith(monat));
+
+        const renderUeber = (u, color) => {
+            if (!u) return '';
+            const name = u.anzeigename || 'Person';
+            const geh = getGeh(u.user_id);
+            const pers = persRes.filter(p=>p.user_id===u.user_id).reduce((s,p)=>s+p.betrag,0);
+            const gemein = fixkRes.reduce((s,f) => {
+                const ov = overrideRes.find(o=>o.fixkosten_id==f.id);
+                const betrag = ov?.betrag ?? f.betrag;
+                const anteil = u.user_id === user1.user_id ? (ov?.anteil_user1??f.anteil_user1) : (ov?.anteil_user2??f.anteil_user2);
+                return s + betrag * anteil / 100;
+            }, 0);
+            const freieAnteil = monatsAusg.reduce((s,a) => {
+                const anteil = u.user_id === user1.user_id ? (a.anteil_user1 ?? 50) : (a.anteil_user2 ?? 50);
+                return s + (a.amount || a.betrag || 0) * anteil / 100;
+            }, 0);
+            const totalKosten = gemein + pers + freieAnteil;
+            const frei = geh.gehalt - totalKosten - geh.sparbetrag;
+
+            return '<div class="ueber-person">' +
+                '<div style="font-size:1rem;font-weight:800;color:' + color + ';margin-bottom:14px;">' + escHtml(name) + '</div>' +
+                '<div class="ueber-row"><span style="color:var(--text-3);">Gehalt</span><span style="color:#22c55e;font-weight:700;">' + fmt.format(geh.gehalt) + '</span></div>' +
+                '<div class="ueber-row"><span style="color:var(--text-3);">Anteil Fixkosten</span><span style="color:#ef4444;">-' + fmt.format(gemein) + '</span></div>' +
+                '<div class="ueber-row"><span style="color:var(--text-3);">Pers. Fixkosten</span><span style="color:#ef4444;">-' + fmt.format(pers) + '</span></div>' +
+                '<div class="ueber-row"><span style="color:var(--text-3);">Freie Ausgaben</span><span style="color:#ef4444;">-' + fmt.format(freieAnteil) + '</span></div>' +
+                '<div class="ueber-row"><span style="color:var(--text-3);">Sparen</span><span style="color:#3b82f6;">-' + fmt.format(geh.sparbetrag) + '</span></div>' +
+                '<div class="ueber-total"><span>Frei für Freizeit</span><span style="color:' + (frei>=0?'#22c55e':'#ef4444') + ';">' + fmt.format(frei) + '</span></div>' +
+            '</div>';
+        };
+
+        const totalFix = fixkRes.reduce((s,f) => {
+            const ov = overrideRes.find(o=>o.fixkosten_id==f.id);
+            return s + (ov?.betrag ?? f.betrag);
+        }, 0);
+        const totalAusg = monatsAusg.reduce((s,a)=>s+(a.amount||a.betrag||0),0);
+
+        root.innerHTML =
+            '<div style="margin-bottom:16px;"><h2 style="margin:0;font-size:1.1rem;">Monatsübersicht: ' + monatLabel + '</h2></div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">' +
+                renderUeber(user1, '#10b981') +
+                renderUeber(user2, '#3b82f6') +
+            '</div>' +
+            '<div class="card" style="padding:16px;">' +
+                '<div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">Gesamthaushalt</div>' +
+                '<div class="ueber-row"><span>Gemeinsame Fixkosten</span><span style="font-weight:700;">' + fmt.format(totalFix) + '</span></div>' +
+                '<div class="ueber-row"><span>Freie Ausgaben (gesamt)</span><span style="font-weight:700;">' + fmt.format(totalAusg) + '</span></div>' +
+            '</div>';
+    }
+
+    // ── Modal-Helper ──────────────────────────────────────────────
+    function createModal(title, bodyHtml, onSave, onClose) {
+        const existing = document.getElementById('hausModal');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'hausModal';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+
+        overlay.innerHTML =
+            '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
+                    '<h3 style="margin:0;">' + title + '</h3>' +
+                    '<button id="hausModalClose" style="width:32px;height:32px;border-radius:8px;background:var(--surface-2);border:none;color:var(--text-2);cursor:pointer;font-size:1rem;"><i class="ri-close-line"></i></button>' +
+                '</div>' +
+                '<div id="hausModalBody">' + bodyHtml + '</div>' +
+                '<div style="display:flex;gap:8px;margin-top:20px;">' +
+                    '<button id="hausModalSave" class="btn-primary" style="flex:1;justify-content:center;"><i class="ri-save-line"></i> Speichern</button>' +
+                    '<button id="hausModalCancel" style="padding:10px 20px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;">Abbrechen</button>' +
+                '</div>' +
+            '</div>';
+
+        document.body.appendChild(overlay);
+
+        const close = () => { overlay.remove(); if (onClose) onClose(); };
+        document.getElementById('hausModalClose').onclick = () => overlay.remove();
+        document.getElementById('hausModalCancel').onclick = () => overlay.remove();
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        document.getElementById('hausModalSave').onclick = async () => {
+            const ok = await onSave();
+            if (ok !== false) close();
+        };
+
+        return overlay;
+    }
+
+    function escHtml(str) {
+        return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    init();
+    </script>
+    <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</body>
+</html>

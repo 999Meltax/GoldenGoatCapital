@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dokument – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div id="dokDetailRoot">
+        <div style="text-align:center; padding:80px 24px; color:var(--text-3);">
+            <i class="ri-loader-4-line" style="font-size:2rem; display:block; margin-bottom:12px; animation:spin 1s linear infinite;"></i>
+            Lade Dokument…
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .dok-detail-layout {
+        display: grid;
+        grid-template-columns: 1fr 360px;
+        gap: 24px;
+        align-items: start;
+    }
+    @media (max-width: 900px) {
+        .dok-detail-layout { grid-template-columns: 1fr; }
+    }
+
+    .dok-detail-preview {
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        min-height: 400px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .dok-detail-preview iframe {
+        width: 100%;
+        height: 70vh;
+        min-height: 500px;
+        border: none;
+        display: block;
+    }
+
+    .dok-detail-preview img {
+        max-width: 100%;
+        max-height: 70vh;
+        object-fit: contain;
+        display: block;
+    }
+
+    .dok-no-preview {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 60px 24px;
+        color: var(--text-3);
+        font-size: 0.9rem;
+    }
+    .dok-no-preview i { font-size: 3rem; }
+
+    .dok-icon-box {
+        width: 44px; height: 44px;
+        border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem;
+        flex-shrink: 0;
+    }
+
+    .dok-meta-card { display: flex; flex-direction: column; gap: 16px; }
+
+    .dok-detail-field-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .dok-detail-field {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .dok-detail-field-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-3);
+        font-weight: 600;
+    }
+
+    .dok-detail-field-value {
+        font-size: 0.9rem;
+        color: var(--text);
+        font-weight: 500;
+    }
+
+    .dok-status-badge {
+        display: inline-block;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 20px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .dok-status-badge.offen        { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .dok-status-badge.bezahlt      { background: rgba(34,197,94,0.15);  color: #22c55e; }
+    .dok-status-badge.ueberfaellig { background: rgba(239,68,68,0.15);  color: #ef4444; }
+    </style>
+
+    <script>
+    const TYP_CONFIG = {
+        rechnungen: { label: 'Rechnung',          icon: 'ri-file-list-3-line',       bg: 'rgba(108,99,255,0.15)', color: '#6c63ff' },
+        vertrag:    { label: 'Vertrag',            icon: 'ri-file-text-line',         bg: 'rgba(14,165,233,0.15)', color: '#0ea5e9' },
+        versicherung:{ label: 'Versicherung',      icon: 'ri-shield-check-line',      bg: 'rgba(34,197,94,0.15)',  color: '#22c55e' },
+        gehalt:     { label: 'Gehaltsabrechnung',  icon: 'ri-money-euro-circle-line', bg: 'rgba(34,197,94,0.15)', color: '#22c55e' },
+        steuer:     { label: 'Steuerdokument',     icon: 'ri-government-line',        bg: 'rgba(245,158,11,0.15)',color: '#f59e0b' },
+        sonstiges:  { label: 'Sonstiges',          icon: 'ri-folder-line',            bg: 'rgba(239,68,68,0.12)', color: '#ef4444' },
+    };
+
+    const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+
+    function esc(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function getEffectiveStatus(doc) {
+        if (doc.status === 'bezahlt') return 'bezahlt';
+        if (doc.faellig_datum && new Date(doc.faellig_datum) < new Date()) return 'ueberfaellig';
+        return doc.status || 'offen';
+    }
+    function monatName(m) {
+        const namen = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+        return namen[parseInt(m) - 1] || m;
+    }
+    function steuerArtLabel(key) {
+        const map = {
+            lohnsteuerbescheinigung: 'Lohnsteuerbescheinigung', steuerbescheid: 'Steuerbescheid',
+            spendenquittung: 'Spendenquittung', versicherungsnachweis: 'Versicherungsnachweis',
+            werbungskosten: 'Werbungskosten-Beleg', sonstiges: 'Sonstiges',
+        };
+        return map[key] || key;
+    }
+
+    const parts = window.location.pathname.split('/');
+    const dokId = parts[parts.length - 2];
+
+    async function loadDokument() {
+        const root = document.getElementById('dokDetailRoot');
+        try {
+            const res = await fetch('/users/haushalt/dokumente/' + dokId + '/file');
+            if (!res.ok) throw new Error('Nicht gefunden');
+            const d = await res.json();
+
+            document.title = d.name + ' – Golden Goat Capital';
+
+            const cfg = TYP_CONFIG[d.typ] || TYP_CONFIG.sonstiges;
+            const status = getEffectiveStatus(d);
+            const statusLabel = { offen: 'Offen', bezahlt: 'Bezahlt', ueberfaellig: 'Überfällig' };
+
+            // Vorschau-Bereich
+            let previewHtml = '';
+            if (d.file_data) {
+                const ext = (d.file_ext || '').toLowerCase();
+                if (d.file_mime === 'application/pdf' || ext === 'pdf') {
+                    previewHtml = '<iframe src="' + d.file_data + '" title="' + esc(d.name) + '"></iframe>';
+                } else if (['jpg','jpeg','png','gif','webp'].includes(ext) || (d.file_mime || '').startsWith('image/')) {
+                    previewHtml = '<img src="' + d.file_data + '" alt="' + esc(d.name) + '">';
+                } else {
+                    previewHtml = '<div class="dok-no-preview"><i class="ri-file-line"></i><div>Vorschau nicht verfügbar</div><div style="font-size:0.8rem;">' + esc(d.name) + '.' + esc(d.file_ext || '') + '</div></div>';
+                }
+            } else {
+                previewHtml = '<div class="dok-no-preview"><i class="ri-file-unknow-line"></i><div>Keine Datei hochgeladen</div></div>';
+            }
+
+            // Metafelder aufbauen
+            let fields = [
+                { label: 'Typ',   value: cfg.label },
+                { label: 'Datum', value: d.datum ? new Date(d.datum).toLocaleDateString('de-DE') : '—' },
+                { label: 'Jahr',  value: d.jahr || '—' },
+            ];
+            if (d.typ === 'rechnungen') {
+                if (d.aussteller)    fields.push({ label: 'Aussteller',  value: esc(d.aussteller) });
+                if (d.kategorie)     fields.push({ label: 'Kategorie',   value: esc(d.kategorie) });
+                if (d.betrag)        fields.push({ label: 'Betrag',      value: fmt.format(d.betrag) });
+                if (d.faellig_datum) fields.push({ label: 'Fällig bis',  value: new Date(d.faellig_datum).toLocaleDateString('de-DE') });
+                fields.push({ label: 'Status', value: '<span class="dok-status-badge ' + status + '">' + (statusLabel[status] || status) + '</span>' });
+            }
+            if (d.typ === 'gehalt') {
+                if (d.arbeitgeber) fields.push({ label: 'Arbeitgeber', value: esc(d.arbeitgeber) });
+                if (d.brutto)      fields.push({ label: 'Brutto',      value: fmt.format(d.brutto) });
+                if (d.netto)       fields.push({ label: 'Netto',       value: fmt.format(d.netto) });
+                if (d.monat)       fields.push({ label: 'Monat',       value: monatName(d.monat) });
+            }
+            if (d.typ === 'steuer') {
+                if (d.steuer_art)  fields.push({ label: 'Dokumentart', value: steuerArtLabel(d.steuer_art) });
+                if (d.steuerjahr)  fields.push({ label: 'Steuerjahr',  value: d.steuerjahr });
+            }
+            if (d.notiz) fields.push({ label: 'Notiz', value: '<span style="white-space:pre-wrap;">' + esc(d.notiz) + '</span>' });
+
+            const fieldsHtml = fields.map(f =>
+                '<div class="dok-detail-field">' +
+                    '<div class="dok-detail-field-label">' + f.label + '</div>' +
+                    '<div class="dok-detail-field-value">' + f.value + '</div>' +
+                '</div>'
+            ).join('');
+
+            // Aktionen
+            let actionsHtml = '';
+            if (d.file_data) {
+                actionsHtml += '<button onclick="downloadDok()" class="btn-primary" style="width:100%;justify-content:center;">' +
+                    '<i class="ri-download-line"></i> Herunterladen' +
+                '</button>';
+            }
+            if (d.typ === 'rechnungen' && status !== 'bezahlt') {
+                actionsHtml += '<button onclick="markBezahlt()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border-radius:var(--radius-md);background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.25);cursor:pointer;font-size:0.85rem;font-family:\'Plus Jakarta Sans\',sans-serif;">' +
+                    '<i class="ri-checkbox-circle-line"></i> Als bezahlt markieren' +
+                '</button>';
+            }
+            actionsHtml += '<button onclick="deleteDok()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border-radius:var(--radius-md);background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2);cursor:pointer;font-size:0.85rem;font-family:\'Plus Jakarta Sans\',sans-serif;">' +
+                '<i class="ri-delete-bin-line"></i> Löschen' +
+            '</button>';
+
+            root.innerHTML =
+                '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap;">' +
+                    '<a href="/users/haushalt/dokumente" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-size:0.85rem;font-family:\'Plus Jakarta Sans\',sans-serif;text-decoration:none;">' +
+                        '<i class="ri-arrow-left-line"></i> Zurück' +
+                    '</a>' +
+                    '<div style="display:flex;align-items:center;gap:10px;flex:1;">' +
+                        '<div class="dok-icon-box" style="background:' + cfg.bg + ';color:' + cfg.color + ';">' +
+                            '<i class="' + cfg.icon + '"></i>' +
+                        '</div>' +
+                        '<div>' +
+                            '<div style="font-size:0.75rem;color:var(--text-3);">' + cfg.label + '</div>' +
+                            '<h2 style="margin:0;font-size:1.3rem;">' + esc(d.name) + '</h2>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+
+                '<div class="dok-detail-layout">' +
+
+                    '<div>' +
+                        '<div class="dok-detail-preview">' + previewHtml + '</div>' +
+                    '</div>' +
+
+                    '<div class="dok-meta-card">' +
+                        '<div class="card" style="padding:20px;">' +
+                            '<h4 style="margin:0 0 16px;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Details</h4>' +
+                            '<div class="dok-detail-field-grid">' + fieldsHtml + '</div>' +
+                        '</div>' +
+                        '<div class="card" style="padding:20px;">' +
+                            '<h4 style="margin:0 0 14px;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Aktionen</h4>' +
+                            '<div style="display:flex;flex-direction:column;gap:8px;">' + actionsHtml + '</div>' +
+                        '</div>' +
+                    '</div>' +
+
+                '</div>';
+
+            window._dokData = d;
+
+        } catch (err) {
+            document.getElementById('dokDetailRoot').innerHTML =
+                '<div class="card" style="text-align:center;padding:60px;color:#ef4444;">Dokument nicht gefunden oder Fehler beim Laden.</div>';
+        }
+    }
+
+    function downloadDok() {
+        const d = window._dokData;
+        if (!d || !d.file_data) { alert('Keine Datei vorhanden.'); return; }
+        const a = document.createElement('a');
+        a.href = d.file_data;
+        a.download = d.name + '.' + (d.file_ext || 'pdf');
+        a.click();
+    }
+
+    async function markBezahlt() {
+        const d = window._dokData;
+        if (!d) return;
+        try {
+            const res = await fetch('/users/haushalt/dokumente/' + d.id + '/status', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'bezahlt' })
+            });
+            if (!res.ok) throw new Error();
+            await loadDokument();
+        } catch { alert('Fehler beim Aktualisieren.'); }
+    }
+
+    async function deleteDok() {
+        if (!confirm('Dokument wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
+        const d = window._dokData;
+        if (!d) return;
+        try {
+            const res = await fetch('/users/haushalt/dokumente/delete/' + d.id, { method: 'DELETE' });
+            if (!res.ok) throw new Error();
+            window.location.href = '/users/haushalt/dokumente';
+        } catch { alert('Fehler beim Löschen.'); }
+    }
+
+    loadDokument();
+    </script>
+
+    <script src="/navheader.js"></script>
+</body>
+</html>

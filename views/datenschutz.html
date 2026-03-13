@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Datenschutzerklärung – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="legal-page">
+        <div class="legal-container">
+            <div class="legal-header">
+                <div class="legal-icon"><i class="ri-shield-check-line"></i></div>
+                <h1>Datenschutzerklärung</h1>
+                <p>Gemäß DSGVO und BDSG</p>
+            </div>
+
+            <div class="legal-card">
+
+                <h2>1. Verantwortlicher</h2>
+                <p>Verantwortlicher im Sinne der DSGVO ist:<br>
+                <strong>Golden Goat Capital</strong><br>
+                [Vorname Nachname], [Adresse], [PLZ Stadt]<br>
+                E-Mail: <a href="mailto:kontakt@goldengoatcapital.de">kontakt@goldengoatcapital.de</a></p>
+
+                <h2>2. Erhobene Daten und Zweck</h2>
+                <p>Wir erheben und verarbeiten folgende personenbezogene Daten:</p>
+                <ul>
+                    <li><strong>Registrierungsdaten:</strong> E-Mail-Adresse und Passwort (verschlüsselt) zur Kontoerstellung und Authentifizierung.</li>
+                    <li><strong>Finanzdaten:</strong> Von dir eingegebene Transaktionen, Konten, Budgets und weitere Finanzdaten – ausschließlich zur Bereitstellung der App-Funktionen.</li>
+                    <li><strong>Dokumente:</strong> Hochgeladene Dateien und Dokumente, die du in der App speicherst.</li>
+                    <li><strong>Nutzungsdaten:</strong> Session-Daten zur Aufrechterhaltung der Anmeldung.</li>
+                </ul>
+                <p>Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung) sowie Art. 6 Abs. 1 lit. a DSGVO (Einwilligung bei der Registrierung).</p>
+
+                <h2>3. Datenspeicherung</h2>
+                <p>Alle Daten werden ausschließlich auf Servern in Deutschland/der EU gespeichert. Eine Weitergabe an Dritte findet nicht statt, es sei denn, dies ist zur Vertragserfüllung erforderlich (z. B. E-Mail-Versand über Gmail-SMTP).</p>
+                <p>Passwörter werden ausschließlich als bcrypt-Hash gespeichert und sind für uns nicht lesbar.</p>
+
+                <h2>4. E-Mail-Kommunikation</h2>
+                <p>Zur Versendung von Bestätigungs- und Erinnerungs-E-Mails nutzen wir den Gmail-SMTP-Dienst von Google LLC. Dabei wird deine E-Mail-Adresse an Google übertragen. Google LLC ist unter dem EU-US Data Privacy Framework zertifiziert.</p>
+
+                <h2>5. Cookies und Sessions</h2>
+                <p>Wir verwenden ausschließlich technisch notwendige Session-Cookies, die für den Betrieb der Anwendung erforderlich sind. Diese Cookies werden nach dem Ausloggen oder nach Ablauf der Session gelöscht. Es werden keine Tracking- oder Werbe-Cookies eingesetzt.</p>
+
+                <h2>6. Deine Rechte</h2>
+                <p>Du hast gemäß DSGVO folgende Rechte:</p>
+                <ul>
+                    <li><strong>Auskunft</strong> (Art. 15 DSGVO): Du kannst jederzeit Auskunft über die zu deiner Person gespeicherten Daten verlangen.</li>
+                    <li><strong>Berichtigung</strong> (Art. 16 DSGVO): Du kannst die Berichtigung unrichtiger Daten verlangen.</li>
+                    <li><strong>Löschung</strong> (Art. 17 DSGVO): Du kannst dein Konto und alle zugehörigen Daten jederzeit in den Einstellungen löschen.</li>
+                    <li><strong>Einschränkung</strong> (Art. 18 DSGVO): Du kannst die Einschränkung der Verarbeitung verlangen.</li>
+                    <li><strong>Datenübertragbarkeit</strong> (Art. 20 DSGVO): Du kannst deine Daten in einem gängigen Format exportieren.</li>
+                    <li><strong>Widerspruch</strong> (Art. 21 DSGVO): Du kannst der Verarbeitung widersprechen.</li>
+                </ul>
+                <p>Zur Ausübung deiner Rechte wende dich an: <a href="mailto:kontakt@goldengoatcapital.de">kontakt@goldengoatcapital.de</a></p>
+                <p>Du hast außerdem das Recht, dich bei einer Datenschutzaufsichtsbehörde zu beschweren.</p>
+
+                <h2>7. Datenlöschung</h2>
+                <p>Deine Daten werden gelöscht, sobald sie für den Zweck ihrer Erhebung nicht mehr erforderlich sind. Du kannst dein Konto mit allen Daten jederzeit unter <strong>Einstellungen → Konto löschen</strong> permanent löschen.</p>
+
+                <h2>8. Sicherheit</h2>
+                <p>Wir setzen technische und organisatorische Sicherheitsmaßnahmen ein, um deine Daten gegen Manipulation, Verlust und unberechtigten Zugriff zu schützen. Dazu gehören verschlüsselte Passwörter (bcrypt), HTTPS-Verbindungen und sichere Session-Verwaltung.</p>
+
+                <h2>9. Änderungen dieser Erklärung</h2>
+                <p>Wir behalten uns vor, diese Datenschutzerklärung bei Bedarf anzupassen. Die aktuelle Version ist stets auf dieser Seite abrufbar.</p>
+
+                <p class="legal-updated">Stand: Januar 2026</p>
+            </div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+    <script src="/navheader.js"></script>
+
+    <style>
+        .legal-page { padding: 2rem clamp(1rem, 4vw, 3rem); }
+        .legal-container { max-width: 800px; margin: 0 auto; }
+        .legal-header { text-align: center; margin-bottom: 2rem; }
+        .legal-icon {
+            width: 64px; height: 64px; border-radius: 1rem;
+            background: rgba(108,99,255,0.15);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.75rem; margin: 0 auto 1rem;
+            color: var(--accent, #6c63ff);
+        }
+        .legal-header h1 { font-size: clamp(1.5rem,3vw,2rem); font-weight: 800; margin-bottom: 0.5rem; }
+        .legal-header p { color: var(--text-muted, #8892a4); }
+        .legal-card {
+            background: var(--surface, #1a1d27);
+            border: 1px solid var(--border, #2a2d3a);
+            border-radius: 1rem; padding: 2rem;
+        }
+        .legal-card h2 {
+            font-size: 1.1rem; font-weight: 700;
+            color: var(--text, #e2e8f0);
+            margin: 1.75rem 0 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border, #2a2d3a);
+        }
+        .legal-card h2:first-child { margin-top: 0; }
+        .legal-card h3 { font-size: 0.95rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+        .legal-card p { color: var(--text-muted, #8892a4); font-size: 0.9rem; line-height: 1.7; margin-bottom: 0.75rem; }
+        .legal-card ul { color: var(--text-muted, #8892a4); font-size: 0.9rem; line-height: 1.7; margin: 0.5rem 0 0.75rem 1.25rem; }
+        .legal-card ul li { margin-bottom: 0.4rem; }
+        .legal-card a { color: var(--accent, #6c63ff); text-decoration: none; }
+        .legal-card a:hover { text-decoration: underline; }
+        .legal-updated { font-size: 0.8rem !important; color: var(--text-muted,#8892a4); opacity:0.6; margin-top:2rem; }
+    </style>
+</body>
+</html>

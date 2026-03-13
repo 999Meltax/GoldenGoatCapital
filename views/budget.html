@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budget & Sparziele – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <h1>Budget & Sparziele</h1>
+            <p>Plane deine Ausgaben, tracke Ziele und verwalte deine Abos</p>
+        </div>
+    </div>
+
+    <!-- Tab-Navigation -->
+    <div class="budget-tabs">
+        <button class="budget-tab active" onclick="switchTab('budgetTab', this)">
+            <i class="ri-bar-chart-box-line"></i> Budgetplaner
+        </button>
+        <button class="budget-tab" onclick="switchTab('sparzieleTab', this)">
+            <i class="ri-flag-line"></i> Sparziele
+        </button>
+        <button class="budget-tab" onclick="switchTab('abosTab', this)">
+            <i class="ri-repeat-line"></i> Abonnements
+        </button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- TAB 1: BUDGETPLANER -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div id="budgetTab" class="budget-tab-content active">
+
+        <!-- Monatsauswahl + Übersicht -->
+        <div class="budget-month-bar">
+            <button onclick="changeMonth(-1)" class="btn-ghost btn-sm"><i class="ri-arrow-left-s-line"></i></button>
+            <span id="budgetMonthLabel" style="font-weight:700;font-size:1rem;min-width:140px;text-align:center;">–</span>
+            <button onclick="changeMonth(1)" class="btn-ghost btn-sm"><i class="ri-arrow-right-s-line"></i></button>
+        </div>
+
+        <!-- Stat-Karten -->
+        <div class="budget-stat-row">
+            <div class="budget-stat-card blue">
+                <div class="budget-stat-label">Monatsbudget</div>
+                <div class="budget-stat-val" id="bsTotal">€ 0,00</div>
+            </div>
+            <div class="budget-stat-card green">
+                <div class="budget-stat-label">Einnahmen</div>
+                <div class="budget-stat-val" id="bsIncome">€ 0,00</div>
+            </div>
+            <div class="budget-stat-card red">
+                <div class="budget-stat-label">Ausgaben</div>
+                <div class="budget-stat-val" id="bsSpent">€ 0,00</div>
+            </div>
+            <div class="budget-stat-card amber">
+                <div class="budget-stat-label">Verbleibend</div>
+                <div class="budget-stat-val" id="bsRemain">€ 0,00</div>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start;" class="budget-main-grid">
+
+            <!-- Kategorie-Budgets -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Kategorien-Budget</h3>
+                    <button class="btn-primary btn-sm" onclick="openBudgetModal()">
+                        <i class="ri-add-line"></i> Budget festlegen
+                    </button>
+                </div>
+                <div id="budgetKatList" style="display:flex;flex-direction:column;gap:12px;">
+                    <div style="text-align:center;padding:40px;color:var(--text-3);">
+                        <i class="ri-loader-4-line" style="font-size:1.5rem;display:block;margin-bottom:8px;animation:spin 1s linear infinite;"></i>
+                        Lade Daten…
+                    </div>
+                </div>
+            </div>
+
+            <!-- Donut-Chart -->
+            <div class="card" style="display:flex;flex-direction:column;gap:16px;">
+                <h4 style="margin:0;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Ausgaben-Verteilung</h4>
+                <div style="position:relative;height:220px;">
+                    <canvas id="budgetDonutChart"></canvas>
+                </div>
+                <div id="budgetChartLegend" style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- TAB 2: SPARZIELE -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div id="sparzieleTab" class="budget-tab-content">
+
+        <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;" class="budget-main-grid">
+
+            <!-- Ziele-Liste -->
+            <div>
+                <div id="sparzieleList" style="display:flex;flex-direction:column;gap:16px;">
+                    <div style="text-align:center;padding:60px;color:var(--text-3);">
+                        <i class="ri-loader-4-line" style="font-size:1.5rem;display:block;margin-bottom:8px;animation:spin 1s linear infinite;"></i>
+                        Lade Sparziele…
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sparziel-Formular -->
+            <div class="card" style="position:sticky;top:90px;">
+                <h3 style="margin:0 0 20px;">Neues Sparziel</h3>
+                <div style="display:flex;flex-direction:column;gap:14px;">
+                    <div class="form-group">
+                        <label class="form-label">Bezeichnung</label>
+                        <input type="text" id="szName" placeholder="z.B. Urlaub Japan">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Zielbetrag (€)</label>
+                        <input type="number" id="szZiel" placeholder="2500" min="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Bereits gespart (€)</label>
+                        <input type="number" id="szGespart" placeholder="0" min="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Zieldatum (optional)</label>
+                        <input type="date" id="szDatum">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Farbe</label>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;" id="szColorPicker">
+                            <div class="sz-color-dot active" data-color="#6358e6" style="background:#6358e6;" onclick="selectColor(this)"></div>
+                            <div class="sz-color-dot" data-color="#22c55e" style="background:#22c55e;" onclick="selectColor(this)"></div>
+                            <div class="sz-color-dot" data-color="#f59e0b" style="background:#f59e0b;" onclick="selectColor(this)"></div>
+                            <div class="sz-color-dot" data-color="#ef4444" style="background:#ef4444;" onclick="selectColor(this)"></div>
+                            <div class="sz-color-dot" data-color="#3b82f6" style="background:#3b82f6;" onclick="selectColor(this)"></div>
+                            <div class="sz-color-dot" data-color="#ec4899" style="background:#ec4899;" onclick="selectColor(this)"></div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="szColor" value="#6358e6">
+                    <input type="hidden" id="szEditId" value="">
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn-primary" style="flex:1;justify-content:center;" onclick="saveSparziel()">
+                            <i class="ri-save-line"></i> Speichern
+                        </button>
+                        <button class="btn-ghost btn-sm" id="szCancelBtn" style="display:none;" onclick="resetSparForm()">
+                            Abbrechen
+                        </button>
+                    </div>
+                    <div id="szMsg" style="font-size:0.82rem;text-align:center;"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- TAB 3: ABONNEMENTS -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div id="abosTab" class="budget-tab-content">
+
+        <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;" class="budget-main-grid">
+
+            <!-- Abo-Liste + Statistiken -->
+            <div style="display:flex;flex-direction:column;gap:20px;">
+
+                <!-- Kosten-Übersicht -->
+                <div class="budget-stat-row" style="grid-template-columns:repeat(3,1fr);">
+                    <div class="budget-stat-card blue">
+                        <div class="budget-stat-label">Monatlich</div>
+                        <div class="budget-stat-val" id="aboMonatlich">€ 0,00</div>
+                    </div>
+                    <div class="budget-stat-card red">
+                        <div class="budget-stat-label">Jährlich</div>
+                        <div class="budget-stat-val" id="aboJaehrlich">€ 0,00</div>
+                    </div>
+                    <div class="budget-stat-card amber">
+                        <div class="budget-stat-label">Anzahl Abos</div>
+                        <div class="budget-stat-val" id="aboAnzahl">0</div>
+                    </div>
+                </div>
+
+                <!-- Abo-Tabelle -->
+                <div class="card" style="padding:0;overflow:hidden;">
+                    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+                        <h3 style="margin:0;">Meine Abonnements</h3>
+                        <select id="aboFilterKat" onchange="renderAbos()" style="width:auto;padding:6px 12px;font-size:0.82rem;">
+                            <option value="">Alle Kategorien</option>
+                            <option value="streaming">Streaming</option>
+                            <option value="software">Software</option>
+                            <option value="fitness">Fitness</option>
+                            <option value="news">News & Magazine</option>
+                            <option value="musik">Musik</option>
+                            <option value="gaming">Gaming</option>
+                            <option value="sonstiges">Sonstiges</option>
+                        </select>
+                    </div>
+                    <div id="aboList" style="display:flex;flex-direction:column;">
+                        <div style="text-align:center;padding:40px;color:var(--text-3);">
+                            <i class="ri-loader-4-line" style="font-size:1.5rem;display:block;margin-bottom:8px;animation:spin 1s linear infinite;"></i>
+                            Lade Abonnements…
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Abo-Formular -->
+            <div class="card" style="position:sticky;top:90px;">
+                <h3 style="margin:0 0 20px;">Abo hinzufügen</h3>
+                <div style="display:flex;flex-direction:column;gap:14px;">
+                    <div class="form-group">
+                        <label class="form-label">Name</label>
+                        <input type="text" id="aboName" placeholder="z.B. Netflix">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Kategorie</label>
+                        <select id="aboKategorie">
+                            <option value="streaming">Streaming</option>
+                            <option value="software">Software</option>
+                            <option value="fitness">Fitness</option>
+                            <option value="news">News & Magazine</option>
+                            <option value="musik">Musik</option>
+                            <option value="gaming">Gaming</option>
+                            <option value="sonstiges">Sonstiges</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Betrag (€)</label>
+                        <input type="number" id="aboBetrag" placeholder="9.99" min="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Rhythmus</label>
+                        <select id="aboRhythmus">
+                            <option value="monatlich">Monatlich</option>
+                            <option value="jaehrlich">Jährlich</option>
+                            <option value="vierteljaehrlich">Vierteljährlich</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Nächste Abbuchung</label>
+                        <input type="date" id="aboNaechste">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Notiz (optional)</label>
+                        <input type="text" id="aboNotiz" placeholder="z.B. Family-Plan">
+                    </div>
+                    <input type="hidden" id="aboEditId" value="">
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn-primary" style="flex:1;justify-content:center;" onclick="saveAbo()">
+                            <i class="ri-save-line"></i> Speichern
+                        </button>
+                        <button class="btn-ghost btn-sm" id="aboCancelBtn" style="display:none;" onclick="resetAboForm()">
+                            Abbrechen
+                        </button>
+                    </div>
+                    <div id="aboMsg" style="font-size:0.82rem;text-align:center;"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Modal: Budget für Kategorie festlegen -->
+    <div id="budgetModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+        <div class="card" style="width:min(420px,90vw);padding:28px;">
+            <h3 style="margin:0 0 20px;">Budget festlegen</h3>
+            <div style="display:flex;flex-direction:column;gap:14px;">
+                <div class="form-group">
+                    <label class="form-label">Kategorie</label>
+                    <input type="text" id="bmKategorie" placeholder="z.B. Lebensmittel">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Monatliches Budget (€)</label>
+                    <input type="number" id="bmBetrag" placeholder="300" min="0" step="0.01">
+                </div>
+                <input type="hidden" id="bmEditId" value="">
+                <div style="display:flex;gap:10px;margin-top:4px;">
+                    <button class="btn-primary" style="flex:1;justify-content:center;" onclick="saveBudgetModal()">
+                        <i class="ri-save-line"></i> Speichern
+                    </button>
+                    <button class="btn-ghost" onclick="closeBudgetModal()">Abbrechen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Betrag zum Sparziel hinzufügen -->
+    <div id="einzahlenModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px);" onclick="closeEinzahlenModal(event)">
+        <div class="card" style="width:min(380px,90vw);padding:28px;" onclick="event.stopPropagation()">
+            <h3 style="margin:0 0 6px;">Betrag einzahlen</h3>
+            <p id="einzahlenName" style="margin:0 0 20px;color:var(--text-3);font-size:0.88rem;"></p>
+            <div class="form-group" style="margin-bottom:20px;">
+                <label class="form-label">Betrag (€)</label>
+                <input type="number" id="einzahlenBetrag" placeholder="0,00" min="0.01" step="0.01"
+                    style="font-size:1.1rem;" onkeydown="if(event.key==='Enter') confirmEinzahlen()">
+            </div>
+            <div style="display:flex;gap:10px;">
+                <button class="btn-primary" style="flex:1;justify-content:center;" onclick="confirmEinzahlen()">
+                    <i class="ri-add-circle-line"></i> Einzahlen
+                </button>
+                <button class="btn-ghost" onclick="closeEinzahlenModal()">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .budget-tabs {
+        display: flex;
+        gap: 4px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 6px;
+        margin-bottom: 24px;
+        width: fit-content;
+    }
+
+    .budget-tab {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 20px;
+        border-radius: var(--radius-md);
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--text-2);
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        transition: var(--transition);
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    .budget-tab:hover { background: var(--surface-2); color: var(--text-1); }
+
+    .budget-tab.active {
+        background: var(--accent);
+        color: #fff;
+        box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .budget-tab-content { display: none; }
+    .budget-tab-content.active { display: block; }
+
+    .budget-month-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .budget-stat-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 20px;
+    }
+
+    .budget-stat-card {
+        border-radius: var(--radius-lg);
+        padding: 16px 20px;
+        border: 1px solid var(--border);
+    }
+    .budget-stat-card.blue  { background: rgba(59,130,246,0.08);  border-color: rgba(59,130,246,0.2); }
+    .budget-stat-card.green { background: rgba(34,197,94,0.08);   border-color: rgba(34,197,94,0.2); }
+    .budget-stat-card.red   { background: rgba(239,68,68,0.08);   border-color: rgba(239,68,68,0.2); }
+    .budget-stat-card.amber { background: rgba(245,158,11,0.08);  border-color: rgba(245,158,11,0.2); }
+
+    .budget-stat-label { font-size:0.72rem;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px; }
+    .budget-stat-val   { font-size:1.3rem;font-weight:800;color:var(--text-1); }
+
+    /* Kategorie-Budget Balken */
+    .kat-budget-row {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .kat-budget-row:last-child { border-bottom: none; }
+
+    .kat-budget-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.88rem;
+    }
+
+    .kat-budget-bar-wrap {
+        background: var(--surface-2);
+        border-radius: 6px;
+        height: 8px;
+        overflow: hidden;
+    }
+
+    .kat-budget-bar {
+        height: 100%;
+        border-radius: 6px;
+        transition: width 0.5s ease;
+    }
+
+    .kat-budget-footer {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        color: var(--text-3);
+    }
+
+    /* Sparziele */
+    .sparziel-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+        transition: var(--transition);
+    }
+    .sparziel-card:hover {
+        border-color: var(--border-accent);
+        box-shadow: var(--shadow-accent);
+    }
+
+    .sz-color-dot {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: var(--transition);
+    }
+    .sz-color-dot.active, .sz-color-dot:hover {
+        border-color: var(--text-1);
+        transform: scale(1.2);
+    }
+
+    .sz-bar-wrap {
+        background: var(--surface-2);
+        border-radius: 6px;
+        height: 10px;
+        overflow: hidden;
+        margin: 10px 0 6px;
+    }
+    .sz-bar { height: 100%; border-radius: 6px; transition: width 0.5s ease; }
+
+    /* Abonnements */
+    .abo-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--border);
+        transition: var(--transition);
+    }
+    .abo-row:last-child { border-bottom: none; }
+    .abo-row:hover { background: var(--surface-2); }
+
+    .abo-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+
+    @media (max-width: 900px) {
+        .budget-stat-row { grid-template-columns: repeat(2, 1fr); }
+        .budget-main-grid { grid-template-columns: 1fr !important; }
+    }
+    @media (max-width: 600px) {
+        .budget-tabs { width: 100%; }
+        .budget-tab { flex: 1; justify-content: center; }
+    }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script src="/budget.js"></script>
+</body>
+</html>

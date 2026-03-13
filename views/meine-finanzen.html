@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meine Finanzen – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" type="image/png" href="./assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+        <div>
+            <h1>Meine Finanzen</h1>
+            <p>Alle deine Konten und Auswertungen auf einen Blick</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div class="account-filter-wrap" id="finanzenFilterWrap" style="display:none;">
+                <button class="account-filter-btn" id="finanzenFilterBtn" onclick="toggleFinanzenFilter()">
+                    <span class="filter-dot all" id="finanzenFilterDot"></span>
+                    <span id="finanzenFilterLabel">Alle Konten</span>
+                    <i class="ri-arrow-down-s-line filter-chevron"></i>
+                </button>
+                <div class="account-filter-dropdown" id="finanzenFilterDropdown">
+                    <div class="account-filter-header">
+                        <span>Ansicht filtern</span>
+                        <div class="account-filter-header-actions">
+                            <button onclick="selectAllFinanzenAccounts()">Alle</button>
+                            <button onclick="selectNoneFinanzenAccounts()">Keine</button>
+                        </div>
+                    </div>
+                    <div id="finanzenFilterItems"></div>
+                </div>
+            </div>
+            <button class="btn-primary" id="addAccountBtn"><i class="ri-add-line"></i> Konto hinzufügen</button>
+        </div>
+    </div>
+
+    <!-- Gesamtvermögen Banner -->
+    <div class="net-worth-banner" id="netWorthBanner" style="display:none;">
+        <div>
+            <div class="net-worth-label">Gesamtvermögen</div>
+            <div class="net-worth-value" id="netWorthTotal">€ 0,00</div>
+        </div>
+        <div class="net-worth-sub" id="netWorthSub"></div>
+    </div>
+
+    <!-- Konten-Grid -->
+    <div class="accounts-grid" id="accountsGrid" style="display:none;"></div>
+
+    <!-- Leerer Zustand -->
+    <div id="emptyAccounts" class="card" style="text-align:center; padding:56px 24px; margin-bottom:24px;">
+        <i class="ri-bank-line" style="font-size:2.8rem; color:var(--text-3); display:block; margin-bottom:14px;"></i>
+        <h3 style="margin-bottom:8px;">Noch keine Konten angelegt</h3>
+        <p style="color:var(--text-3); margin-bottom:24px; max-width:340px; margin-left:auto; margin-right:auto;">Füge dein erstes Konto hinzu um deinen Kontostand zu verfolgen und Transaktionen zuzuweisen.</p>
+        <button class="btn-primary" id="addAccountBtnEmpty"><i class="ri-add-line"></i> Konto hinzufügen</button>
+    </div>
+
+    <!-- Tab-Navigation -->
+    <div class="finanzen-tabs">
+        <button class="tab active" data-tab="dashboard">Dashboard</button>
+        <button class="tab" data-tab="zusammenfassung">Zusammenfassung</button>
+        <button class="tab" data-tab="ausgaben">Ausgaben</button>
+        <button class="tab" data-tab="investments">Investments</button>
+        <button class="tab" data-tab="einstellungen">Einstellungen</button>
+    </div>
+
+    <!-- ══════════════════════════════════════════ DASHBOARD ══ -->
+    <div id="dashboard" class="finanz-tab active">
+        <div class="finanz-charts-grid" style="margin-bottom:24px;">
+
+            <div class="card finanz-chart-card" style="padding:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:6px;flex-wrap:wrap;">
+                    <h5 style="margin:0;">Ausgaben</h5>
+                    <div class="account-filter-wrap" style="position:relative;">
+                        <button class="account-filter-btn" id="ausgabenChartFilterBtn" onclick="toggleDashChartFilter('','ausgabenChartDD')" style="padding:3px 10px;font-size:0.72rem;">
+                            <span class="filter-dot all" style="width:6px;height:6px;"></span>
+                            <span>Alle</span>
+                            <i class="ri-arrow-down-s-line filter-chevron" style="font-size:0.65rem;"></i>
+                        </button>
+                        <div class="account-filter-dropdown dash-chart-dropdown" id="ausgabenChartDD" style="left:auto;right:0;min-width:200px;">
+                            <div class="account-filter-header"><span>Konten</span><div class="account-filter-header-actions"><button onclick="onDashSelectAll('finanzen_chart_ausgaben','ausgabenChartItems','ausgabenChartFilterBtn')">Alle</button></div></div>
+                            <div id="ausgabenChartItems"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="finanz-chart-wrap"><canvas id="ausgabenChart"></canvas></div>
+            </div>
+
+            <div class="card finanz-chart-card" style="padding:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:6px;flex-wrap:wrap;">
+                    <h5 style="margin:0;">Gesamtvermögen</h5>
+                    <div class="account-filter-wrap" style="position:relative;">
+                        <button class="account-filter-btn" id="vermoegenChartFilterBtn" onclick="toggleDashChartFilter('','vermoegenChartDD')" style="padding:3px 10px;font-size:0.72rem;">
+                            <span class="filter-dot all" style="width:6px;height:6px;"></span>
+                            <span>Alle</span>
+                            <i class="ri-arrow-down-s-line filter-chevron" style="font-size:0.65rem;"></i>
+                        </button>
+                        <div class="account-filter-dropdown dash-chart-dropdown" id="vermoegenChartDD" style="left:auto;right:0;min-width:200px;">
+                            <div class="account-filter-header"><span>Konten</span><div class="account-filter-header-actions"><button onclick="onDashSelectAll('finanzen_chart_vermoegen','vermoegenChartItems','vermoegenChartFilterBtn')">Alle</button></div></div>
+                            <div id="vermoegenChartItems"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="finanz-chart-wrap"><canvas id="vermoegenChart"></canvas></div>
+            </div>
+
+            <div class="card finanz-chart-card" style="padding:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:6px;flex-wrap:wrap;">
+                    <h5 style="margin:0;">Portfolio</h5>
+                    <div class="account-filter-wrap" style="position:relative;">
+                        <button class="account-filter-btn" id="portfolioChartFilterBtn" onclick="toggleDashChartFilter('','portfolioChartDD')" style="padding:3px 10px;font-size:0.72rem;">
+                            <span class="filter-dot all" style="width:6px;height:6px;"></span>
+                            <span>Depot</span>
+                            <i class="ri-arrow-down-s-line filter-chevron" style="font-size:0.65rem;"></i>
+                        </button>
+                        <div class="account-filter-dropdown dash-chart-dropdown" id="portfolioChartDD" style="left:auto;right:0;min-width:200px;">
+                            <div class="account-filter-header"><span>Depot-Konten</span><div class="account-filter-header-actions"><button onclick="onDashSelectAll('finanzen_chart_portfolio','portfolioChartItems','portfolioChartFilterBtn')">Alle</button></div></div>
+                            <div id="portfolioChartItems"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="finanz-chart-wrap"><canvas id="portfolioChart"></canvas></div>
+            </div>
+
+            <div class="card finanz-chart-card" style="padding:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:6px;flex-wrap:wrap;">
+                    <h5 style="margin:0;">Cash-Rücklagen</h5>
+                    <div class="account-filter-wrap" style="position:relative;">
+                        <button class="account-filter-btn" id="cashChartFilterBtn" onclick="toggleDashChartFilter('','cashChartDD')" style="padding:3px 10px;font-size:0.72rem;">
+                            <span class="filter-dot all" style="width:6px;height:6px;"></span>
+                            <span>Spar</span>
+                            <i class="ri-arrow-down-s-line filter-chevron" style="font-size:0.65rem;"></i>
+                        </button>
+                        <div class="account-filter-dropdown dash-chart-dropdown" id="cashChartDD" style="left:auto;right:0;min-width:200px;">
+                            <div class="account-filter-header"><span>Spar-Konten</span><div class="account-filter-header-actions"><button onclick="onDashSelectAll('finanzen_chart_cash','cashChartItems','cashChartFilterBtn')">Alle</button></div></div>
+                            <div id="cashChartItems"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="finanz-chart-wrap"><canvas id="cashChart"></canvas></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════ ZUSAMMENFASSUNG ══ -->
+    <div id="zusammenfassung" class="finanz-tab">
+        <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+                <h3 style="margin:0;">Monatliche Übersicht</h3>
+                <div class="account-filter-wrap" id="zusFilterWrap">
+                    <button class="account-filter-btn" id="zusFilterBtn" onclick="toggleZusFilter()">
+                        <span class="filter-dot all" id="zusFilterDot"></span>
+                        <span id="zusFilterLabel">Alle Konten</span>
+                        <i class="ri-arrow-down-s-line filter-chevron"></i>
+                    </button>
+                    <div class="account-filter-dropdown" id="zusFilterDropdown" style="right:0;left:auto;">
+                        <div class="account-filter-header">
+                            <span>Konten filtern</span>
+                            <div class="account-filter-header-actions">
+                                <button onclick="selectAllZusAccounts()">Alle</button>
+                                <button onclick="selectNoneZusAccounts()">Keine</button>
+                            </div>
+                        </div>
+                        <div id="zusFilterItems"></div>
+                    </div>
+                </div>
+            </div>
+            <div style="overflow-x:auto;">
+                <table id="zusammenfassungTable" class="finanz-table" style="width:100%;"></table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════ AUSGABEN ══ -->
+    <div id="ausgaben" class="finanz-tab">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;" class="finanz-2col-grid">
+
+            <!-- Kategorie-Drill-down für gewählten Monat -->
+            <div class="card">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+                    <h4 style="margin:0;">Kategorien</h4>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <!-- Konto-Filter -->
+                        <div class="account-filter-wrap" id="ausFilterWrap">
+                            <button class="account-filter-btn" id="ausFilterBtn" onclick="toggleAusFilter()">
+                                <span class="filter-dot all" id="ausFilterDot"></span>
+                                <span id="ausFilterLabel">Alle Konten</span>
+                                <i class="ri-arrow-down-s-line filter-chevron"></i>
+                            </button>
+                            <div class="account-filter-dropdown" id="ausFilterDropdown" style="right:0;left:auto;">
+                                <div class="account-filter-header">
+                                    <span>Konten filtern</span>
+                                    <div class="account-filter-header-actions">
+                                        <button onclick="selectAllAusAccounts()">Alle</button>
+                                        <button onclick="selectNoneAusAccounts()">Keine</button>
+                                    </div>
+                                </div>
+                                <div id="ausFilterItems"></div>
+                            </div>
+                        </div>
+                        <select id="ausgabenMonatSelect" onchange="renderAusgabenKategorien()" style="padding:6px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-size:0.85rem;cursor:pointer;min-width:160px;"></select>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table id="ausgabenKatTable" class="finanz-table" style="width:100%;"></table>
+                </div>
+            </div>
+
+            <!-- Fixkosten -->
+            <div class="card">
+                <h4 style="margin:0 0 16px;">Fixkosten</h4>
+                <div style="overflow-x:auto;">
+                    <table id="fixkostenTable" class="finanz-table" style="width:100%;"></table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Monatsvergleich über alle Kategorien -->
+        <div class="card">
+            <h4 style="margin:0 0 16px;">Monatsvergleich nach Kategorie</h4>
+            <div style="overflow-x:auto;">
+                <table id="ausgabenMonatsTable" class="finanz-table" style="width:100%;"></table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════ INVESTMENTS ══ -->
+    <div id="investments" class="finanz-tab">
+        <!-- Stat-Karten -->
+        <div id="investmentStats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;" class="finanz-3col-grid"></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;" class="finanz-2col-grid">
+            <div class="card">
+                <h4 style="margin:0 0 16px;">Depot-Konten</h4>
+                <div style="overflow-x:auto;">
+                    <table id="depotKontenTable" class="finanz-table" style="width:100%;"></table>
+                </div>
+            </div>
+            <div class="card">
+                <h4 style="margin:0 0 16px;">Monatsverlauf</h4>
+                <div style="overflow-x:auto;">
+                    <table id="investmentsTable" class="finanz-table" style="width:100%;"></table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════ EINSTELLUNGEN ══ -->
+    <div id="einstellungen" class="finanz-tab">
+        <div class="grid-3" style="align-items:start;">
+
+            <div class="card">
+                <div class="card-header"><h3>Fixkosten</h3></div>
+                <form id="fixkostenForm" style="display:flex;flex-direction:column;gap:10px;">
+                    <input type="text" name="name" placeholder="Name (z.B. McFit)" required>
+                    <input type="number" name="betrag" placeholder="Betrag (z.B. -24.90)" step="0.01" required>
+                    <input type="number" name="datum_tag" placeholder="Tag im Monat (1-31)" min="1" max="31" required>
+                    <select name="haeufigkeit" required>
+                        <option value="monatlich">Monatlich</option>
+                        <option value="woechentlich">Wöchentlich</option>
+                        <option value="jaehrlich">Jährlich</option>
+                    </select>
+                    <input type="text" name="kategorie" placeholder="Kategorie" required>
+                    <select name="account_id" id="fixkostenAccountSelect">
+                        <option value="">Kein Konto zugewiesen</option>
+                    </select>
+                    <button type="submit" class="btn-primary" style="width:100%;justify-content:center;">Hinzufügen</button>
+                </form>
+                <ul id="fixkostenList" style="margin-top:16px; list-style:none; display:flex; flex-direction:column; gap:8px;"></ul>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h3>Initialwerte</h3></div>
+                <form id="initialwerteForm" style="display:flex;flex-direction:column;gap:10px;">
+                    <div class="form-group">
+                        <label class="form-label">Sparkonto Startwert</label>
+                        <input type="number" name="sparkonto_initial" placeholder="€ 0,00" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Girokonto Startwert</label>
+                        <input type="number" name="girokonto_initial" placeholder="€ 0,00" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Bargeld Startwert</label>
+                        <input type="number" name="bargeld_initial" placeholder="€ 300,00" step="0.01" value="300">
+                    </div>
+                    <button type="submit" class="btn-primary" style="width:100%;justify-content:center;">Speichern</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h3>Manuelle Anpassungen</h3></div>
+                <form id="manuelleForm" style="display:flex;flex-direction:column;gap:10px;">
+                    <div class="form-group">
+                        <label class="form-label">Monat (YYYY-MM)</label>
+                        <input type="text" name="monat" placeholder="z.B. 2024-01" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Spaltenname</label>
+                        <input type="text" name="spalte_name" placeholder="z.B. Gehalt" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Wert</label>
+                        <input type="number" name="wert" placeholder="€ 0,00" step="0.01" required>
+                    </div>
+                    <button type="submit" class="btn-primary" style="width:100%;justify-content:center;">Hinzufügen</button>
+                </form>
+                <ul id="manuelleList" style="margin-top:16px; list-style:none; display:flex; flex-direction:column; gap:8px;"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Modal: Konto anlegen / bearbeiten ── -->
+    <div id="accountModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1002; align-items:center; justify-content:center;">
+        <div class="modal-content-category" style="max-width:460px; width:92%;">
+            <span class="close" onclick="closeAccountModal()">×</span>
+            <h3 id="accountModalTitle" style="margin-bottom:20px;">Konto hinzufügen</h3>
+            <input type="hidden" id="accountEditId">
+            <div class="form-group" style="margin-bottom:12px;">
+                <label class="form-label">Kontoname</label>
+                <input type="text" id="accountName" placeholder="z.B. Mein Girokonto">
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label class="form-label">Kontotyp</label>
+                <select id="accountType">
+                    <option value="girokonto">Girokonto</option>
+                    <option value="sparkonto">Sparkonto</option>
+                    <option value="haushaltskonto">Haushaltskonto</option>
+                    <option value="bargeld">Bargeld</option>
+                    <option value="depot">Depot / Investments</option>
+                    <option value="sonstiges">Sonstiges</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label class="form-label">Aktueller Kontostand (€)</label>
+                <input type="number" id="accountBalance" placeholder="0.00" step="0.01">
+            </div>
+            <div class="form-group" style="margin-bottom:20px;">
+                <label class="form-label">Farbe</label>
+                <div class="color-picker-row" id="colorPicker">
+                    <div class="color-option active" data-color="#6358e6" style="background:#6358e6;"></div>
+                    <div class="color-option" data-color="#22c55e" style="background:#22c55e;"></div>
+                    <div class="color-option" data-color="#3b82f6" style="background:#3b82f6;"></div>
+                    <div class="color-option" data-color="#f59e0b" style="background:#f59e0b;"></div>
+                    <div class="color-option" data-color="#ef4444" style="background:#ef4444;"></div>
+                    <div class="color-option" data-color="#ec4899" style="background:#ec4899;"></div>
+                    <div class="color-option" data-color="#14b8a6" style="background:#14b8a6;"></div>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn-primary" onclick="saveAccount()" style="flex:1; justify-content:center;"><i class="ri-save-line"></i> Speichern</button>
+                <button onclick="closeAccountModal()" style="padding:9px 20px; border-radius:var(--radius-md); cursor:pointer; background:var(--surface-2); color:var(--text-2); border:1px solid var(--border);">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Modal: Fixkosten bearbeiten ── -->
+    <div id="fixkostenEditModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1002; align-items:center; justify-content:center;">
+        <div class="modal-content-category" style="max-width:420px; width:92%;">
+            <span class="close" onclick="closeFixkostenModal()">×</span>
+            <h3 style="margin-bottom:20px;">Fixkosten bearbeiten</h3>
+            <input type="hidden" id="fixkostenEditId">
+            <div class="form-group" style="margin-bottom:10px;"><label class="form-label">Name</label><input type="text" id="fkEditName"></div>
+            <div class="form-group" style="margin-bottom:10px;"><label class="form-label">Betrag (€)</label><input type="number" id="fkEditBetrag" step="0.01"></div>
+            <div class="form-group" style="margin-bottom:10px;"><label class="form-label">Tag im Monat</label><input type="number" id="fkEditTag" min="1" max="31"></div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label">Häufigkeit</label>
+                <select id="fkEditHaeufigkeit">
+                    <option value="monatlich">Monatlich</option>
+                    <option value="woechentlich">Wöchentlich</option>
+                    <option value="jaehrlich">Jährlich</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;"><label class="form-label">Kategorie</label><input type="text" id="fkEditKategorie"></div>
+            <div class="form-group" style="margin-bottom:20px;">
+                <label class="form-label">Konto</label>
+                <select id="fkEditAccount"><option value="">Kein Konto</option></select>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn-primary" onclick="saveFixkostenEdit()" style="flex:1; justify-content:center;"><i class="ri-save-line"></i> Speichern</button>
+                <button onclick="closeFixkostenModal()" style="padding:9px 20px; border-radius:var(--radius-md); cursor:pointer; background:var(--surface-2); color:var(--text-2); border:1px solid var(--border);">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+    <script src="/upgrade-modal.js"></script>
+    <script src="/finanzen.js"></script>
+    <script src="/navheader.js"></script>
+</body>
+</html>

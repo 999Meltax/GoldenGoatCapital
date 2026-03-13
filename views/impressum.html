@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impressum – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="legal-page">
+        <div class="legal-container">
+            <div class="legal-header">
+                <div class="legal-icon"><i class="ri-file-text-line"></i></div>
+                <h1>Impressum</h1>
+                <p>Angaben gemäß § 5 TMG</p>
+            </div>
+
+            <div class="legal-card">
+                <h2>Angaben zum Betreiber</h2>
+                <p><strong>Golden Goat Capital</strong><br>
+                [Vorname Nachname]<br>
+                [Straße und Hausnummer]<br>
+                [PLZ] [Stadt]<br>
+                Deutschland</p>
+
+                <h2>Kontakt</h2>
+                <p>E-Mail: <a href="mailto:kontakt@goldengoatcapital.de">kontakt@goldengoatcapital.de</a></p>
+
+                <h2>Verantwortlich für den Inhalt (§ 55 Abs. 2 RStV)</h2>
+                <p>[Vorname Nachname]<br>
+                [Adresse wie oben]</p>
+
+                <h2>Haftungsausschluss</h2>
+
+                <h3>Haftung für Inhalte</h3>
+                <p>Als Diensteanbieter sind wir gemäß § 7 Abs. 1 TMG für eigene Inhalte auf diesen Seiten nach den allgemeinen Gesetzen verantwortlich. Nach §§ 8 bis 10 TMG sind wir als Diensteanbieter jedoch nicht verpflichtet, übermittelte oder gespeicherte fremde Informationen zu überwachen oder nach Umständen zu forschen, die auf eine rechtswidrige Tätigkeit hinweisen.</p>
+                <p>Verpflichtungen zur Entfernung oder Sperrung der Nutzung von Informationen nach den allgemeinen Gesetzen bleiben hiervon unberührt. Eine diesbezügliche Haftung ist jedoch erst ab dem Zeitpunkt der Kenntnis einer konkreten Rechtsverletzung möglich. Bei Bekanntwerden von entsprechenden Rechtsverletzungen werden wir diese Inhalte umgehend entfernen.</p>
+
+                <h3>Haftung für Links</h3>
+                <p>Unser Angebot enthält Links zu externen Websites Dritter, auf deren Inhalte wir keinen Einfluss haben. Deshalb können wir für diese fremden Inhalte auch keine Gewähr übernehmen. Für die Inhalte der verlinkten Seiten ist stets der jeweilige Anbieter oder Betreiber der Seiten verantwortlich.</p>
+
+                <h3>Urheberrecht</h3>
+                <p>Die durch die Seitenbetreiber erstellten Inhalte und Werke auf diesen Seiten unterliegen dem deutschen Urheberrecht. Die Vervielfältigung, Bearbeitung, Verbreitung und jede Art der Verwertung außerhalb der Grenzen des Urheberrechtes bedürfen der schriftlichen Zustimmung des jeweiligen Autors bzw. Erstellers.</p>
+
+                <p class="legal-updated">Stand: Januar 2026</p>
+            </div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+    <script src="/navheader.js"></script>
+
+    <style>
+        .legal-page { padding: 2rem clamp(1rem, 4vw, 3rem); }
+        .legal-container { max-width: 800px; margin: 0 auto; }
+        .legal-header { text-align: center; margin-bottom: 2rem; }
+        .legal-icon {
+            width: 64px; height: 64px; border-radius: 1rem;
+            background: rgba(108,99,255,0.15);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.75rem; margin: 0 auto 1rem;
+            color: var(--accent, #6c63ff);
+        }
+        .legal-header h1 { font-size: clamp(1.5rem,3vw,2rem); font-weight: 800; margin-bottom: 0.5rem; }
+        .legal-header p { color: var(--text-muted, #8892a4); }
+        .legal-card {
+            background: var(--surface, #1a1d27);
+            border: 1px solid var(--border, #2a2d3a);
+            border-radius: 1rem; padding: 2rem;
+        }
+        .legal-card h2 {
+            font-size: 1.1rem; font-weight: 700;
+            color: var(--text, #e2e8f0);
+            margin: 1.75rem 0 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border, #2a2d3a);
+        }
+        .legal-card h2:first-child { margin-top: 0; }
+        .legal-card h3 { font-size: 0.95rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: var(--text, #e2e8f0); }
+        .legal-card p { color: var(--text-muted, #8892a4); font-size: 0.9rem; line-height: 1.7; margin-bottom: 0.75rem; }
+        .legal-card a { color: var(--accent, #6c63ff); text-decoration: none; }
+        .legal-card a:hover { text-decoration: underline; }
+        .legal-updated { font-size: 0.8rem !important; color: var(--text-muted,#8892a4); opacity:0.6; margin-top:2rem; }
+    </style>
+</body>
+</html>

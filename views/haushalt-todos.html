@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haushalt Aufgaben – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <h1><i class="ri-checkbox-line" style="color:var(--haus-accent);margin-right:8px;"></i>Haushalt Aufgaben</h1>
+            <p>Gemeinsame To-do-Liste für den Haushalt</p>
+        </div>
+        <button onclick="openTodoModal()" class="btn-primary">
+            <i class="ri-add-line"></i> Aufgabe hinzufügen
+        </button>
+    </div>
+
+    <!-- Filter-Tabs -->
+    <div style="display:flex;gap:4px;background:var(--surface-2);border-radius:var(--radius-md);padding:4px;margin-bottom:20px;width:fit-content;">
+        <button class="aus-tab active" id="tabOffen" onclick="setFilter('offen',this)">Offen</button>
+        <button class="aus-tab" id="tabAlle" onclick="setFilter('alle',this)">Alle</button>
+        <button class="aus-tab" id="tabErledigt" onclick="setFilter('erledigt',this)">Erledigt</button>
+    </div>
+
+    <div id="todoRoot"></div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    .aus-tab {
+        padding: 8px 16px; border: none; background: transparent;
+        color: var(--text-3); border-radius: var(--radius-md);
+        cursor: pointer; font-size: 0.83rem; font-family: 'Plus Jakarta Sans', sans-serif;
+        font-weight: 600; transition: var(--transition);
+    }
+    .aus-tab.active { background: var(--haus-accent); color: #fff; }
+
+    .htodo-item {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border);
+        transition: var(--transition);
+    }
+    .htodo-item:last-child { border-bottom: none; }
+    .htodo-check {
+        width: 22px; height: 22px; border-radius: 6px;
+        border: 2px solid var(--border);
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; flex-shrink: 0; margin-top: 1px;
+        transition: var(--transition);
+    }
+    .htodo-check:hover { border-color: var(--haus-accent); }
+    .htodo-check.done { background: var(--haus-accent); border-color: var(--haus-accent); color: #fff; }
+    .htodo-body { flex: 1; min-width: 0; }
+    .htodo-task { font-weight: 600; font-size: 0.9rem; }
+    .htodo-task.done { text-decoration: line-through; color: var(--text-3); }
+    .htodo-meta { font-size: 0.75rem; color: var(--text-3); margin-top: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+    .prio-badge {
+        font-size: 0.7rem; font-weight: 700;
+        padding: 2px 8px; border-radius: 10px;
+    }
+    .prio-hoch    { background: rgba(239,68,68,0.15);  color: #ef4444; }
+    .prio-mittel  { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .prio-niedrig { background: rgba(34,197,94,0.12);  color: #22c55e; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script>
+    let todos = [];
+    let currentFilter = 'offen';
+    let mitglieder = [];
+    let user1 = {}, user2 = null;
+
+    async function init() {
+        const res = await fetch('/users/haushalt/status');
+        const data = await res.json();
+        mitglieder = data.mitglieder || [];
+        user1 = mitglieder[0] || {};
+        user2 = mitglieder[1] || null;
+        await loadTodos();
+    }
+
+    async function loadTodos() {
+        todos = await fetch('/users/haushalt/todos/data').then(r=>r.json()).catch(()=>[]);
+        render();
+    }
+
+    function setFilter(filter, btn) {
+        currentFilter = filter;
+        document.querySelectorAll('.aus-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        render();
+    }
+
+    function render() {
+        const root = document.getElementById('todoRoot');
+        let filtered = todos;
+        if (currentFilter === 'offen')    filtered = todos.filter(t => !t.completed);
+        if (currentFilter === 'erledigt') filtered = todos.filter(t => t.completed);
+
+        // Sortierung: Priorität, dann Fälligkeit
+        const prioOrder = { hoch: 0, mittel: 1, niedrig: 2 };
+        filtered = filtered.slice().sort((a, b) => {
+            if (a.completed !== b.completed) return a.completed - b.completed;
+            const pa = prioOrder[a.priority] ?? 1;
+            const pb = prioOrder[b.priority] ?? 1;
+            if (pa !== pb) return pa - pb;
+            if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date);
+            if (a.due_date) return -1;
+            if (b.due_date) return 1;
+            return 0;
+        });
+
+        if (filtered.length === 0) {
+            root.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:var(--text-3);">' +
+                (currentFilter === 'erledigt' ? '<i class="ri-checkbox-blank-circle-line" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.3;"></i>Noch keine erledigten Aufgaben.' :
+                 '<i class="ri-checkbox-line" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.3;color:var(--haus-accent);"></i>Keine offenen Aufgaben 🎉') +
+                '</div>';
+            return;
+        }
+
+        const offenCount = todos.filter(t=>!t.completed).length;
+        const erlCount   = todos.filter(t=>t.completed).length;
+
+        root.innerHTML =
+            '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">' +
+                '<div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-md);padding:10px 18px;font-size:0.83rem;">' +
+                    '<span style="font-weight:700;color:#10b981;">' + offenCount + '</span> offen' +
+                '</div>' +
+                '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.15);border-radius:var(--radius-md);padding:10px 18px;font-size:0.83rem;">' +
+                    '<span style="font-weight:700;color:#22c55e;">' + erlCount + '</span> erledigt' +
+                '</div>' +
+            '</div>' +
+            '<div class="card" style="padding:20px;">' +
+                filtered.map(t => renderTodo(t)).join('') +
+            '</div>';
+    }
+
+    function renderTodo(t) {
+        const today = new Date().toISOString().substring(0,10);
+        let dateLabel = '';
+        let dateColor = 'var(--text-3)';
+        if (t.due_date) {
+            const diff = Math.ceil((new Date(t.due_date) - new Date()) / 86400000);
+            if (diff < 0)       { dateLabel = '⚠ Überfällig'; dateColor = '#ef4444'; }
+            else if (diff === 0){ dateLabel = '📅 Heute';     dateColor = '#f59e0b'; }
+            else if (diff <= 3) { dateLabel = '🔜 ' + new Date(t.due_date).toLocaleDateString('de-DE'); dateColor = '#f59e0b'; }
+            else                { dateLabel = new Date(t.due_date).toLocaleDateString('de-DE'); }
+        }
+
+        const ersteller = mitglieder.find(m => m.user_id === t.erstellt_von);
+        const erstellerName = ersteller ? (ersteller.anzeigename || ersteller.display_name || 'Unbekannt') : 'Unbekannt';
+
+        return '<div class="htodo-item">' +
+            '<div class="htodo-check ' + (t.completed ? 'done' : '') + '" onclick="toggleTodo(' + t.id + ',' + t.completed + ')">' +
+                (t.completed ? '<i class="ri-check-line" style="font-size:0.8rem;"></i>' : '') +
+            '</div>' +
+            '<div class="htodo-body">' +
+                '<div class="htodo-task ' + (t.completed ? 'done' : '') + '">' + escHtml(t.task) + '</div>' +
+                '<div class="htodo-meta">' +
+                    '<span class="prio-badge prio-' + (t.priority||'mittel') + '">' + (t.priority||'mittel') + '</span>' +
+                    (t.label ? '<span style="background:rgba(99,88,230,0.1);color:var(--accent);padding:1px 7px;border-radius:10px;font-size:0.7rem;font-weight:600;">' + escHtml(t.label) + '</span>' : '') +
+                    (dateLabel ? '<span style="color:' + dateColor + ';">' + dateLabel + '</span>' : '') +
+                    '<span>Von: ' + escHtml(erstellerName) + '</span>' +
+                '</div>' +
+                (t.notes ? '<div style="font-size:0.78rem;color:var(--text-3);margin-top:4px;background:var(--surface-2);padding:6px 10px;border-radius:var(--radius-md);">' + escHtml(t.notes) + '</div>' : '') +
+            '</div>' +
+            '<div style="display:flex;gap:6px;">' +
+                '<button onclick="openTodoModal(' + t.id + ')" style="width:28px;height:28px;border-radius:8px;background:var(--surface-2);color:var(--text-2);border:none;cursor:pointer;"><i class="ri-edit-line"></i></button>' +
+                '<button onclick="deleteTodo(' + t.id + ')" style="width:28px;height:28px;border-radius:8px;background:rgba(239,68,68,0.1);color:#ef4444;border:none;cursor:pointer;"><i class="ri-delete-bin-line"></i></button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    async function toggleTodo(id, completed) {
+        const url = '/users/haushalt/todos/' + id + '/' + (completed ? 'uncomplete' : 'complete');
+        await fetch(url, { method: 'PATCH' });
+        await loadTodos();
+    }
+
+    async function openTodoModal(id) {
+        const existing = id ? todos.find(t=>t.id==id) : null;
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+        overlay.innerHTML =
+            '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
+                    '<h3 style="margin:0;">Aufgabe ' + (existing ? 'bearbeiten' : 'hinzufügen') + '</h3>' +
+                    '<button onclick="this.closest(\'div[style]\').remove()" style="width:32px;height:32px;border-radius:8px;background:var(--surface-2);border:none;color:var(--text-2);cursor:pointer;"><i class="ri-close-line"></i></button>' +
+                '</div>' +
+                '<div class="form-group" style="margin-bottom:12px;">' +
+                    '<label class="form-label">Aufgabe</label>' +
+                    '<input type="text" id="ttTask" value="' + escHtml(existing?.task||'') + '" placeholder="Was muss erledigt werden?">' +
+                '</div>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Priorität</label>' +
+                        '<select id="ttPrio">' +
+                            ['hoch','mittel','niedrig'].map(p => '<option value="' + p + '"' + (existing?.priority===p?' selected':'') + '>' + p + '</option>').join('') +
+                        '</select>' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Fälligkeitsdatum</label>' +
+                        '<input type="date" id="ttDate" value="' + (existing?.due_date||'') + '">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-group" style="margin-bottom:12px;">' +
+                    '<label class="form-label">Label</label>' +
+                    '<input type="text" id="ttLabel" value="' + escHtml(existing?.label||'') + '" placeholder="z.B. Küche, Einkauf…">' +
+                '</div>' +
+                '<div class="form-group" style="margin-bottom:20px;">' +
+                    '<label class="form-label">Notizen</label>' +
+                    '<textarea id="ttNotes" placeholder="Optionale Notizen…" style="min-height:70px;">' + escHtml(existing?.notes||'') + '</textarea>' +
+                '</div>' +
+                '<div style="display:flex;gap:8px;">' +
+                    '<button id="ttSave" class="btn-primary" style="flex:1;justify-content:center;"><i class="ri-save-line"></i> Speichern</button>' +
+                    '<button onclick="this.closest(\'div[style]\').remove()" style="padding:10px 20px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;">Abbrechen</button>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => { if (e.target===overlay) overlay.remove(); });
+        document.getElementById('ttSave').onclick = async () => {
+            const payload = {
+                task:     document.getElementById('ttTask').value.trim(),
+                priority: document.getElementById('ttPrio').value,
+                due_date: document.getElementById('ttDate').value || null,
+                label:    document.getElementById('ttLabel').value.trim(),
+                notes:    document.getElementById('ttNotes').value.trim(),
+            };
+            if (!payload.task) { alert('Bitte Aufgabe eingeben.'); return; }
+            const url    = id ? '/users/haushalt/todos/' + id : '/users/haushalt/todos/add';
+            const method = id ? 'PUT' : 'POST';
+            await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            overlay.remove();
+            await loadTodos();
+        };
+    }
+
+    async function deleteTodo(id) {
+        if (!confirm('Aufgabe löschen?')) return;
+        await fetch('/users/haushalt/todos/' + id, { method: 'DELETE' });
+        await loadTodos();
+    }
+
+    function escHtml(str) {
+        return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    init();
+    </script>
+</body>
+</html>

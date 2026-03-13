@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dokumente – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <h1>Dokumentenportal</h1>
+            <p>Verwalte deine Rechnungen, Gehaltsabrechnungen und Steuerdokumente</p>
+        </div>
+        <button class="btn-primary" onclick="openUploadModal()">
+            <i class="ri-upload-2-line"></i> Dokument hochladen
+        </button>
+    </div>
+
+    <!-- Stat-Übersicht -->
+    <div class="dok-stats" id="dokStats">
+        <div class="dok-stat-card" data-tab="rechnungen">
+            <div class="dok-stat-icon" style="background:rgba(99,88,230,0.15);color:#8b7ff5;">
+                <i class="ri-file-text-line"></i>
+            </div>
+            <div class="dok-stat-info">
+                <div class="dok-stat-label">Rechnungen</div>
+                <div class="dok-stat-value" id="statRechnungen">0</div>
+            </div>
+            <div class="dok-stat-badge" id="statRechnungenOffen" style="display:none;"></div>
+        </div>
+        <div class="dok-stat-card" data-tab="gehalt">
+            <div class="dok-stat-icon" style="background:rgba(34,197,94,0.15);color:#22c55e;">
+                <i class="ri-money-euro-circle-line"></i>
+            </div>
+            <div class="dok-stat-info">
+                <div class="dok-stat-label">Gehaltsabrechnungen</div>
+                <div class="dok-stat-value" id="statGehalt">0</div>
+            </div>
+        </div>
+        <div class="dok-stat-card" data-tab="steuer">
+            <div class="dok-stat-icon" style="background:rgba(245,158,11,0.15);color:#f59e0b;">
+                <i class="ri-government-line"></i>
+            </div>
+            <div class="dok-stat-info">
+                <div class="dok-stat-label">Steuerdokumente</div>
+                <div class="dok-stat-value" id="statSteuer">0</div>
+            </div>
+            <div class="dok-stat-badge" id="statSteuerChecklist" style="display:none;"></div>
+        </div>
+        <div class="dok-stat-card" data-tab="sonstiges">
+            <div class="dok-stat-icon" style="background:rgba(239,68,68,0.12);color:#ef4444;">
+                <i class="ri-folder-line"></i>
+            </div>
+            <div class="dok-stat-info">
+                <div class="dok-stat-label">Sonstiges</div>
+                <div class="dok-stat-value" id="statSonstiges">0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="dok-tabs">
+        <button class="dok-tab active" data-tab="alle" onclick="switchTab('alle',this)">
+            <i class="ri-apps-line"></i> Alle
+        </button>
+        <button class="dok-tab" data-tab="rechnungen" onclick="switchTab('rechnungen',this)">
+            <i class="ri-file-text-line"></i> Rechnungen
+        </button>
+        <button class="dok-tab" data-tab="gehalt" onclick="switchTab('gehalt',this)">
+            <i class="ri-money-euro-circle-line"></i> Gehaltsabrechnungen
+        </button>
+        <button class="dok-tab" data-tab="steuer" onclick="switchTab('steuer',this)">
+            <i class="ri-government-line"></i> Steuerdokumente
+        </button>
+        <button class="dok-tab" data-tab="sonstiges" onclick="switchTab('sonstiges',this)">
+            <i class="ri-folder-line"></i> Sonstiges
+        </button>
+    </div>
+
+    <!-- Toolbar: Suche + Filter + Ansicht -->
+    <div class="dok-toolbar">
+        <div class="dok-search-wrap">
+            <i class="ri-search-line"></i>
+            <input type="text" id="dokSearch" placeholder="Dokument suchen…" oninput="filterDokumente()">
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="dokJahrFilter" onchange="filterDokumente()" class="dok-filter-select">
+                <option value="">Alle Jahre</option>
+            </select>
+            <select id="dokStatusFilter" onchange="filterDokumente()" class="dok-filter-select">
+                <option value="">Alle Status</option>
+                <option value="offen">Offen</option>
+                <option value="bezahlt">Bezahlt</option>
+                <option value="ueberfaellig">Überfällig</option>
+            </select>
+            <div class="dok-view-toggle">
+                <button class="dok-view-btn active" id="viewGrid" onclick="setView('grid')" title="Kacheln">
+                    <i class="ri-grid-line"></i>
+                </button>
+                <button class="dok-view-btn" id="viewList" onclick="setView('list')" title="Liste">
+                    <i class="ri-list-check"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Steuer-Checkliste (nur sichtbar bei Steuer-Tab) -->
+    <div id="steuerChecklist" style="display:none;" class="card" style="margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <h4 style="margin:0;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">
+                <i class="ri-checkbox-multiple-line" style="margin-right:6px;color:var(--amber);"></i>
+                Steuerjahr-Checkliste
+            </h4>
+            <select id="steuerJahrSelect" onchange="renderSteuerChecklist()" class="dok-filter-select" style="width:auto;">
+            </select>
+        </div>
+        <div id="steuerChecklistItems" class="dok-checklist-grid"></div>
+    </div>
+
+    <!-- Dokumente-Container -->
+    <div id="dokumenteContainer" class="dok-grid"></div>
+
+    <!-- Empty State -->
+    <div id="dokEmpty" style="display:none;" class="dok-empty">
+        <div class="dok-empty-icon"><i class="ri-folder-open-line"></i></div>
+        <h3>Keine Dokumente gefunden</h3>
+        <p>Lade dein erstes Dokument hoch oder ändere die Filter.</p>
+        <button class="btn-primary" onclick="openUploadModal()" style="margin-top:16px;">
+            <i class="ri-upload-2-line"></i> Jetzt hochladen
+        </button>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         UPLOAD MODAL
+    ══════════════════════════════════════════ -->
+    <div class="dok-modal-overlay" id="uploadModal" onclick="closeUploadModal(event)">
+        <div class="dok-modal" onclick="event.stopPropagation()">
+            <div class="dok-modal-header">
+                <h3><i class="ri-upload-2-line"></i> Dokument hochladen</h3>
+                <button class="dok-modal-close" onclick="closeUploadModal()"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="dok-modal-body">
+                <!-- Dropzone -->
+                <div class="dok-dropzone" id="dropzone"
+                     ondragover="event.preventDefault();this.classList.add('drag')"
+                     ondragleave="this.classList.remove('drag')"
+                     ondrop="handleDrop(event)">
+                    <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="display:none" onchange="handleFileSelect(event)">
+                    <i class="ri-cloud-upload-line" style="font-size:2.5rem;color:var(--accent-2);margin-bottom:12px;display:block;"></i>
+                    <div style="font-weight:600;margin-bottom:6px;">Datei hier ablegen</div>
+                    <div style="font-size:0.82rem;color:var(--text-3);margin-bottom:16px;">oder</div>
+                    <button class="btn-primary btn-sm" onclick="document.getElementById('fileInput').click()">
+                        <i class="ri-folder-open-line"></i> Datei auswählen
+                    </button>
+                    <div style="font-size:0.75rem;color:var(--text-3);margin-top:12px;">PDF, JPG, PNG, DOC bis 10 MB</div>
+                </div>
+
+                <!-- Datei-Vorschau -->
+                <div id="filePreview" style="display:none;" class="dok-file-preview">
+                    <div class="dok-file-preview-icon" id="previewIcon"><i class="ri-file-line"></i></div>
+                    <div>
+                        <div id="previewName" style="font-weight:600;font-size:0.9rem;"></div>
+                        <div id="previewSize" style="font-size:0.78rem;color:var(--text-3);margin-top:2px;"></div>
+                    </div>
+                    <button onclick="clearFile()" style="margin-left:auto;background:none;border:none;color:var(--text-3);cursor:pointer;font-size:1.1rem;padding:4px;">
+                        <i class="ri-close-line"></i>
+                    </button>
+                </div>
+
+                <!-- Metadaten-Formular -->
+                <div style="display:flex;flex-direction:column;gap:14px;margin-top:4px;">
+                    <div class="form-group">
+                        <label class="form-label">Dokumententyp *</label>
+                        <select id="uploadTyp" onchange="updateFormFields()">
+                            <option value="rechnungen">Rechnung</option>
+                            <option value="gehalt">Gehaltsabrechnung</option>
+                            <option value="steuer">Steuerdokument</option>
+                            <option value="sonstiges">Sonstiges</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Bezeichnung *</label>
+                        <input type="text" id="uploadName" placeholder="z.B. Stromrechnung März 2025">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Datum *</label>
+                            <input type="date" id="uploadDatum">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Jahr</label>
+                            <input type="number" id="uploadJahr" placeholder="2025" min="2000" max="2099" readonly style="background:var(--bg-3);color:var(--text-3);">
+                        </div>
+                    </div>
+
+                    <!-- Rechnungs-spezifisch -->
+                    <div id="fieldsetRechnung" style="display:flex;flex-direction:column;gap:14px;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Betrag (€)</label>
+                                <input type="number" id="uploadBetrag" placeholder="0,00" step="0.01" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Fälligkeitsdatum</label>
+                                <input type="date" id="uploadFaellig">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Aussteller</label>
+                                <input type="text" id="uploadAussteller" placeholder="z.B. Stadtwerke München">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Status</label>
+                                <select id="uploadStatus">
+                                    <option value="offen">Offen</option>
+                                    <option value="bezahlt">Bezahlt</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Kategorie</label>
+                            <select id="uploadKategorie">
+                                <option value="Haushalt">Haushalt</option>
+                                <option value="Auto">Auto</option>
+                                <option value="Versicherung">Versicherung</option>
+                                <option value="Gesundheit">Gesundheit</option>
+                                <option value="Kommunikation">Kommunikation & Internet</option>
+                                <option value="Strom">Strom & Gas</option>
+                                <option value="Miete">Miete</option>
+                                <option value="Sonstiges">Sonstiges</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Gehalt-spezifisch -->
+                    <div id="fieldsetGehalt" style="display:none;flex-direction:column;gap:14px;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Brutto (€)</label>
+                                <input type="number" id="uploadBrutto" placeholder="0,00" step="0.01" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Netto (€)</label>
+                                <input type="number" id="uploadNetto" placeholder="0,00" step="0.01" min="0">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Arbeitgeber</label>
+                                <input type="text" id="uploadArbeitgeber" placeholder="z.B. Firma GmbH">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Monat</label>
+                                <select id="uploadMonat">
+                                    <option value="01">Januar</option><option value="02">Februar</option>
+                                    <option value="03">März</option><option value="04">April</option>
+                                    <option value="05">Mai</option><option value="06">Juni</option>
+                                    <option value="07">Juli</option><option value="08">August</option>
+                                    <option value="09">September</option><option value="10">Oktober</option>
+                                    <option value="11">November</option><option value="12">Dezember</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Steuer-spezifisch -->
+                    <div id="fieldsetSteuer" style="display:none;flex-direction:column;gap:14px;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Dokumentart</label>
+                                <select id="uploadSteuerArt">
+                                    <option value="lohnsteuerbescheinigung">Lohnsteuerbescheinigung</option>
+                                    <option value="steuerbescheid">Steuerbescheid</option>
+                                    <option value="spendenquittung">Spendenquittung</option>
+                                    <option value="versicherungsnachweis">Versicherungsnachweis</option>
+                                    <option value="werbungskosten">Werbungskosten-Beleg</option>
+                                    <option value="sonstiges">Sonstiges Steuerdokument</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Steuerjahr</label>
+                                <input type="number" id="uploadSteuerjahr" placeholder="2024" min="2000" max="2099">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Notiz</label>
+                        <textarea id="uploadNotiz" placeholder="Optionale Notiz…" style="min-height:70px;"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="dok-modal-footer">
+                <button class="btn-ghost" onclick="closeUploadModal()">Abbrechen</button>
+                <button class="btn-primary" id="uploadSubmitBtn" onclick="submitUpload()">
+                    <i class="ri-upload-2-line"></i> Hochladen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         DETAIL MODAL
+    ══════════════════════════════════════════ -->
+    <div class="dok-modal-overlay" id="detailModal" onclick="closeDetailModal(event)">
+        <div class="dok-modal dok-modal-wide" onclick="event.stopPropagation()">
+            <div class="dok-modal-header">
+                <h3 id="detailTitle">Dokument</h3>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn-ghost btn-sm" id="detailDownloadBtn" onclick="downloadCurrentDoc()">
+                        <i class="ri-download-line"></i> Herunterladen
+                    </button>
+                    <button class="dok-modal-close" onclick="closeDetailModal()"><i class="ri-close-line"></i></button>
+                </div>
+            </div>
+            <div class="dok-modal-body" id="detailBody"></div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    /* ── Stat-Karten ──────────────────────────── */
+    .dok-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 14px;
+        margin-bottom: 24px;
+    }
+    .dok-stat-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 18px 20px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        cursor: pointer;
+        transition: var(--transition);
+        position: relative;
+    }
+    .dok-stat-card:hover {
+        border-color: var(--border-accent);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-accent);
+    }
+    .dok-stat-icon {
+        width: 42px; height: 42px;
+        border-radius: var(--radius-md);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+    }
+    .dok-stat-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-3);
+        margin-bottom: 2px;
+    }
+    .dok-stat-value {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: var(--text-1);
+    }
+    .dok-stat-badge {
+        position: absolute; top: 10px; right: 10px;
+        background: var(--red);
+        color: #fff;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 20px;
+    }
+
+    /* ── Tabs ──────────────────────────────────── */
+    .dok-tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 6px;
+    }
+    .dok-tab {
+        display: flex; align-items: center; gap: 7px;
+        padding: 8px 16px;
+        border-radius: var(--radius-md);
+        background: none;
+        border: none;
+        color: var(--text-2);
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: var(--transition);
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .dok-tab:hover { background: var(--surface-2); color: var(--text-1); }
+    .dok-tab.active {
+        background: var(--accent-glow);
+        color: var(--accent-2);
+        border: 1px solid var(--border-accent);
+    }
+
+    /* ── Toolbar ───────────────────────────────── */
+    .dok-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+    .dok-search-wrap {
+        display: flex; align-items: center; gap: 10px;
+        background: var(--bg-3);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 0 14px;
+        flex: 1; min-width: 200px; max-width: 380px;
+        transition: var(--transition);
+    }
+    .dok-search-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .dok-search-wrap i { color: var(--text-3); font-size: 0.95rem; }
+    .dok-search-wrap input {
+        background: none; border: none; color: var(--text-1);
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.9rem; padding: 10px 0; width: 100%;
+    }
+    .dok-filter-select {
+        background: var(--bg-3);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        color: var(--text-2);
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.82rem;
+        padding: 8px 12px;
+        cursor: pointer;
+    }
+    .dok-view-toggle {
+        display: flex;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+    }
+    .dok-view-btn {
+        padding: 8px 12px;
+        background: none; border: none;
+        color: var(--text-3); cursor: pointer;
+        font-size: 0.95rem;
+        transition: var(--transition);
+    }
+    .dok-view-btn.active { background: var(--accent-glow); color: var(--accent-2); }
+    .dok-view-btn:hover:not(.active) { background: var(--surface-2); color: var(--text-2); }
+
+    /* ── Grid-Ansicht ─────────────────────────── */
+    .dok-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 16px;
+    }
+    .dok-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        position: relative;
+        overflow: hidden;
+    }
+    .dok-card::before {
+        content: '';
+        position: absolute; top: 0; left: 0; right: 0; height: 3px;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    .dok-card:hover { border-color: var(--border-accent); transform: translateY(-2px); box-shadow: var(--shadow-accent); }
+    .dok-card:hover::before { opacity: 1; }
+    .dok-card[data-typ="rechnungen"]::before { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+    .dok-card[data-typ="gehalt"]::before     { background: linear-gradient(90deg, var(--green), #4ade80); }
+    .dok-card[data-typ="steuer"]::before     { background: linear-gradient(90deg, var(--amber), #fde68a); }
+    .dok-card[data-typ="sonstiges"]::before  { background: linear-gradient(90deg, var(--red), #fca5a5); }
+
+    .dok-card-top {
+        display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    }
+    .dok-card-icon {
+        width: 44px; height: 44px;
+        border-radius: var(--radius-md);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem;
+        flex-shrink: 0;
+    }
+    .dok-card-menu {
+        background: none; border: none;
+        color: var(--text-3); cursor: pointer;
+        font-size: 1rem; padding: 4px;
+        border-radius: var(--radius-sm);
+        opacity: 0; transition: opacity 0.2s;
+    }
+    .dok-card:hover .dok-card-menu { opacity: 1; }
+    .dok-card-menu:hover { background: var(--surface-2); color: var(--text-1); }
+
+    .dok-card-name {
+        font-weight: 700; font-size: 0.9rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        color: var(--text-1);
+    }
+    .dok-card-sub {
+        font-size: 0.75rem; color: var(--text-3); margin-top: 2px;
+    }
+    .dok-card-meta {
+        display: flex; align-items: center; justify-content: space-between;
+        font-size: 0.78rem;
+    }
+    .dok-status-badge {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 3px 9px;
+        border-radius: 20px;
+        font-size: 0.72rem;
+        font-weight: 700;
+    }
+    .dok-status-badge.offen     { background: rgba(245,158,11,0.15); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+    .dok-status-badge.bezahlt   { background: rgba(34,197,94,0.15);  color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .dok-status-badge.ueberfaellig { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+    /* ── Listen-Ansicht ───────────────────────── */
+    .dok-list {
+        display: flex; flex-direction: column; gap: 6px;
+    }
+    .dok-list-row {
+        display: flex; align-items: center; gap: 14px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 12px 16px;
+        cursor: pointer;
+        transition: var(--transition);
+    }
+    .dok-list-row:hover { border-color: var(--border-accent); background: var(--surface-2); }
+    .dok-list-icon {
+        width: 34px; height: 34px;
+        border-radius: var(--radius-sm);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1rem; flex-shrink: 0;
+    }
+    .dok-list-name { font-weight: 600; font-size: 0.88rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dok-list-typ  { font-size: 0.75rem; color: var(--text-3); width: 130px; flex-shrink: 0; }
+    .dok-list-date { font-size: 0.78rem; color: var(--text-3); width: 90px; flex-shrink: 0; }
+    .dok-list-betrag { font-size: 0.85rem; font-weight: 700; width: 90px; flex-shrink: 0; text-align:right; }
+
+    /* ── Dropzone ─────────────────────────────── */
+    .dok-dropzone {
+        border: 2px dashed var(--border);
+        border-radius: var(--radius-lg);
+        padding: 36px 24px;
+        text-align: center;
+        transition: var(--transition);
+        margin-bottom: 20px;
+    }
+    .dok-dropzone.drag { border-color: var(--accent); background: var(--accent-glow); }
+
+    .dok-file-preview {
+        display: flex; align-items: center; gap: 12px;
+        background: var(--bg-3);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 12px 16px;
+        margin-bottom: 16px;
+    }
+    .dok-file-preview-icon {
+        width: 40px; height: 40px;
+        background: rgba(99,88,230,0.15); color: var(--accent-2);
+        border-radius: var(--radius-sm);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem; flex-shrink: 0;
+    }
+
+    /* ── Modal ────────────────────────────────── */
+    .dok-modal-overlay {
+        display: none;
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.7);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        backdrop-filter: blur(4px);
+    }
+    .dok-modal-overlay.active { display: flex; }
+    .dok-modal {
+        background: var(--bg-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-xl);
+        width: 100%; max-width: 540px;
+        max-height: 92vh;
+        display: flex; flex-direction: column;
+        box-shadow: var(--shadow-lg);
+        animation: modalIn 0.25s ease;
+    }
+    .dok-modal-wide { max-width: 720px; }
+    @keyframes modalIn {
+        from { opacity: 0; transform: translateY(20px) scale(0.97); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .dok-modal-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+    }
+    .dok-modal-header h3 { margin: 0; display:flex; align-items:center; gap:10px; }
+    .dok-modal-close {
+        background: none; border: none;
+        color: var(--text-3); cursor: pointer;
+        font-size: 1.3rem; padding: 4px;
+        border-radius: var(--radius-sm);
+        transition: var(--transition);
+    }
+    .dok-modal-close:hover { background: var(--surface-2); color: var(--text-1); }
+    .dok-modal-body {
+        padding: 24px;
+        overflow-y: auto;
+        flex: 1;
+    }
+    .dok-modal-footer {
+        display: flex; gap: 10px; justify-content: flex-end;
+        padding: 16px 24px;
+        border-top: 1px solid var(--border);
+        flex-shrink: 0;
+    }
+
+    /* ── Steuer-Checkliste ───────────────────── */
+    .dok-checklist-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 10px;
+    }
+    .dok-checklist-item {
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 14px;
+        border-radius: var(--radius-md);
+        background: var(--bg-3);
+        border: 1px solid var(--border);
+        font-size: 0.83rem;
+    }
+    .dok-checklist-item.done { background: rgba(34,197,94,0.07); border-color: rgba(34,197,94,0.2); }
+    .dok-checklist-item.done .dok-check-icon { color: var(--green); }
+    .dok-checklist-item:not(.done) .dok-check-icon { color: var(--text-3); }
+    .dok-check-icon { font-size: 1rem; flex-shrink: 0; }
+
+    /* ── Empty State ─────────────────────────── */
+    .dok-empty {
+        text-align: center;
+        padding: 80px 24px;
+        color: var(--text-3);
+    }
+    .dok-empty-icon {
+        font-size: 4rem; margin-bottom: 20px; opacity: 0.3;
+    }
+    .dok-empty h3 { color: var(--text-2); margin-bottom: 8px; }
+
+    /* ── Detail-Modal Inhalt ─────────────────── */
+    .dok-detail-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    @media (max-width: 600px) { .dok-detail-grid { grid-template-columns: 1fr; } }
+    .dok-detail-field {
+        background: var(--bg-3);
+        border-radius: var(--radius-md);
+        padding: 12px 14px;
+    }
+    .dok-detail-field-label { font-size: 0.7rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .dok-detail-field-value { font-size: 0.9rem; font-weight: 600; color: var(--text-1); }
+
+    .dok-pdf-preview {
+        width: 100%; height: 420px;
+        border: none; border-radius: var(--radius-md);
+        background: var(--bg-3);
+        margin-top: 16px;
+    }
+    .dok-img-preview {
+        width: 100%; max-height: 420px;
+        object-fit: contain;
+        border-radius: var(--radius-md);
+        background: var(--bg-3);
+        margin-top: 16px;
+    }
+
+    /* Context-Menu */
+    .dok-ctx-menu {
+        position: fixed;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 6px;
+        z-index: 2000;
+        min-width: 160px;
+        box-shadow: var(--shadow-lg);
+        animation: modalIn 0.15s ease;
+    }
+    .dok-ctx-item {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 12px;
+        border-radius: var(--radius-sm);
+        font-size: 0.85rem; color: var(--text-2);
+        cursor: pointer;
+        transition: var(--transition);
+        background: none; border: none;
+        width: 100%; text-align: left;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .dok-ctx-item:hover { background: var(--surface-2); color: var(--text-1); }
+    .dok-ctx-item.danger { color: var(--red); }
+    .dok-ctx-item.danger:hover { background: rgba(239,68,68,0.1); }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script src="/dokumente.js"></script>
+</body>
+</html>

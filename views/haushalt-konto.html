@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haushaltskonto – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div id="hkRoot">
+        <div style="text-align:center;padding:80px 24px;color:var(--text-3);">
+            <i class="ri-loader-4-line" style="font-size:2rem;display:block;margin-bottom:12px;animation:spin 1s linear infinite;"></i>
+            Lade Haushaltskonto…
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hk-setup { max-width: 560px; margin: 0 auto; }
+    .hk-setup-hero {
+        text-align: center; padding: 40px 24px 32px;
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-lg); margin-bottom: 20px;
+    }
+    .hk-setup-icon {
+        width: 72px; height: 72px; border-radius: 20px;
+        background: rgba(16,185,129,0.12); color: var(--haus-accent);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 2rem; margin: 0 auto 20px;
+    }
+    .hk-import-card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-lg); padding: 20px; margin-bottom: 12px;
+    }
+    .hk-import-card h4 { margin: 0 0 6px; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+    .hk-import-card p  { font-size: 0.82rem; color: var(--text-3); margin: 0 0 16px; }
+
+    .hk-header-card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-lg); padding: 28px 32px;
+        margin-bottom: 20px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+    }
+    .hk-konto-icon {
+        width: 64px; height: 64px; border-radius: 18px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.75rem; flex-shrink: 0;
+    }
+    .hk-konto-balance { font-size: 2.4rem; font-weight: 800; line-height: 1; }
+    .hk-konto-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .hk-stats {
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        gap: 14px; margin-bottom: 20px;
+    }
+    .hk-stat-card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-lg); padding: 18px 20px;
+    }
+    .hk-stat-label { font-size: 0.72rem; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    .hk-stat-val { font-size: 1.2rem; font-weight: 800; }
+
+    .hk-main-grid {
+        display: grid; grid-template-columns: 1fr 320px;
+        gap: 20px; align-items: start;
+    }
+
+    .hk-tx-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+    .hk-tx-row:last-child { border-bottom: none; }
+    .hk-tx-icon { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 0.88rem; flex-shrink: 0; }
+    .hk-tx-body { flex: 1; min-width: 0; }
+    .hk-tx-name { font-weight: 600; font-size: 0.87rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hk-tx-meta { font-size: 0.72rem; color: var(--text-3); margin-top: 2px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .hk-fixkost-badge {
+        display: inline-flex; align-items: center; gap: 3px;
+        background: rgba(99,88,230,0.12); color: var(--accent);
+        border-radius: 4px; padding: 1px 6px; font-size: 0.68rem; font-weight: 700;
+    }
+
+    .hk-cta-banner {
+        background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(16,185,129,0.03) 100%);
+        border: 1px solid rgba(16,185,129,0.25); border-radius: var(--radius-lg);
+        padding: 20px 24px; display: flex; align-items: center; gap: 16px;
+        margin-bottom: 20px; text-decoration: none; color: inherit;
+        transition: var(--transition); cursor: pointer;
+    }
+    .hk-cta-banner:hover { border-color: var(--haus-accent); background: rgba(16,185,129,0.12); }
+    .hk-cta-icon {
+        width: 48px; height: 48px; border-radius: 14px;
+        background: rgba(16,185,129,0.15); color: var(--haus-accent);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.4rem; flex-shrink: 0;
+    }
+
+    .hk-kat-bar { display: flex; flex-direction: column; gap: 10px; }
+    .hk-kat-item { font-size: 0.82rem; }
+    .hk-kat-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .hk-kat-track { background: var(--surface-2); border-radius: 4px; height: 6px; overflow: hidden; }
+    .hk-kat-fill  { height: 100%; border-radius: 4px; transition: width 0.5s; }
+
+    @media (max-width: 900px) { .hk-main-grid { grid-template-columns: 1fr; } .hk-stats { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 500px)  { .hk-header-card { padding: 18px 16px; } }
+    </style>
+
+    <script>
+    const fmt     = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtSign = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', signDisplay: 'always' });
+
+    let kontoData    = null;
+    let haushaltInfo = null;
+
+    async function init() {
+        try {
+            haushaltInfo = await fetch('/users/haushalt/status').then(r => r.json());
+            if (!haushaltInfo?.haushalt) return renderNoHaushalt();
+            await loadKonto();
+        } catch (e) {
+            document.getElementById('hkRoot').innerHTML =
+                '<div style="text-align:center;padding:60px;color:#ef4444;"><i class="ri-error-warning-line" style="font-size:2rem;display:block;margin-bottom:12px;"></i>Fehler beim Laden.</div>';
+        }
+    }
+
+    async function loadKonto() {
+        const res = await fetch('/users/haushalt/konto/data').then(r => r.json()).catch(() => null);
+        const k = res?.konto || null;
+        if (!k || !k.id) return renderSetup();
+        kontoData = k;
+        renderHauptseite();
+    }
+
+    function renderNoHaushalt() {
+        document.getElementById('hkRoot').innerHTML =
+            '<div style="max-width:520px;margin:0 auto;text-align:center;padding:60px 24px;">' +
+                '<i class="ri-home-heart-line" style="font-size:3rem;color:var(--haus-accent);display:block;margin-bottom:16px;opacity:0.6;"></i>' +
+                '<h2>Kein Haushalt vorhanden</h2>' +
+                '<p style="color:var(--text-3);">Erstelle oder tritt einem Haushalt bei.</p>' +
+                '<a href="/users/haushalt/einstellungen" class="btn-primary" style="margin-top:20px;display:inline-flex;background:var(--haus-accent);">Haushalt einrichten</a>' +
+            '</div>';
+    }
+
+    function renderSetup() {
+        const root = document.getElementById('hkRoot');
+        root.innerHTML =
+            '<div class="hk-setup">' +
+                '<div class="hk-setup-hero">' +
+                    '<div class="hk-setup-icon"><i class="ri-bank-card-line"></i></div>' +
+                    '<h2 style="margin:0 0 8px;">Haushaltskonto einrichten</h2>' +
+                    '<p style="color:var(--text-3);margin:0;">Verwaltet gemeinsame Finanzen an einem Ort. Fixkosten werden automatisch eingetragen.</p>' +
+                '</div>' +
+
+                '<div class="hk-import-card">' +
+                    '<h4><i class="ri-add-circle-line" style="color:var(--haus-accent);"></i> Neues Konto erstellen</h4>' +
+                    '<p>Legt ein neues gemeinsames Haushaltskonto an.</p>' +
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">' +
+                        '<div class="form-group" style="margin:0;"><label class="form-label">Kontoname</label><input type="text" id="newKontoName" placeholder="z.B. Haushaltskasse"></div>' +
+                        '<div class="form-group" style="margin:0;"><label class="form-label">Startguthaben (€)</label><input type="number" id="newKontoBalance" placeholder="0,00" step="0.01"></div>' +
+                    '</div>' +
+                    '<div class="form-group" style="margin:0 0 12px;"><label class="form-label">Farbe</label><input type="color" id="newKontoColor" value="#10b981" style="height:42px;padding:4px 8px;"></div>' +
+                    '<button class="btn-primary" style="background:var(--haus-accent);" onclick="createKonto()"><i class="ri-add-line"></i> Konto erstellen</button>' +
+                    '<div id="createMsg" style="margin-top:10px;font-size:0.83rem;"></div>' +
+                '</div>' +
+
+                '<div class="hk-import-card">' +
+                    '<h4><i class="ri-link" style="color:var(--accent);"></i> Privates Konto verknüpfen</h4>' +
+                    '<p>Verknüpfe ein bestehendes privates Konto als Haushaltskonto.</p>' +
+                    '<div class="form-group" style="margin:0 0 12px;"><label class="form-label">Konto auswählen</label><select id="linkKontoSelect"><option value="">Lade Konten…</option></select></div>' +
+                    '<button class="btn-primary" onclick="linkKonto()"><i class="ri-link"></i> Verknüpfen</button>' +
+                    '<div id="linkMsg" style="margin-top:10px;font-size:0.83rem;"></div>' +
+                '</div>' +
+            '</div>';
+
+        fetch('/users/haushalt/konto/meine-privaten').then(r => r.json()).then(konten => {
+            const sel = document.getElementById('linkKontoSelect');
+            if (!konten?.length) { sel.innerHTML = '<option>Keine privaten Konten gefunden</option>'; return; }
+            sel.innerHTML = konten.map(k => '<option value="' + k.id + '">' + escHtml(k.name) + ' (' + fmt.format(k.balance || 0) + ')</option>').join('');
+        }).catch(() => {});
+    }
+
+    async function createKonto() {
+        const name = document.getElementById('newKontoName').value.trim();
+        const balance = parseFloat(document.getElementById('newKontoBalance').value) || 0;
+        const color = document.getElementById('newKontoColor').value;
+        const msg = document.getElementById('createMsg');
+        if (!name) { msg.style.color = '#ef4444'; msg.textContent = 'Bitte einen Namen eingeben.'; return; }
+        const res = await fetch('/users/haushalt/konto/create', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, balance, color }) });
+        const data = await res.json();
+        if (!res.ok) { msg.style.color = '#ef4444'; msg.textContent = data.message; return; }
+        await loadKonto();
+    }
+
+    async function linkKonto() {
+        const id = document.getElementById('linkKontoSelect').value;
+        const msg = document.getElementById('linkMsg');
+        if (!id) { msg.style.color = '#ef4444'; msg.textContent = 'Bitte ein Konto auswählen.'; return; }
+        const res = await fetch('/users/haushalt/konto/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ account_id: id }) });
+        const data = await res.json();
+        if (!res.ok) { msg.style.color = '#ef4444'; msg.textContent = data.message; return; }
+        await loadKonto();
+    }
+
+    // ── Hauptseite ─────────────────────────────────────────────────
+    function renderHauptseite() {
+        const k   = kontoData;
+        const txs = k.transaktionen || [];
+        const heute     = new Date().toISOString().slice(0, 7);
+        const monatTxs  = txs.filter(t => (t.date || '').startsWith(heute));
+        const einnahmen = monatTxs.filter(t => t.type === 'Einnahmen').reduce((s, t) => s + t.amount, 0);
+        const ausgaben  = monatTxs.filter(t => t.type === 'Ausgaben').reduce((s, t) => s + t.amount, 0);
+        const balColor  = k.currentBalance >= 0 ? '#22c55e' : '#ef4444';
+
+        const root = document.getElementById('hkRoot');
+        root.innerHTML =
+            '<div class="page-header">' +
+                '<div>' +
+                    '<h1><i class="ri-bank-card-line" style="color:var(--haus-accent);margin-right:8px;"></i>Haushaltskonto</h1>' +
+                    '<p>Kontoübersicht für ' + escHtml(haushaltInfo.haushalt.name) + '</p>' +
+                '</div>' +
+            '</div>' +
+
+            '<a class="hk-cta-banner" href="/users/haushalt/tracker">' +
+                '<div class="hk-cta-icon"><i class="ri-exchange-2-line"></i></div>' +
+                '<div style="flex:1;">' +
+                    '<div style="font-weight:700;font-size:0.95rem;margin-bottom:2px;">Transaktionen verwalten</div>' +
+                    '<div style="font-size:0.8rem;color:var(--text-3);">Alle Transaktionen mit Filtern, Sortierung, Diagrammen und CSV-Export</div>' +
+                '</div>' +
+                '<i class="ri-arrow-right-line" style="color:var(--haus-accent);font-size:1.2rem;"></i>' +
+            '</a>' +
+
+            '<div class="hk-header-card">' +
+                '<div class="hk-konto-icon" style="background:' + k.color + '22;color:' + k.color + ';"><i class="ri-bank-card-line"></i></div>' +
+                '<div>' +
+                    '<div style="font-size:0.75rem;color:var(--text-3);margin-bottom:4px;">' + escHtml(k.name) + '</div>' +
+                    '<div class="hk-konto-balance" style="color:' + balColor + ';">' + fmt.format(k.currentBalance) + '</div>' +
+                    '<div style="font-size:0.73rem;color:var(--text-3);margin-top:4px;">Startguthaben: ' + fmt.format(k.balance) + (k.linked_account_id ? ' · <span style="color:var(--haus-accent);">🔗 Mit privatem Konto verknüpft</span>' : '') + '</div>' +
+                '</div>' +
+                '<div class="hk-konto-actions">' +
+                    '<button onclick="openEditKontoModal()" style="padding:8px 14px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;font-size:0.83rem;font-weight:600;"><i class="ri-settings-3-line"></i> Konto bearbeiten</button>' +
+                '</div>' +
+            '</div>' +
+
+            '<div class="hk-stats">' +
+                '<div class="hk-stat-card"><div class="hk-stat-label">Einnahmen (Monat)</div><div class="hk-stat-val positive">' + fmt.format(einnahmen) + '</div></div>' +
+                '<div class="hk-stat-card"><div class="hk-stat-label">Ausgaben (Monat)</div><div class="hk-stat-val negative">' + fmt.format(ausgaben) + '</div></div>' +
+                '<div class="hk-stat-card"><div class="hk-stat-label">Netto (Monat)</div><div class="hk-stat-val" style="color:' + (einnahmen - ausgaben >= 0 ? '#22c55e' : '#ef4444') + ';">' + fmtSign.format(einnahmen - ausgaben) + '</div></div>' +
+                '<div class="hk-stat-card"><div class="hk-stat-label">Transaktionen gesamt</div><div class="hk-stat-val">' + txs.length + '</div></div>' +
+            '</div>' +
+
+            '<div class="hk-main-grid">' +
+                '<div class="card">' +
+                    '<div class="card-header" style="margin-bottom:16px;">' +
+                        '<h3>Letzte Transaktionen</h3>' +
+                        '<a href="/users/haushalt/tracker" style="font-size:0.8rem;color:var(--haus-accent);text-decoration:none;font-weight:600;display:flex;align-items:center;gap:4px;">Alle anzeigen <i class="ri-arrow-right-line"></i></a>' +
+                    '</div>' +
+                    renderRecentTxs(txs) +
+                '</div>' +
+                '<div class="card">' +
+                    '<h4 style="margin:0 0 16px;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Ausgaben nach Kategorie (Monat)</h4>' +
+                    '<div class="hk-kat-bar" id="hkKatChart"></div>' +
+                '</div>' +
+            '</div>';
+
+        renderKatChart();
+    }
+
+    function renderRecentTxs(txs) {
+        const recent = txs.slice(0, 8);
+        if (!recent.length) return '<div style="text-align:center;padding:40px;color:var(--text-3);font-size:0.85rem;"><i class="ri-exchange-2-line" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.3;"></i>Noch keine Transaktionen<br><a href="/users/haushalt/tracker" style="color:var(--haus-accent);text-decoration:none;font-weight:600;">Erste Transaktion eintragen →</a></div>';
+        return recent.map(t => {
+            const inc = t.type === 'Einnahmen';
+            return '<div class="hk-tx-row">' +
+                '<div class="hk-tx-icon" style="background:' + (inc ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.1)') + ';color:' + (inc ? '#22c55e' : '#ef4444') + ';"><i class="' + (inc ? 'ri-arrow-down-line' : 'ri-arrow-up-line') + '"></i></div>' +
+                '<div class="hk-tx-body">' +
+                    '<div class="hk-tx-name">' + escHtml(t.name) + '</div>' +
+                    '<div class="hk-tx-meta"><span>' + new Date(t.date).toLocaleDateString('de-DE') + '</span><span>' + escHtml(t.category || '—') + '</span>' + (t.is_fixkost ? '<span class="hk-fixkost-badge"><i class="ri-repeat-line"></i> Fixkosten</span>' : '') + '</div>' +
+                '</div>' +
+                '<span class="' + (inc ? 'positive' : 'negative') + '" style="font-weight:800;font-size:0.9rem;white-space:nowrap;">' + fmtSign.format(t.amount * (inc ? 1 : -1)) + '</span>' +
+            '</div>';
+        }).join('');
+    }
+
+    function renderKatChart() {
+        const txs = kontoData.transaktionen || [];
+        const heute = new Date().toISOString().slice(0, 7);
+        const byKat = {};
+        txs.filter(t => t.type === 'Ausgaben' && (t.date || '').startsWith(heute)).forEach(t => { byKat[t.category || 'Sonstiges'] = (byKat[t.category || 'Sonstiges'] || 0) + t.amount; });
+        const total  = Object.values(byKat).reduce((s, v) => s + v, 0);
+        const sorted = Object.entries(byKat).sort((a, b) => b[1] - a[1]).slice(0, 7);
+        const el = document.getElementById('hkKatChart');
+        if (!el) return;
+        if (!sorted.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:0.82rem;">Keine Ausgaben diesen Monat</div>'; return; }
+        const color = kontoData.color || '#10b981';
+        el.innerHTML = sorted.map(([k, v]) => {
+            const pct = total > 0 ? (v / total * 100) : 0;
+            return '<div class="hk-kat-item"><div class="hk-kat-header"><span style="font-weight:500;">' + escHtml(k) + '</span><span class="negative" style="font-weight:700;">' + fmt.format(v) + '</span></div><div class="hk-kat-track"><div class="hk-kat-fill" style="width:' + pct + '%;background:' + color + ';"></div></div></div>';
+        }).join('');
+    }
+
+    function openEditKontoModal() {
+        const k = kontoData;
+
+        // Altes Modal entfernen falls vorhanden
+        const existing = document.getElementById('editKontoOverlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'editKontoOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+
+        const modal = document.createElement('div');
+        modal.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:420px;';
+        modal.innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
+                '<h3 style="margin:0;">Konto bearbeiten</h3>' +
+                '<button id="editKontoCloseX" style="width:32px;height:32px;border-radius:8px;background:var(--surface-2);border:none;color:var(--text-2);cursor:pointer;font-size:1.1rem;"><i class="ri-close-line"></i></button>' +
+            '</div>' +
+            '<div style="display:flex;flex-direction:column;gap:14px;">' +
+                '<div class="form-group"><label class="form-label">Kontoname</label><input type="text" id="editKontoName" value="' + escHtml(k.name) + '"></div>' +
+                '<div class="form-group"><label class="form-label">Startguthaben (€)</label><input type="number" id="editKontoBalance" value="' + k.balance + '" step="0.01"></div>' +
+                '<div class="form-group"><label class="form-label">Farbe</label><input type="color" id="editKontoColor" value="' + k.color + '" style="height:42px;padding:4px 8px;width:100%;"></div>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;margin-top:20px;">' +
+                '<button id="editKontoSave" class="btn-primary" style="flex:1;justify-content:center;background:var(--haus-accent);"><i class="ri-save-line"></i> Speichern</button>' +
+                '<button id="editKontoCancel" style="padding:10px 20px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;">Abbrechen</button>' +
+            '</div>' +
+            '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">' +
+                '<button id="editKontoDelete" style="width:100%;padding:9px;border-radius:var(--radius-md);background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;font-size:0.83rem;font-weight:600;"><i class="ri-delete-bin-line"></i> Konto löschen</button>' +
+            '</div>';
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Schließ-Handler
+        const closeModal = () => overlay.remove();
+        document.getElementById('editKontoCloseX').addEventListener('click', closeModal);
+        document.getElementById('editKontoCancel').addEventListener('click', closeModal);
+        overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+        // Speichern
+        document.getElementById('editKontoSave').addEventListener('click', async () => {
+            const name    = document.getElementById('editKontoName').value.trim();
+            const balance = parseFloat(document.getElementById('editKontoBalance').value) || 0;
+            const color   = document.getElementById('editKontoColor').value;
+            if (!name) { alert('Bitte Namen eingeben.'); return; }
+            const res = await fetch('/users/haushalt/konto', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, balance, color })
+            });
+            if (res.ok) { closeModal(); await loadKonto(); }
+            else { alert('Fehler beim Speichern.'); }
+        });
+
+        // Löschen
+        document.getElementById('editKontoDelete').addEventListener('click', async () => {
+            if (!confirm('Haushaltskonto und alle Transaktionen wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
+            const res = await fetch('/users/haushalt/konto', { method: 'DELETE' });
+            if (res.ok) { closeModal(); await loadKonto(); }
+            else { alert('Fehler beim Löschen.'); }
+        });
+    }
+
+    function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    init();
+    </script>
+    <script src="/navheader.js"></script>
+</body>
+</html>

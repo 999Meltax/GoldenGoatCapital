@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haushalt Einstellungen – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header">
+        <h1><i class="ri-settings-3-line" style="color:var(--haus-accent);margin-right:8px;"></i>Haushalt Einstellungen</h1>
+        <p>Haushalt verwalten, Partner einladen und Anzeigenamen anpassen</p>
+    </div>
+
+    <div id="einstellRoot">
+        <div style="text-align:center;padding:60px;color:var(--text-3);">
+            <i class="ri-loader-4-line" style="font-size:2rem;display:block;margin-bottom:12px;animation:spin 1s linear infinite;"></i>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .eins-section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        margin-bottom: 16px;
+    }
+    .eins-section h3 {
+        margin: 0 0 16px;
+        font-size: 1rem;
+        display: flex; align-items: center; gap: 8px;
+    }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script>
+    let haushalt = null;
+    let mitglieder = [];
+
+    async function init() {
+        const res = await fetch('/users/haushalt/status');
+        const data = await res.json();
+        if (!data.haushalt) {
+            document.getElementById('einstellRoot').innerHTML =
+                '<div class="eins-section" style="text-align:center;color:var(--text-3);">' +
+                'Kein Haushalt gefunden. <a href="/users/haushalt" style="color:var(--haus-accent);">Haushalt erstellen →</a>' +
+                '</div>';
+            return;
+        }
+        haushalt    = data.haushalt;
+        mitglieder  = data.mitglieder || [];
+        render();
+    }
+
+    function render() {
+        const root = document.getElementById('einstellRoot');
+        const name1 = mitglieder[0] ? (mitglieder[0].anzeigename || mitglieder[0].display_name || '') : '';
+        const name2 = mitglieder[1] ? (mitglieder[1].anzeigename || mitglieder[1].display_name || '') : '';
+
+        root.innerHTML =
+            // Haushalt umbenennen
+            '<div class="eins-section">' +
+                '<h3><i class="ri-home-heart-line" style="color:var(--haus-accent);"></i>Haushalt</h3>' +
+                '<div class="form-group" style="max-width:400px;margin-bottom:14px;">' +
+                    '<label class="form-label">Name des Haushalts</label>' +
+                    '<input type="text" id="hausName" value="' + escHtml(haushalt.name) + '">' +
+                '</div>' +
+                '<button onclick="saveHausName()" class="btn-primary" style="font-size:0.85rem;">' +
+                    '<i class="ri-save-line"></i> Speichern' +
+                '</button>' +
+                '<div id="hausNameMsg" style="margin-top:8px;font-size:0.82rem;"></div>' +
+            '</div>' +
+
+            // Anzeigenamen
+            '<div class="eins-section">' +
+                '<h3><i class="ri-user-line" style="color:var(--haus-accent);"></i>Mein Anzeigename</h3>' +
+                '<p style="font-size:0.83rem;color:var(--text-3);margin-bottom:14px;">Wird für alle Mitglieder dieses Haushalts sichtbar.</p>' +
+                '<div style="display:flex;gap:10px;align-items:flex-end;max-width:400px;">' +
+                    '<div class="form-group" style="flex:1;margin:0;">' +
+                        '<label class="form-label">Anzeigename</label>' +
+                        '<input type="text" id="myAnzeige" value="' + escHtml(haushalt.anzeigename || '') + '" placeholder="z.B. Max">' +
+                    '</div>' +
+                    '<button onclick="saveAnzeigename()" class="btn-primary" style="font-size:0.85rem;flex-shrink:0;">' +
+                        '<i class="ri-save-line"></i> Speichern' +
+                    '</button>' +
+                '</div>' +
+                '<div id="anzeigeMsg" style="margin-top:8px;font-size:0.82rem;"></div>' +
+            '</div>' +
+
+            // Mitglieder-Übersicht
+            '<div class="eins-section">' +
+                '<h3><i class="ri-group-line" style="color:var(--haus-accent);"></i>Mitglieder (' + mitglieder.length + ')</h3>' +
+                mitglieder.map(m =>
+                    '<div style="display:flex;align-items:center;gap:12px;padding:10px;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.12);border-radius:var(--radius-md);margin-bottom:8px;">' +
+                        '<div style="width:40px;height:40px;border-radius:50%;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--haus-accent);">' +
+                            (m.anzeigename || m.display_name || '?').charAt(0).toUpperCase() +
+                        '</div>' +
+                        '<div>' +
+                            '<div style="font-weight:700;">' + escHtml(m.anzeigename || m.display_name || '–') + '</div>' +
+                            '<div style="font-size:0.75rem;color:var(--text-3);">' + escHtml(m.email) + ' · ' + (m.rolle === 'admin' ? '👑 Admin' : '👤 Mitglied') + '</div>' +
+                        '</div>' +
+                    '</div>'
+                ).join('') +
+            '</div>' +
+
+            // Einladung
+            (mitglieder.length < 2 ?
+            '<div class="eins-section">' +
+                '<h3><i class="ri-user-add-line" style="color:var(--haus-accent);"></i>Partner einladen</h3>' +
+                '<p style="font-size:0.83rem;color:var(--text-3);margin-bottom:14px;">Generiere einen Einladungscode und teile ihn mit deinem Partner.</p>' +
+                '<div style="display:flex;gap:10px;align-items:flex-end;max-width:400px;">' +
+                    '<div class="form-group" style="flex:1;margin:0;">' +
+                        '<label class="form-label">E-Mail des Partners (optional)</label>' +
+                        '<input type="text" id="invEmail" placeholder="partner@email.de">' +
+                    '</div>' +
+                    '<button onclick="sendInvite()" class="btn-primary" style="font-size:0.85rem;flex-shrink:0;">' +
+                        '<i class="ri-mail-send-line"></i> Code generieren' +
+                    '</button>' +
+                '</div>' +
+                '<div id="invResult" style="margin-top:12px;"></div>' +
+            '</div>'
+            : '') +
+
+            // Haushalt verlassen
+            '<div class="eins-section" style="border-color:rgba(239,68,68,0.2);">' +
+                '<h3 style="color:#ef4444;"><i class="ri-logout-box-r-line"></i>Gefahrenzone</h3>' +
+                '<p style="font-size:0.83rem;color:var(--text-3);margin-bottom:14px;">Das Verlassen des Haushalts kann nicht rückgängig gemacht werden. Als Admin wird der Haushalt für alle Mitglieder gelöscht.</p>' +
+                '<button onclick="openLeaveModal()" style="padding:9px 18px;border-radius:var(--radius-md);background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;font-size:0.85rem;font-weight:600;">' +
+                    '<i class="ri-logout-box-r-line"></i> Haushalt verlassen' +
+                '</button>' +
+                '<div id="leaveMsg" style="margin-top:8px;font-size:0.82rem;"></div>' +
+            '</div>';
+    }
+
+    async function saveHausName() {
+        const name = document.getElementById('hausName').value.trim();
+        const msg  = document.getElementById('hausNameMsg');
+        if (!name) { msg.style.color='#ef4444'; msg.textContent='Bitte Namen eingeben.'; return; }
+        try {
+            await fetch('/users/haushalt/name', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+            msg.style.color = '#10b981'; msg.textContent = 'Gespeichert!';
+            setTimeout(() => msg.textContent = '', 2000);
+        } catch { msg.style.color='#ef4444'; msg.textContent='Fehler.'; }
+    }
+
+    async function saveAnzeigename() {
+        const anzeigename = document.getElementById('myAnzeige').value.trim();
+        const msg = document.getElementById('anzeigeMsg');
+        try {
+            await fetch('/users/haushalt/anzeigename', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ anzeigename }) });
+            msg.style.color = '#10b981'; msg.textContent = 'Gespeichert!';
+            setTimeout(() => msg.textContent = '', 2000);
+        } catch { msg.style.color='#ef4444'; msg.textContent='Fehler.'; }
+    }
+
+    async function sendInvite() {
+        const email  = document.getElementById('invEmail').value.trim();
+        const result = document.getElementById('invResult');
+        try {
+            const res = await fetch('/users/haushalt/invite', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ email: email || 'partner@example.com' })
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.message);
+            result.innerHTML =
+                '<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-md);padding:14px 16px;">' +
+                    '<div style="font-size:0.72rem;color:var(--text-3);margin-bottom:6px;">Einladungscode</div>' +
+                    '<div style="font-family:monospace;font-size:1.4rem;font-weight:800;color:var(--haus-accent);letter-spacing:0.15em;margin-bottom:10px;">' + d.code + '</div>' +
+                    '<button onclick="navigator.clipboard.writeText(\'' + d.code + '\').then(()=>this.textContent=\'✓ Kopiert!\')" ' +
+                        'style="padding:7px 14px;border-radius:var(--radius-md);background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;font-size:0.82rem;font-weight:600;">' +
+                        'Code kopieren' +
+                    '</button>' +
+                    '<p style="font-size:0.78rem;color:var(--text-3);margin:10px 0 0;">Dein Partner kann diesen Code unter <strong>Haushalt → Einladung annehmen</strong> eingeben.</p>' +
+                '</div>';
+        } catch (err) {
+            result.innerHTML = '<p style="color:#ef4444;font-size:0.85rem;">' + escHtml(err.message) + '</p>';
+        }
+    }
+
+    function escHtml(str) {
+        return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function openLeaveModal() {
+        const existing = document.getElementById('leaveModalOverlay');
+        if (existing) existing.remove();
+
+        const isAdmin = mitglieder.find(m => m.rolle === 'admin');
+        const ichBinAdmin = isAdmin && haushalt; // vereinfacht – serverseitig geprüft
+
+        const overlay = document.createElement('div');
+        overlay.id = 'leaveModalOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+
+        const modal = document.createElement('div');
+        modal.style.cssText = 'background:var(--surface);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:420px;';
+        modal.innerHTML =
+            '<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">' +
+                '<div style="width:48px;height:48px;border-radius:14px;background:rgba(239,68,68,0.12);color:#ef4444;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;">' +
+                    '<i class="ri-logout-box-r-line"></i>' +
+                '</div>' +
+                '<div>' +
+                    '<h3 style="margin:0;font-size:1rem;">Haushalt verlassen</h3>' +
+                    '<p style="margin:4px 0 0;font-size:0.8rem;color:var(--text-3);">Diese Aktion kann nicht rückgängig gemacht werden.</p>' +
+                '</div>' +
+            '</div>' +
+            '<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius-md);padding:12px 14px;font-size:0.83rem;color:var(--text-2);margin-bottom:20px;line-height:1.5;">' +
+                '<strong style="color:#ef4444;">Achtung:</strong> Als Admin wird der gesamte Haushalt für <strong>alle Mitglieder</strong> gelöscht. Alle gemeinsamen Transaktionen, Aufgaben und Einstellungen gehen verloren.' +
+            '</div>' +
+            '<div class="form-group" style="margin-bottom:20px;">' +
+                '<label class="form-label">Zur Bestätigung <strong style="color:#ef4444;">VERLASSEN</strong> eingeben</label>' +
+                '<input type="text" id="leaveConfirmInput" placeholder="VERLASSEN" style="border-color:rgba(239,68,68,0.3);">' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;">' +
+                '<button id="leaveConfirmBtn" style="flex:1;padding:10px;border-radius:var(--radius-md);background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;font-size:0.85rem;font-weight:700;opacity:0.4;pointer-events:none;">' +
+                    '<i class="ri-logout-box-r-line"></i> Endgültig verlassen' +
+                '</button>' +
+                '<button id="leaveCancelBtn" style="padding:10px 20px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;font-size:0.85rem;">Abbrechen</button>' +
+            '</div>';
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Eingabe-Validierung
+        const input = document.getElementById('leaveConfirmInput');
+        const confirmBtn = document.getElementById('leaveConfirmBtn');
+        input.addEventListener('input', () => {
+            const valid = input.value.trim() === 'VERLASSEN';
+            confirmBtn.style.opacity = valid ? '1' : '0.4';
+            confirmBtn.style.pointerEvents = valid ? 'auto' : 'none';
+        });
+
+        const closeModal = () => overlay.remove();
+        document.getElementById('leaveCancelBtn').addEventListener('click', closeModal);
+        overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+        confirmBtn.addEventListener('click', async () => {
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<i class="ri-loader-4-line"></i> Wird verarbeitet…';
+            try {
+                const res = await fetch('/users/haushalt/leave', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'Fehler');
+                closeModal();
+                window.location.href = '/users/overview';
+            } catch (err) {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '<i class="ri-logout-box-r-line"></i> Endgültig verlassen';
+                const msg = document.getElementById('leaveMsg');
+                if (msg) { msg.style.color = '#ef4444'; msg.textContent = err.message; }
+            }
+        });
+    }
+
+    init();</script>
+</body>
+</html>

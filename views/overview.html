@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" type="image/png" href="./assets/goldengoat.png">
+</head>
+
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <h1>Dashboard</h1>
+            <p id="dashGreeting">Dein finanzieller Überblick auf einen Blick</p>
+        </div>
+        <button class="ov-widget-btn" onclick="openWidgetConfig()" title="Widgets konfigurieren">
+            <i class="ri-layout-grid-line"></i>
+        </button>
+        <div class="account-filter-wrap" id="overviewFilterWrap" style="display:none;">
+            <button class="account-filter-btn" id="overviewFilterBtn" onclick="toggleOverviewFilter()">
+                <span class="filter-dot all" id="overviewFilterDot"></span>
+                <span id="overviewFilterLabel">Alle Konten</span>
+                <i class="ri-arrow-down-s-line filter-chevron"></i>
+            </button>
+            <div class="account-filter-dropdown" id="overviewFilterDropdown">
+                <div class="account-filter-header">
+                    <span>Konten filtern</span>
+                    <div class="account-filter-header-actions">
+                        <button onclick="selectAllOverviewAccounts()">Alle</button>
+                        <button onclick="selectNoneOverviewAccounts()">Keine</button>
+                    </div>
+                </div>
+                <div id="overviewFilterItems"></div>
+            </div>
+        </div>
+    </div>
+
+
+
+        <!-- ── Stat-Karten ──────────────────────────────────────── -->
+    <div class="ov-stats" id="widget-stats">
+        <div class="ov-stat-card">
+            <div class="ov-stat-icon blue"><i class="ri-bank-line"></i></div>
+            <div class="ov-stat-body">
+                <div class="ov-stat-label">Gesamtvermögen</div>
+                <div class="ov-stat-value" id="ovWealth">€ 0,00</div>
+            </div>
+        </div>
+        <div class="ov-stat-card">
+            <div class="ov-stat-icon green"><i class="ri-arrow-up-line"></i></div>
+            <div class="ov-stat-body">
+                <div class="ov-stat-label">Einnahmen (dieser Monat)</div>
+                <div class="ov-stat-value positive" id="ovIncome">€ 0,00</div>
+            </div>
+        </div>
+        <div class="ov-stat-card">
+            <div class="ov-stat-icon red"><i class="ri-arrow-down-line"></i></div>
+            <div class="ov-stat-body">
+                <div class="ov-stat-label">Ausgaben (dieser Monat)</div>
+                <div class="ov-stat-value negative" id="ovExpense">€ 0,00</div>
+            </div>
+        </div>
+        <div class="ov-stat-card clickable" onclick="window.location.href='/users/dokumente'">
+            <div class="ov-stat-icon amber"><i class="ri-bill-line"></i></div>
+            <div class="ov-stat-body">
+                <div class="ov-stat-label">Offene Rechnungen</div>
+                <div class="ov-stat-value" id="ovOpenBillsCount">0</div>
+            </div>
+            <i class="ri-arrow-right-s-line" style="color:var(--text-3);font-size:1.1rem;flex-shrink:0;"></i>
+        </div>
+        <div class="ov-stat-card clickable" onclick="window.location.href='/users/schulden'">
+            <div class="ov-stat-icon purple"><i class="ri-scales-line"></i></div>
+            <div class="ov-stat-body">
+                <div class="ov-stat-label">Gesamtschulden</div>
+                <div class="ov-stat-value" id="ovTotalDebt">€ 0,00</div>
+            </div>
+            <i class="ri-arrow-right-s-line" style="color:var(--text-3);font-size:1.1rem;flex-shrink:0;"></i>
+        </div>
+    </div>
+
+    <!-- ── Schnellerfassung Modal ───────────────────────────── -->
+    <div class="modal-overlay" id="quickAddOverlay" onclick="closeQuickAdd(event)" style="display:none;">
+        <div class="modal" style="max-width:440px;width:100%;" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3><i class="ri-add-circle-line" style="color:var(--accent);margin-right:8px;"></i>Transaktion erfassen</h3>
+                <button class="modal-close" onclick="closeQuickAdd()"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+                <!-- Typ Toggle -->
+                <div style="display:flex;gap:8px;">
+                    <button class="qa-type-btn active" id="qaBtnAusgabe" onclick="setQaType('Ausgaben')">
+                        <i class="ri-arrow-down-line"></i> Ausgabe
+                    </button>
+                    <button class="qa-type-btn" id="qaBtnEinnahme" onclick="setQaType('Einnahmen')">
+                        <i class="ri-arrow-up-line"></i> Einnahme
+                    </button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Name / Beschreibung</label>
+                        <input type="text" id="qaName" class="form-input" placeholder="z.B. Supermarkt, Gehalt …" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Betrag (€)</label>
+                        <input type="number" id="qaAmount" class="form-input" placeholder="0,00" min="0.01" step="0.01" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Datum</label>
+                        <input type="date" id="qaDate" class="form-input" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Kategorie</label>
+                        <select id="qaCategory" class="form-input"></select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Konto</label>
+                        <select id="qaAccount" class="form-input"></select>
+                    </div>
+                </div>
+                <div id="qaStatus" style="font-size:0.82rem;color:#ef4444;display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-ghost" onclick="closeQuickAdd()">Abbrechen</button>
+                <button class="btn-primary" onclick="submitQuickAdd()"><i class="ri-check-line"></i> Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Phase-5-Zeile: Score + Cashflow + Monatsvergleich ── -->
+    <div class="ov-phase5-row" id="widget-phase5">
+
+        <!-- Finanz-Score -->
+        <div class="card ov-score-card">
+            <div class="card-header">
+                <h3><i class="ri-award-line" style="color:var(--accent);margin-right:6px;"></i>Finanz-Score</h3>
+                <button class="btn-ghost btn-sm" onclick="toggleScoreDetails()" id="scoreDetailsBtn" style="font-size:0.75rem;">Details</button>
+            </div>
+            <div class="ov-score-body">
+                <div class="ov-score-gauge-wrap">
+                    <canvas id="scoreGauge" width="180" height="100"></canvas>
+                    <div class="ov-score-center">
+                        <div class="ov-score-number" id="scoreNumber">–</div>
+                        <div class="ov-score-label" id="scoreLabel">–</div>
+                    </div>
+                </div>
+                <div class="ov-score-details" id="scoreDetails" style="display:none;">
+                    <div class="ov-score-detail-item" id="sdSparquote"></div>
+                    <div class="ov-score-detail-item" id="sdBudget"></div>
+                    <div class="ov-score-detail-item" id="sdNotgroschen"></div>
+                    <div class="ov-score-detail-item" id="sdSchulden"></div>
+                </div>
+                <div class="ov-score-tip" id="scoreTip"></div>
+            </div>
+        </div>
+
+        <!-- Cashflow-Widget -->
+        <div class="card ov-cashflow-card">
+            <div class="card-header">
+                <h3><i class="ri-exchange-funds-line" style="color:#22c55e;margin-right:6px;"></i>Cashflow</h3>
+                <span style="font-size:0.78rem;color:var(--text-3);" id="cashflowMonatLabel">–</span>
+            </div>
+            <div class="ov-cashflow-body">
+                <div class="ov-cashflow-bars" id="cashflowBars"></div>
+                <div class="ov-cashflow-net" id="cashflowNet"></div>
+            </div>
+        </div>
+
+        <!-- Monatsvergleich -->
+        <div class="card ov-compare-card">
+            <div class="card-header">
+                <h3><i class="ri-bar-chart-grouped-line" style="color:#f59e0b;margin-right:6px;"></i>Monatsvergleich</h3>
+                <span style="font-size:0.78rem;color:var(--text-3);">Aktuell vs. Vormonat</span>
+            </div>
+            <div id="ovMonthCompare" style="display:flex;flex-direction:column;gap:10px;padding-top:4px;overflow-y:auto;flex:1;"></div>
+        </div>
+
+    </div>
+
+    <!-- ── Mittlere Zeile: Chart + Konten ───────────────────── -->
+    <div class="ov-mid-row" id="widget-vermoegensverlauf">
+        <div class="card ov-chart-card">
+            <div class="card-header">
+                <h3>Vermögensverlauf</h3>
+                <span style="font-size:0.78rem;color:var(--text-3);">Letzte 6 Monate</span>
+            </div>
+            <div style="flex:1;position:relative;min-height:0;">
+                <canvas id="ovWealthChart"></canvas>
+            </div>
+        </div>
+        <div class="card ov-accounts-card">
+            <div class="card-header">
+                <h3>Konten</h3>
+                <a href="/users/meine-finanzen" style="font-size:0.82rem;color:var(--text-3);">Alle <i class="ri-arrow-right-line"></i></a>
+            </div>
+            <div id="ovAccountsList" style="display:flex;flex-direction:column;overflow-y:auto;flex:1;padding-right:2px;"></div>
+        </div>
+    </div>
+
+    <!-- ── Untere Zeile: 3 Spalten ──────────────────────────── -->
+    <div class="ov-bottom-row" id="widget-aufgaben">
+
+        <!-- Anstehende Zahlungen (Fixkosten nächste 7 Tage) -->
+        <div class="card ov-bottom-card">
+            <div class="card-header">
+                <h3><i class="ri-calendar-check-line" style="color:var(--accent);margin-right:6px;"></i>Anstehende Zahlungen</h3>
+                <span style="font-size:0.78rem;color:var(--text-3);">Nächste 7 Tage</span>
+            </div>
+            <div id="ovUpcoming" style="display:flex;flex-direction:column;overflow-y:auto;flex:1;"></div>
+        </div>
+
+        <!-- Offene Rechnungen -->
+        <div class="card ov-bottom-card">
+            <div class="card-header">
+                <h3><i class="ri-file-text-line" style="color:#f59e0b;margin-right:6px;"></i>Offene Rechnungen</h3>
+                <a href="/users/dokumente" style="font-size:0.82rem;color:var(--text-3);">Alle <i class="ri-arrow-right-line"></i></a>
+            </div>
+            <div id="ovBillsList" style="display:flex;flex-direction:column;overflow-y:auto;flex:1;"></div>
+        </div>
+
+        <!-- Todos & Heutige Events -->
+        <div class="card ov-bottom-card">
+            <div class="card-header">
+                <h3><i class="ri-checkbox-line" style="color:#22c55e;margin-right:6px;"></i>Aufgaben & Termine</h3>
+                <a href="/users/todo" style="font-size:0.82rem;color:var(--text-3);">Alle <i class="ri-arrow-right-line"></i></a>
+            </div>
+            <div id="ovTodosEvents" style="display:flex;flex-direction:column;overflow-y:auto;flex:1;"></div>
+        </div>
+
+    </div>
+
+    <!-- ── Schulden-Zeile ───────────────────────────────────── -->
+    <div class="ov-schulden-row" id="widget-schulden">
+        <div class="card ov-bottom-card">
+            <div class="card-header">
+                <h3><i class="ri-scales-line" style="color:#a855f7;margin-right:6px;"></i>Schuldenübersicht</h3>
+                <a href="/users/schulden" style="font-size:0.82rem;color:var(--text-3);">Verwalten <i class="ri-arrow-right-line"></i></a>
+            </div>
+            <div id="ovSchuldenList" style="display:flex;flex-direction:column;overflow-y:auto;flex:1;"></div>
+        </div>
+        <div class="card ov-bottom-card">
+            <div class="card-header">
+                <h3><i class="ri-pie-chart-2-line" style="color:#a855f7;margin-right:6px;"></i>Schulden nach Typ</h3>
+                <span style="font-size:0.78rem;color:var(--text-3);" id="ovSchuldenTotal"></span>
+            </div>
+            <div style="flex:1;position:relative;min-height:0;display:flex;align-items:center;justify-content:center;">
+                <canvas id="ovSchuldenChart"></canvas>
+                <div id="ovSchuldenChartEmpty" class="ov-empty" style="display:none;">
+                    <i class="ri-scales-line"></i>Keine Schulden erfasst
+                </div>
+            </div>
+        </div>
+        <div class="card ov-bottom-card">
+            <div class="card-header">
+                <h3><i class="ri-calendar-schedule-line" style="color:#a855f7;margin-right:6px;"></i>Monatliche Raten</h3>
+                <span style="font-size:0.78rem;color:var(--text-3);" id="ovSchuldenRatenLabel"></span>
+            </div>
+            <div id="ovSchuldenRaten" style="display:flex;flex-direction:column;overflow-y:auto;flex:1;"></div>
+        </div>
+    </div>
+
+    <!-- ── Widget-Drawer (Slide-in von rechts) ────────────────── -->
+    <div class="ov-drawer-backdrop" id="widgetDrawerBackdrop" onclick="closeWidgetConfig()"></div>
+    <div class="ov-drawer" id="widgetDrawer">
+        <div class="ov-drawer-header">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;border-radius:10px;background:rgba(99,88,230,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1rem;">
+                    <i class="ri-layout-grid-line"></i>
+                </div>
+                <div>
+                    <div style="font-weight:700;font-size:0.95rem;">Widgets</div>
+                    <div style="font-size:0.72rem;color:var(--text-3);">Dashboard anpassen</div>
+                </div>
+            </div>
+            <button class="ov-drawer-close" onclick="closeWidgetConfig()"><i class="ri-close-line"></i></button>
+        </div>
+        <div class="ov-drawer-body">
+            <p style="font-size:0.8rem;color:var(--text-3);margin-bottom:18px;line-height:1.6;">Zeige oder verstecke Bereiche auf deinem Dashboard. Änderungen werden sofort gespeichert.</p>
+            <div id="widgetToggleList" style="display:flex;flex-direction:column;gap:8px;"></div>
+        </div>
+        <div class="ov-drawer-footer">
+            <button class="ov-drawer-reset" onclick="resetWidgets()">
+                <i class="ri-refresh-line"></i> Alle einblenden
+            </button>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    /* ── Phase 5 Row ──────────────────────────────────────── */
+    .ov-phase5-row {
+        display: grid;
+        grid-template-columns: 220px 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .ov-score-card, .ov-cashflow-card, .ov-compare-card {
+        display: flex; flex-direction: column;
+        height: clamp(200px, 22vw, 280px);
+        overflow: hidden;
+    }
+
+    /* Score */
+    .ov-score-body { display:flex; flex-direction:column; align-items:center; flex:1; padding: 4px 0; overflow:hidden; }
+    .ov-score-gauge-wrap { position:relative; width:180px; height:100px; flex-shrink:0; }
+    .ov-score-center {
+        position:absolute; bottom:0; left:50%; transform:translateX(-50%);
+        text-align:center; line-height:1.2;
+    }
+    .ov-score-number { font-size:1.8rem; font-weight:900; color:var(--text-1); }
+    .ov-score-label  { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; }
+    .ov-score-details { width:100%; padding: 6px 4px 0; display:flex; flex-direction:column; gap:4px; }
+    .ov-score-detail-item { font-size:0.72rem; color:var(--text-2); display:flex; justify-content:space-between; align-items:center; }
+    .ov-score-tip {
+        font-size:0.72rem; color:var(--text-3); text-align:center;
+        padding: 6px 8px 0; line-height:1.4; flex:1;
+        display:flex; align-items:flex-end; justify-content:center;
+    }
+
+    /* Cashflow */
+    .ov-cashflow-body { display:flex; flex-direction:column; flex:1; padding:4px 0; gap:8px; }
+    .ov-cashflow-bars { display:flex; flex-direction:column; gap:10px; flex:1; justify-content:center; }
+    .ov-cashflow-bar-row { display:flex; align-items:center; gap:10px; }
+    .ov-cashflow-bar-label { font-size:0.75rem; color:var(--text-3); width:68px; flex-shrink:0; }
+    .ov-cashflow-bar-track { flex:1; height:10px; background:var(--border); border-radius:5px; overflow:hidden; }
+    .ov-cashflow-bar-fill  { height:100%; border-radius:5px; transition:width 0.5s ease; }
+    .ov-cashflow-bar-val   { font-size:0.78rem; font-weight:700; width:80px; text-align:right; flex-shrink:0; }
+    .ov-cashflow-net {
+        display:flex; align-items:center; justify-content:space-between;
+        padding:8px 12px; border-radius:10px; font-size:0.82rem; font-weight:700;
+        border: 1px solid var(--border);
+    }
+
+    /* Monatsvergleich */
+    .ov-compare-row {
+        display:flex; align-items:center; gap:10px;
+        font-size:0.82rem;
+    }
+    .ov-compare-label { flex:1; color:var(--text-2); font-weight:500; }
+    .ov-compare-vals  { display:flex; flex-direction:column; align-items:flex-end; gap:1px; }
+    .ov-compare-this  { font-weight:700; font-size:0.85rem; }
+    .ov-compare-prev  { font-size:0.7rem; color:var(--text-3); }
+    .ov-compare-delta {
+        font-size:0.7rem; font-weight:700; padding:2px 6px; border-radius:8px; white-space:nowrap;
+    }
+    .ov-compare-delta.pos { background:rgba(34,197,94,0.15); color:#22c55e; }
+    .ov-compare-delta.neg { background:rgba(239,68,68,0.12); color:#ef4444; }
+    .ov-compare-delta.neu { background:rgba(255,255,255,0.06); color:var(--text-3); }
+
+    /* Quick Add */
+    .qa-type-btn {
+        flex:1; padding:9px 14px; border-radius:10px; cursor:pointer; font-size:0.85rem; font-weight:600;
+        border: 1px solid var(--border); background:var(--surface-2); color:var(--text-2);
+        transition:var(--transition); display:flex; align-items:center; justify-content:center; gap:6px;
+        font-family: inherit;
+    }
+    .qa-type-btn.active {
+        background:var(--accent); color:#fff; border-color:var(--accent);
+        box-shadow: 0 0 16px var(--accent-glow);
+    }
+
+    /* ── Stat Cards ───────────────────────────────────────── */
+    .ov-stats {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .ov-stat-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 18px 20px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        transition: var(--transition);
+    }
+    .ov-stat-card.clickable { cursor: pointer; }
+    .ov-stat-card.clickable:hover {
+        border-color: var(--border-accent);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-accent);
+    }
+    .ov-stat-icon {
+        width: 44px; height: 44px;
+        border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem; flex-shrink: 0;
+    }
+    .ov-stat-icon.blue   { background: rgba(59,130,246,0.15);  color: #3b82f6; }
+    .ov-stat-icon.green  { background: rgba(34,197,94,0.15);   color: #22c55e; }
+    .ov-stat-icon.red    { background: rgba(239,68,68,0.12);   color: #ef4444; }
+    .ov-stat-icon.amber  { background: rgba(245,158,11,0.15);  color: #f59e0b; }
+    .ov-stat-icon.purple { background: rgba(168,85,247,0.15);  color: #a855f7; }
+    .ov-stat-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+    .ov-stat-label { font-size: 0.75rem; color: var(--text-3); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ov-stat-value { font-size: 1.22rem; font-weight: 800; color: var(--text-1); }
+
+    /* ── Mid Row ──────────────────────────────────────────── */
+    .ov-mid-row {
+        display: grid;
+        grid-template-columns: 1fr 290px;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .ov-chart-card {
+        display: flex; flex-direction: column;
+        height: clamp(260px, 26vw, 340px);
+    }
+    .ov-accounts-card {
+        display: flex; flex-direction: column;
+        height: clamp(260px, 26vw, 340px);
+        overflow: hidden;
+    }
+
+    /* ── Bottom Row ───────────────────────────────────────── */
+    .ov-bottom-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 28px;
+    }
+    .ov-bottom-card {
+        display: flex; flex-direction: column;
+        height: clamp(240px, 24vw, 320px);
+        overflow: hidden;
+    }
+
+    /* ── Row Items ────────────────────────────────────────── */
+    .ov-row-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.84rem;
+        cursor: default;
+    }
+    .ov-row-item:last-child { border-bottom: none; }
+    .ov-row-item.link { cursor: pointer; transition: var(--transition); }
+    .ov-row-item.link:hover { padding-left: 4px; }
+    .ov-row-item-icon {
+        width: 30px; height: 30px;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.82rem; flex-shrink: 0;
+    }
+    .ov-row-item-main { flex: 1; min-width: 0; }
+    .ov-row-item-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ov-row-item-sub  { font-size: 0.72rem; color: var(--text-3); margin-top: 1px; }
+    .ov-row-item-right { text-align: right; flex-shrink: 0; }
+    .ov-row-item-amount { font-weight: 700; font-size: 0.84rem; }
+
+    /* Account list item */
+    .ov-acc-item {
+        display: flex; align-items: center; gap: 10px;
+        padding: 9px 0;
+        border-bottom: 1px solid var(--border);
+        cursor: pointer; text-decoration: none;
+        transition: var(--transition);
+    }
+    .ov-acc-item:last-child { border-bottom: none; }
+    .ov-acc-item:hover { padding-left: 4px; }
+    .ov-acc-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .ov-acc-name { flex: 1; font-size: 0.85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ov-acc-type { font-size: 0.72rem; color: var(--text-3); }
+    .ov-acc-balance { font-size: 0.87rem; font-weight: 700; }
+
+    /* Badges */
+    .ov-badge {
+        font-size: 0.7rem; font-weight: 700;
+        padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+    }
+    .ov-badge.today        { background: rgba(239,68,68,0.15);  color: #ef4444; }
+    .ov-badge.soon         { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .ov-badge.normal       { background: rgba(99,88,230,0.12);  color: var(--accent); }
+    .ov-badge.ueberfaellig { background: rgba(239,68,68,0.15);  color: #ef4444; }
+    .ov-badge.offen        { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .ov-badge.done         { background: rgba(34,197,94,0.12);  color: #22c55e; }
+
+    /* Empty state */
+    .ov-empty {
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 6px; padding: 20px;
+        color: var(--text-3); font-size: 0.82rem; text-align: center; flex: 1;
+    }
+    .ov-empty i { font-size: 1.6rem; opacity: 0.35; }
+
+    /* Responsive */
+    /* Schulden-Zeile */
+    .ov-schulden-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 28px;
+    }
+
+    @media (max-width: 1100px) {
+        .ov-stats        { grid-template-columns: repeat(3, 1fr); }
+        .ov-mid-row      { grid-template-columns: 1fr; }
+        .ov-accounts-card { height: auto; max-height: 260px; }
+        .ov-schulden-row { grid-template-columns: 1fr 1fr; }
+        .ov-phase5-row   { grid-template-columns: 1fr 1fr; }
+        .ov-score-card   { grid-column: 1 / -1; height: auto; }
+    }
+    @media (max-width: 768px) {
+        .ov-bottom-row   { grid-template-columns: 1fr; }
+        .ov-schulden-row { grid-template-columns: 1fr; }
+        .ov-stats        { grid-template-columns: repeat(2, 1fr); }
+        .ov-phase5-row   { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 480px) {
+        .ov-stats { grid-template-columns: 1fr; }
+    }
+    /* ── Widget-Icon-Button ─────────────────────────────────── */
+    .ov-widget-btn {
+        width: 40px; height: 40px;
+        border-radius: var(--radius-md);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        color: var(--text-2);
+        font-size: 1.1rem;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        transition: var(--transition);
+        flex-shrink: 0;
+    }
+    .ov-widget-btn:hover {
+        background: rgba(99,88,230,0.12);
+        border-color: var(--accent);
+        color: var(--accent);
+    }
+
+    /* ── Widget-Drawer ──────────────────────────────────────── */
+    .ov-drawer-backdrop {
+        display: none;
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.45);
+        z-index: 900;
+        backdrop-filter: blur(2px);
+    }
+    .ov-drawer-backdrop.open { display: block; }
+    .ov-drawer {
+        position: fixed;
+        top: 0; right: 0; bottom: 0;
+        width: 320px;
+        max-width: 90vw;
+        background: var(--surface);
+        border-left: 1px solid var(--border);
+        z-index: 901;
+        display: flex; flex-direction: column;
+        transform: translateX(100%);
+        transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: -8px 0 40px rgba(0,0,0,0.3);
+    }
+    .ov-drawer.open { transform: translateX(0); }
+    .ov-drawer-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 20px 20px 16px;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+    }
+    .ov-drawer-close {
+        width: 32px; height: 32px;
+        border-radius: 8px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        color: var(--text-3);
+        font-size: 1rem;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        transition: var(--transition);
+        font-family: inherit;
+    }
+    .ov-drawer-close:hover { color: var(--text-1); border-color: var(--border-accent); }
+    .ov-drawer-body {
+        flex: 1; overflow-y: auto;
+        padding: 20px;
+    }
+    .ov-drawer-footer {
+        padding: 16px 20px;
+        border-top: 1px solid var(--border);
+        flex-shrink: 0;
+    }
+    .ov-drawer-reset {
+        width: 100%;
+        padding: 10px;
+        border-radius: var(--radius-md);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        color: var(--text-3);
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center; gap: 6px;
+        transition: var(--transition);
+        font-family: inherit;
+    }
+    .ov-drawer-reset:hover { color: var(--text-1); border-color: var(--border-accent); }
+
+    /* ── Widget-Toggle-Row ──────────────────────────────────── */
+    .widget-toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        transition: var(--transition);
+    }
+    .widget-toggle-row:hover { border-color: var(--border-accent); }
+    .widget-toggle-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-1);
+        pointer-events: none;
+    }
+    .widget-toggle-icon {
+        width: 30px; height: 30px;
+        border-radius: 8px;
+        background: rgba(99,88,230,0.1);
+        color: var(--accent);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.85rem;
+        flex-shrink: 0;
+    }
+    .widget-toggle-switch {
+        width: 42px; height: 24px;
+        border-radius: 12px;
+        background: var(--surface);
+        border: 1.5px solid var(--border);
+        position: relative;
+        cursor: pointer;
+        transition: background 0.2s, border-color 0.2s;
+        flex-shrink: 0;
+        pointer-events: none;
+    }
+    .widget-toggle-switch.on {
+        background: var(--accent);
+        border-color: var(--accent);
+    }
+    .widget-toggle-knob {
+        position: absolute;
+        top: 2px; left: 2px;
+        width: 16px; height: 16px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform 0.2s;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    }
+    .widget-toggle-switch.on .widget-toggle-knob { transform: translateX(18px); }
+    .modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 16px 24px;
+        border-top: 1px solid var(--border);
+        gap: 10px;
+    }
+    </style>
+
+    <script src="/overview.js"></script>
+    <script src="/common.js"></script>
+    <script src="/navheader.js"></script>
+</body>
+
+</html>

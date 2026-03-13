@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ausgabentracker – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" type="image/png" href="./assets/goldengoat.png">
+</head>
+
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header">
+        <div>
+            <h1>Ausgabentracker</h1>
+            <p>Verwalte deine Einnahmen und Ausgaben</p>
+        </div>
+        <!-- Account Filter Pill -->
+        <div class="account-filter-wrap" id="trackerFilterWrap">
+            <button class="account-filter-btn" id="trackerFilterBtn" onclick="toggleTrackerFilter()">
+                <span class="filter-dot all" id="trackerFilterDot"></span>
+                <span id="trackerFilterLabel">Alle Konten</span>
+                <i class="ri-arrow-down-s-line filter-chevron"></i>
+            </button>
+            <div class="account-filter-dropdown" id="trackerFilterDropdown">
+                <div class="account-filter-header">
+                    <span>Konten filtern</span>
+                    <div class="account-filter-header-actions">
+                        <button onclick="selectAllTrackerAccounts()">Alle</button>
+                        <button onclick="selectNoneTrackerAccounts()">Keine</button>
+                    </div>
+                </div>
+                <div id="trackerFilterItems"></div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ── Wiederkehrende Transaktionen – Erinnerungsleiste ── -->
+    <div id="recurringReminder" style="display:none; margin-bottom:20px;">
+        <div class="recurring-reminder-bar">
+            <div class="recurring-reminder-left">
+                <div class="recurring-reminder-icon"><i class="ri-loop-right-line"></i></div>
+                <div>
+                    <div class="recurring-reminder-title">Fällige Buchungen</div>
+                    <div class="recurring-reminder-sub" id="recurringReminderSub">Wiederkehrende Transaktionen warten auf Buchung</div>
+                </div>
+            </div>
+            <div class="recurring-reminder-actions" id="recurringReminderActions"></div>
+            <button class="recurring-reminder-manage" onclick="openRecurringModal()">
+                <i class="ri-settings-3-line"></i> Verwalten
+            </button>
+        </div>
+    </div>
+
+    <div class="tracker-layout">
+
+        <!-- ── Linke Spalte ── -->
+        <div class="tracker-sidebar">
+
+            <!-- Balance -->
+            <div class="transaction-header">
+                <h5>Gewinn / Verlust</h5>
+                <div class="balance-amount" id="balance">€ 0,00</div>
+                <div class="income-expense-row">
+                    <div class="income-expense-box">
+                        <h5>Einnahmen</h5>
+                        <span id="income">€ 0,00</span>
+                    </div>
+                    <div class="income-expense-box">
+                        <h5>Ausgaben</h5>
+                        <span id="expense">€ 0,00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transaktion hinzufügen -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Transaktion hinzufügen</h3>
+                </div>
+                <form id="transactionForm">
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Typ</label>
+                        <div class="toggle-wrapper">
+                            <label for="type" style="width:100%;display:block;">
+                                <input type="checkbox" name="type" id="type" value="inbound"/>
+                                <div class="option">
+                                    <span>Ausgaben</span>
+                                    <span>Einnahmen</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Name</label>
+                        <input type="text" name="name" placeholder="z.B. Netflix" required/>
+                    </div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Kategorie</label>
+                        <div id="categorySelect" class="custom-select">
+                            <div class="select-selected">Kategorie wählen</div>
+                            <div class="select-items select-hide"></div>
+                        </div>
+                        <input type="hidden" name="category" id="categoryInput" required/>
+                    </div>
+                    <div class="form-row" style="margin-bottom:12px;">
+                        <div class="form-group">
+                            <label class="form-label">Betrag</label>
+                            <input type="number" name="amount" placeholder="€" min="0.01" step="0.01" required/>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Datum</label>
+                            <input type="date" name="date" required/>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:16px;">
+                        <label class="form-label">Konto <span style="color:var(--text-3); font-weight:400;">(optional)</span></label>
+                        <select name="account_id" id="accountSelect">
+                            <option value="">Kein Konto zuweisen</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn-primary" style="width:100%;justify-content:center;">
+                        <i class="ri-add-line"></i> Hinzufügen
+                    </button>
+                </form>
+            </div>
+
+
+            <!-- Wiederkehrende Transaktionen -->
+            <button class="btn-ghost" style="width:100%; margin-top:-4px;" onclick="openRecurringModal()">
+                <i class="ri-loop-right-line"></i> Wiederkehrende Transaktionen
+            </button>
+
+            <!-- Kategorie hinzufügen -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Kategorie hinzufügen</h3>
+                </div>
+                <form id="categoryFormAdd">
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Name</label>
+                        <input type="text" id="categoryName" name="categoryName" placeholder="z.B. Versicherungen" required/>
+                    </div>
+                    <button type="submit" class="btn-ghost" style="width:100%;">
+                        <i class="ri-add-line"></i> Kategorie hinzufügen
+                    </button>
+                </form>
+            </div>
+
+        </div>
+
+        <!-- ── Rechte Spalte ── -->
+        <div class="card">
+
+            <!-- Filter-Bar -->
+            <div class="tracker-filter-bar">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <button class="tracker-filter-toggle" id="filterToggleBtn" onclick="toggleFilterPanel()">
+                        <i class="ri-filter-3-line"></i>
+                        <span>Filter</span>
+                        <span class="filter-active-badge" id="filterActiveBadge" style="display:none;"></span>
+                    </button>
+                    <select id="categoryFilter" style="height:34px; padding:0 10px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-1); font-size:0.83rem; cursor:pointer;">
+                        <option value="">Alle Kategorien</option>
+                    </select>
+                    <button class="tracker-filter-clear" id="filterClearBtn" onclick="clearDateFilter()" style="display:none;">
+                        <i class="ri-close-line"></i> Filter zurücksetzen
+                    </button>
+                </div>
+                <button class="tracker-export-btn" onclick="openExportModal()">
+                    <i class="ri-download-2-line"></i> Exportieren
+                </button>
+                <button class="tracker-import-btn" onclick="openImportModal()">
+                    <i class="ri-upload-2-line"></i> CSV importieren
+                </button>
+            </div>
+
+            <!-- Filter-Panel (aufklappbar) -->
+            <div class="filter-panel" id="filterPanel" style="display:none;">
+                <!-- Modus-Auswahl -->
+                <div class="filter-mode-tabs">
+                    <button class="filter-mode-tab active" data-mode="months" onclick="setFilterMode('months')">
+                        <i class="ri-calendar-2-line"></i> Monate
+                    </button>
+                    <button class="filter-mode-tab" data-mode="range" onclick="setFilterMode('range')">
+                        <i class="ri-calendar-event-line"></i> Zeitraum
+                    </button>
+                    <button class="filter-mode-tab" data-mode="weeks" onclick="setFilterMode('weeks')">
+                        <i class="ri-calendar-week-line"></i> Wochen
+                    </button>
+                </div>
+
+                <!-- Monate wählen -->
+                <div id="filterModeMonths" class="filter-mode-content">
+                    <p class="filter-hint">Wähle einen oder mehrere Monate (auch nicht-benachbarte):</p>
+                    <div id="monthChips" class="month-chips"></div>
+                </div>
+
+                <!-- Zeitraum -->
+                <div id="filterModeRange" class="filter-mode-content" style="display:none;">
+                    <p class="filter-hint">Exakter Datumsbereich:</p>
+                    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                        <div class="form-group" style="margin:0; flex:1; min-width:130px;">
+                            <label class="form-label">Von</label>
+                            <input type="date" id="rangeFrom" oninput="applyRangeFilter()">
+                        </div>
+                        <div style="color:var(--text-3); padding-top:18px;">→</div>
+                        <div class="form-group" style="margin:0; flex:1; min-width:130px;">
+                            <label class="form-label">Bis</label>
+                            <input type="date" id="rangeTo" oninput="applyRangeFilter()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Wochen -->
+                <div id="filterModeWeeks" class="filter-mode-content" style="display:none;">
+                    <p class="filter-hint">Wähle eine oder mehrere Kalenderwochen:</p>
+                    <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px;">
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label">Jahr</label>
+                            <select id="weekYear" onchange="buildWeekChips()" style="height:34px; padding:0 8px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-1);"></select>
+                        </div>
+                    </div>
+                    <div id="weekChips" class="month-chips"></div>
+                </div>
+            </div>
+
+            <!-- Tab-Leiste -->
+            <div class="tracker-tabs">
+                <button class="tracker-tab active" id="tabList">
+                    <i class="ri-list-unordered"></i> Liste
+                </button>
+                <button class="tracker-tab" id="tabChart">
+                    <i class="ri-bar-chart-2-line"></i> Diagramm
+                </button>
+            </div>
+
+            <!-- Listenansicht -->
+            <div id="viewList">
+                <!-- Sortier-Header -->
+                <div id="txSortHeader" class="tx-sort-header"></div>
+                <ul id="transactionList" class="transaction-list"></ul>
+                <!-- Pagination -->
+                <div id="txPagination"></div>
+            </div>
+
+            <!-- Diagrammansicht -->
+            <div id="viewChart" style="display:none;">
+                <!-- Diagramm-Typ Auswahl -->
+                <div class="chart-type-bar">
+                    <span style="font-size:0.8rem; color:var(--text-3); margin-right:4px;">Typ:</span>
+                    <button class="chart-type-btn active" data-type="bar"    onclick="setChartType('bar')">    <i class="ri-bar-chart-2-line"></i> Säulen</button>
+                    <button class="chart-type-btn"        data-type="line"   onclick="setChartType('line')">   <i class="ri-line-chart-line"></i> Linie</button>
+                    <button class="chart-type-btn"        data-type="doughnut" onclick="setChartType('doughnut')"><i class="ri-pie-chart-2-line"></i> Donut</button>
+                </div>
+                <div style="position:relative; height:360px;">
+                    <canvas id="transactionsChart"></canvas>
+                </div>
+            </div>
+
+            <!-- hidden monthFilter für Rückwärtskompatibilität -->
+            <select id="monthFilter" style="display:none;"><option value="">Alle Monate</option></select>
+
+            <div id="status"></div>
+        </div>
+
+    </div>
+
+    <!-- ── Modal: CSV-Import ── -->
+    <div id="importModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1003; align-items:center; justify-content:center;">
+        <div class="export-modal-content" style="max-width:560px;">
+            <div class="export-modal-header">
+                <h3><i class="ri-upload-2-line"></i> CSV importieren</h3>
+                <button class="export-modal-close" onclick="closeImportModal()"><i class="ri-close-line"></i></button>
+            </div>
+
+            <!-- Schritt 1: Datei & Konto -->
+            <div id="importStep1">
+                <div class="export-section">
+                    <label class="export-section-label">CSV-Datei auswählen</label>
+                    <input type="file" id="importFileInput" accept=".csv" style="width:100%; padding:8px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-1); font-size:0.85rem; cursor:pointer;">
+                </div>
+                <div class="export-section">
+                    <label class="export-section-label">Trennzeichen in der CSV</label>
+                    <div class="export-chip-row">
+                        <label class="export-chip"><input type="radio" name="importDelimiter" value=";" checked> Semikolon (;)</label>
+                        <label class="export-chip"><input type="radio" name="importDelimiter" value=","> Komma (,)</label>
+                        <label class="export-chip"><input type="radio" name="importDelimiter" value="	"> Tab</label>
+                    </div>
+                </div>
+                <div class="export-section">
+                    <label class="export-section-label">Zielkonto</label>
+                    <select id="importAccountSelect" style="width:100%; padding:8px 10px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-1); font-size:0.85rem;">
+                        <option value="">Kein Konto zuweisen</option>
+                    </select>
+                </div>
+                <div class="export-section">
+                    <label class="export-section-label">Kopfzeile überspringen</label>
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85rem; color:var(--text-2);">
+                        <input type="checkbox" id="importHasHeader" checked style="accent-color:var(--accent,#6358e6);">
+                        Erste Zeile ist eine Kopfzeile (wird nicht importiert)
+                    </label>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:20px;">
+                    <button class="btn-primary" onclick="importLoadPreview()" style="flex:1; justify-content:center;">
+                        <i class="ri-eye-line"></i> Vorschau laden
+                    </button>
+                    <button onclick="closeImportModal()" style="padding:9px 18px; border-radius:var(--radius-md); background:var(--surface-2); color:var(--text-2); border:1px solid var(--border); cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif;">
+                        Abbrechen
+                    </button>
+                </div>
+            </div>
+
+            <!-- Schritt 2: Spalten-Mapping -->
+            <div id="importStep2" style="display:none;">
+                <div class="export-info" style="margin-bottom:16px;">
+                    <i class="ri-information-line"></i> Weise jeder Spalte deiner CSV die richtige Bedeutung zu. Nicht benötigte Spalten auf „Ignorieren" lassen.
+                </div>
+                <div id="importMappingRows" style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px; max-height:280px; overflow-y:auto; padding-right:4px;"></div>
+
+                <div class="export-section">
+                    <label class="export-section-label">Standardwerte (falls Spalte fehlt)</label>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                        <div>
+                            <label class="form-label" style="font-size:0.72rem;">Standardkategorie</label>
+                            <input type="text" id="importDefaultCategory" value="Sonstiges" style="width:100%; padding:6px 10px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-1); font-size:0.83rem; box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:0.72rem;">Standard-Typ</label>
+                            <select id="importDefaultType" style="width:100%; padding:6px 10px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-1); font-size:0.83rem;">
+                                <option value="Ausgaben">Ausgaben</option>
+                                <option value="Einnahmen">Einnahmen</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="importPreviewBox" style="margin-bottom:16px;"></div>
+
+                <div style="display:flex; gap:8px; margin-top:4px;">
+                    <button onclick="importGoBack()" style="padding:9px 18px; border-radius:var(--radius-md); background:var(--surface-2); color:var(--text-2); border:1px solid var(--border); cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif;">
+                        <i class="ri-arrow-left-line"></i> Zurück
+                    </button>
+                    <button class="btn-primary" onclick="runImport()" style="flex:1; justify-content:center;">
+                        <i class="ri-check-line"></i> <span id="importBtnLabel">Importieren</span>
+                    </button>
+                    <button onclick="closeImportModal()" style="padding:9px 18px; border-radius:var(--radius-md); background:var(--surface-2); color:var(--text-2); border:1px solid var(--border); cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif;">
+                        Abbrechen
+                    </button>
+                </div>
+            </div>
+
+            <div id="importStatus" style="margin-top:12px; font-size:0.85rem;"></div>
+        </div>
+    </div>
+
+    <!-- ── Modal: Kategorie / Transaktion bearbeiten / löschen ── -->
+    <div id="actionModalCategory" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1002; align-items:center; justify-content:center;">
+        <div class="modal-content-category">
+            <div id="modalContentCategory"></div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <script>
+    function fitBalanceText(el) {
+        if (!el) return;
+        el.style.fontSize = '';
+        const parent = el.parentElement;
+        let fs = parseFloat(getComputedStyle(el).fontSize);
+        while (el.scrollWidth > (parent.clientWidth - 32) && fs > 12) {
+            fs -= 1;
+            el.style.fontSize = fs + 'px';
+        }
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+        const b = document.getElementById('balance');
+        if (b) new MutationObserver(() => fitBalanceText(b)).observe(b, { childList: true, subtree: true, characterData: true });
+    });
+    </script>
+
+    <!-- ── Export Modal ── -->
+    <div id="exportModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1003; align-items:center; justify-content:center;">
+        <div class="export-modal-content">
+            <div class="export-modal-header">
+                <h3><i class="ri-download-2-line"></i> Exportieren</h3>
+                <button class="export-modal-close" onclick="closeExportModal()"><i class="ri-close-line"></i></button>
+            </div>
+
+            <!-- Format-Wahl -->
+            <div class="export-section">
+                <label class="export-section-label">Format</label>
+                <div class="export-format-tabs">
+                    <button class="export-format-tab active" data-fmt="pdf" onclick="setExportFormat('pdf')">
+                        <i class="ri-file-pdf-line"></i> PDF
+                    </button>
+                    <button class="export-format-tab" data-fmt="csv" onclick="setExportFormat('csv')">
+                        <i class="ri-file-excel-2-line"></i> CSV
+                    </button>
+                    <button class="export-format-tab" data-fmt="monat" onclick="setExportFormat('monat')">
+                        <i class="ri-bar-chart-grouped-line"></i> Monatsanalyse
+                    </button>
+                </div>
+            </div>
+
+            <!-- PDF-Optionen -->
+            <div id="exportPdfOptions">
+                <div class="export-section">
+                    <label class="export-section-label">Konten exportieren</label>
+                    <div id="exportAccountList" style="display:flex;flex-direction:column;gap:5px;"></div>
+                </div>
+                <div class="export-section">
+                    <label class="export-section-label">Diagramme <span style="font-size:0.7rem;font-weight:400;color:var(--text-3);">(mehrere wählbar)</span></label>
+                    <div class="export-chip-row">
+                        <label class="export-chip"><input type="checkbox" name="exportChartType" value="bar" checked> <i class="ri-bar-chart-2-line"></i> Säulen</label>
+                        <label class="export-chip"><input type="checkbox" name="exportChartType" value="line"> <i class="ri-line-chart-line"></i> Linie</label>
+                        <label class="export-chip"><input type="checkbox" name="exportChartType" value="doughnut"> <i class="ri-pie-chart-2-line"></i> Donut</label>
+                    </div>
+                </div>
+                <div class="export-section">
+                    <label class="export-section-label">Transaktionen gruppieren nach</label>
+                    <div class="export-chip-row">
+                        <label class="export-chip"><input type="radio" name="exportGroupBy" value="month" checked> Monat</label>
+                        <label class="export-chip"><input type="radio" name="exportGroupBy" value="week"> Woche</label>
+                        <label class="export-chip"><input type="radio" name="exportGroupBy" value="day"> Tag</label>
+                    </div>
+                </div>
+                <div class="export-section" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                    <label class="export-section-label" style="margin-bottom:0;">Gesamtübersicht am Ende</label>
+                    <label class="export-toggle-switch">
+                        <input type="checkbox" id="exportShowGesamtToggle" checked>
+                        <span class="export-toggle-track"></span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- CSV-Optionen -->
+            <div id="exportCsvOptions" style="display:none;">
+                <div class="export-section">
+                    <label class="export-section-label">Export-Modus</label>
+                    <div class="export-chip-row">
+                        <label class="export-chip"><input type="radio" name="csvMode" value="reimport" checked> <i class="ri-refresh-line"></i> Reimport-kompatibel</label>
+                        <label class="export-chip"><input type="radio" name="csvMode" value="readable"> <i class="ri-table-line"></i> Lesbar / Excel</label>
+                    </div>
+                    <div style="margin-top:8px; font-size:0.78rem; color:var(--text-3); line-height:1.5;">
+                        <span id="csvModeHint">Enthält alle Felder im gleichen Format wie der CSV-Import — kann 1:1 wieder eingelesen werden.</span>
+                    </div>
+                </div>
+                <div class="export-section">
+                    <label class="export-section-label">Trennzeichen</label>
+                    <div class="export-chip-row">
+                        <label class="export-chip"><input type="radio" name="exportDelimiter" value=";" checked> Semikolon (;)</label>
+                        <label class="export-chip"><input type="radio" name="exportDelimiter" value=","> Komma (,)</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Monatsanalyse-Optionen -->
+            <div id="exportMonatOptions" style="display:none;">
+                <div class="export-section">
+                    <label class="export-section-label">Monat auswählen</label>
+                    <select id="exportMonatSelect" style="width:100%; padding:8px 10px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-1); font-size:0.85rem;">
+                    </select>
+                </div>
+                <div class="export-section">
+                    <label class="export-section-label">Diagrammtyp</label>
+                    <div class="export-chip-row">
+                        <label class="export-chip"><input type="radio" name="monatChartType" value="bar" checked> <i class="ri-bar-chart-2-line"></i> Säulen</label>
+                        <label class="export-chip"><input type="radio" name="monatChartType" value="line"> <i class="ri-line-chart-line"></i> Linie</label>
+                        <label class="export-chip"><input type="radio" name="monatChartType" value="doughnut"> <i class="ri-pie-chart-2-line"></i> Donut</label>
+                    </div>
+                </div>
+                <div class="export-info">
+                    Erstellt eine vollständige Monatsübersicht als PDF: Zusammenfassung, Kategorienaufschlüsselung, Diagramm und alle Transaktionen des gewählten Monats.
+                </div>
+            </div>
+
+            <!-- Info -->
+            <div class="export-info" id="exportInfo"></div>
+
+            <div style="display:flex; gap:8px; margin-top:20px;">
+                <button class="btn-primary" onclick="runExport()" style="flex:1; justify-content:center;">
+                    <i class="ri-download-2-line"></i> <span id="exportBtnLabel">PDF erstellen</span>
+                </button>
+                <button onclick="closeExportModal()" style="padding:9px 18px; border-radius:var(--radius-md); background:var(--surface-2); color:var(--text-2); border:1px solid var(--border); cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif;">
+                    Abbrechen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+    /* ── Filter Bar ── */
+    .tracker-filter-bar {
+        padding: 10px 0 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .tracker-filter-toggle {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 14px; border-radius: 8px;
+        background: var(--surface-2); border: 1px solid var(--border);
+        color: var(--text-1); font-size: 0.83rem; font-weight: 600;
+        cursor: pointer; transition: background 0.15s;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        position: relative;
+    }
+    .tracker-filter-toggle:hover, .tracker-filter-toggle.open { background: var(--surface-3, #2a2a3a); border-color: var(--accent, #6358e6); }
+    .filter-active-badge {
+        background: var(--accent, #6358e6); color: #fff;
+        border-radius: 10px; font-size: 0.68rem; font-weight: 700;
+        padding: 1px 6px; min-width: 18px; text-align: center;
+    }
+    .tracker-filter-clear {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 5px 12px; border-radius: 8px;
+        background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25);
+        color: #ef4444; font-size: 0.8rem; cursor: pointer;
+        font-family: 'Plus Jakarta Sans', sans-serif; transition: background 0.15s;
+    }
+    .tracker-filter-clear:hover { background: rgba(239,68,68,0.18); }
+    .tracker-export-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 14px; border-radius: 8px;
+        background: var(--accent, #6358e6); border: none;
+        color: #fff; font-size: 0.83rem; font-weight: 600;
+        cursor: pointer; transition: opacity 0.15s;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .tracker-export-btn:hover { opacity: 0.85; }
+    .tracker-import-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 14px; border-radius: 8px;
+        background: var(--surface-2); border: 1px solid var(--border);
+        color: var(--text-1); font-size: 0.83rem; font-weight: 600;
+        cursor: pointer; transition: all 0.15s;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .tracker-import-btn:hover { border-color: var(--accent, #6358e6); color: var(--accent, #6358e6); }
+
+    /* ── Filter Panel ── */
+    .filter-panel {
+        background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: 12px; padding: 16px; margin: 10px 0 4px;
+        animation: slideDown 0.18s ease;
+    }
+    @keyframes slideDown { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+
+    .filter-mode-tabs {
+        display: flex; gap: 4px; margin-bottom: 14px;
+        background: var(--surface-1, #13131a); border-radius: 8px; padding: 3px;
+    }
+    .filter-mode-tab {
+        flex: 1; padding: 6px 10px; border-radius: 6px; border: none;
+        background: transparent; color: var(--text-3); font-size: 0.8rem;
+        font-weight: 600; cursor: pointer; transition: all 0.15s;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        display: flex; align-items: center; justify-content: center; gap: 5px;
+    }
+    .filter-mode-tab.active { background: var(--accent, #6358e6); color: #fff; }
+    .filter-mode-tab:not(.active):hover { background: var(--surface-3, #2a2a3a); color: var(--text-1); }
+
+    .filter-hint { font-size: 0.78rem; color: var(--text-3); margin: 0 0 10px; }
+
+    /* ── Month / Week Chips ── */
+    .month-chips {
+        display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .month-chip {
+        padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600;
+        cursor: pointer; border: 1px solid var(--border);
+        background: var(--surface-1, #13131a); color: var(--text-2);
+        transition: all 0.15s; user-select: none;
+    }
+    .month-chip:hover { border-color: var(--accent, #6358e6); color: var(--text-1); }
+    .month-chip.active {
+        background: var(--accent, #6358e6); border-color: var(--accent, #6358e6);
+        color: #fff;
+    }
+
+    /* ── Chart Type Bar ── */
+    .chart-type-bar {
+        display: flex; align-items: center; gap: 4px;
+        padding: 8px 0 12px; flex-wrap: wrap;
+    }
+    .chart-type-btn {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border);
+        background: var(--surface-2); color: var(--text-2);
+        font-size: 0.78rem; font-weight: 600; cursor: pointer;
+        font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.15s;
+    }
+    .chart-type-btn:hover { border-color: var(--accent, #6358e6); color: var(--text-1); }
+    .chart-type-btn.active { background: var(--accent, #6358e6); border-color: var(--accent, #6358e6); color: #fff; }
+
+    /* ── Export Modal ── */
+    .export-modal-content {
+        background: var(--surface-1, #13131a); border: 1px solid var(--border);
+        border-radius: 16px; padding: 28px; width: 92%; max-width: 480px;
+        max-height: 90vh; overflow-y: auto;
+    }
+    .export-modal-header {
+        display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px;
+    }
+    .export-modal-header h3 { margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
+    .export-modal-close {
+        background: transparent; border: none; color: var(--text-3);
+        font-size: 1.2rem; cursor: pointer; padding: 4px; border-radius: 6px;
+        transition: color 0.15s;
+    }
+    .export-modal-close:hover { color: var(--text-1); }
+    .export-section { margin-bottom: 18px; }
+    .export-section-label {
+        display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-3);
+        text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
+    }
+    .export-format-tabs {
+        display: flex; gap: 6px;
+    }
+    .export-format-tab {
+        flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
+        background: var(--surface-2); color: var(--text-2);
+        font-size: 0.85rem; font-weight: 600; cursor: pointer;
+        font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.15s;
+        display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .export-format-tab.active { background: var(--accent, #6358e6); border-color: var(--accent, #6358e6); color: #fff; }
+    .export-chip-row {
+        display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .export-chip {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;
+        border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+        cursor: pointer; transition: all 0.15s;
+    }
+    .export-chip input[type=radio] { display: none; }
+    .export-chip:has(input:checked) { background: var(--accent, #6358e6); border-color: var(--accent, #6358e6); color: #fff; }
+    /* Toggle Switch */
+    .export-toggle-switch { position:relative; display:inline-block; width:38px; height:22px; flex-shrink:0; }
+    .export-toggle-switch input { opacity:0; width:0; height:0; }
+    .export-toggle-track {
+        position:absolute; inset:0; border-radius:11px; background:var(--border);
+        cursor:pointer; transition:background 0.2s;
+    }
+    .export-toggle-track::before {
+        content:''; position:absolute; width:16px; height:16px; left:3px; top:3px;
+        border-radius:50%; background:#fff; transition:transform 0.2s;
+    }
+    .export-toggle-switch input:checked + .export-toggle-track { background:var(--accent,#6358e6); }
+    .export-toggle-switch input:checked + .export-toggle-track::before { transform:translateX(16px); }
+    /* Account List in Export Modal */
+    .export-acc-item {
+        display:flex; align-items:center; gap:10px; padding:7px 10px;
+        border-radius:8px; background:var(--surface-2); border:1px solid var(--border);
+        cursor:pointer; font-size:0.83rem; color:var(--text-2); transition:border-color 0.15s;
+    }
+    .export-acc-item:has(input:checked) { border-color:var(--accent,#6358e6); color:var(--text-1); }
+    .export-acc-item input[type=checkbox] { accent-color:var(--accent,#6358e6); width:15px; height:15px; flex-shrink:0; cursor:pointer; }
+    .export-acc-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+    .export-acc-name { font-weight:600; flex:1; }
+    .export-acc-bal { font-size:0.78rem; }
+    .export-info {
+        background: rgba(99,88,230,0.08); border: 1px solid rgba(99,88,230,0.2);
+        border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; color: var(--text-2);
+        line-height: 1.5;
+    }
+    .export-info:empty { display: none; }
+    </style>
+
+
+    <!-- ── Modal: Wiederkehrende Transaktionen ── -->
+    <div class="schulden-modal-overlay" id="recurringModalOverlay" onclick="closeRecurringModal(event)">
+        <div class="schulden-modal" style="max-width:680px;">
+            <div class="schulden-modal-header">
+                <h3><i class="ri-loop-right-line" style="color:var(--accent);margin-right:8px;"></i>Wiederkehrende Transaktionen</h3>
+                <button onclick="closeRecurringModal()" style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:1.2rem;"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="schulden-modal-body">
+
+                <!-- Tab-Leiste -->
+                <div style="display:flex;gap:6px;margin-bottom:20px;">
+                    <button class="schulden-tab active" id="recurTabListe" onclick="switchRecurTab('liste')">
+                        <i class="ri-list-check"></i> Vorlagen
+                    </button>
+                    <button class="schulden-tab" id="recurTabNeu" onclick="switchRecurTab('neu')">
+                        <i class="ri-add-line"></i> Neue Vorlage
+                    </button>
+                </div>
+
+                <!-- Tab: Vorlagen-Liste -->
+                <div id="recurPanelListe">
+                    <div id="recurringListeInhalt" style="display:flex;flex-direction:column;gap:10px;"></div>
+                </div>
+
+                <!-- Tab: Neue Vorlage -->
+                <div id="recurPanelNeu" style="display:none;">
+                    <input type="hidden" id="recurEditId">
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Name *</label>
+                            <input type="text" id="recurName" placeholder="z.B. Netflix">
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Typ *</label>
+                            <select id="recurType">
+                                <option value="Ausgaben">Ausgaben</option>
+                                <option value="Einnahmen">Einnahmen</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Kategorie *</label>
+                            <select id="recurCategory"></select>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Betrag (€) *</label>
+                            <input type="number" id="recurAmount" min="0.01" step="0.01" placeholder="0,00">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Rhythmus</label>
+                            <select id="recurRhythmus">
+                                <option value="woechentlich">Wöchentlich</option>
+                                <option value="monatlich" selected>Monatlich</option>
+                                <option value="viertelj">Vierteljährlich</option>
+                                <option value="halbjaehrl">Halbjährlich</option>
+                                <option value="jaehrlich">Jährlich</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Nächste Fälligkeit</label>
+                            <input type="date" id="recurFaelligkeit">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Konto <span style="color:var(--text-3);font-weight:400;">(optional)</span></label>
+                            <select id="recurAccount"><option value="">Kein Konto</option></select>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Notiz</label>
+                            <input type="text" id="recurNotiz" placeholder="Optional">
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:4px;">
+                        <button class="btn-primary" style="flex:1;justify-content:center;" onclick="saveRecurring()">
+                            <i class="ri-save-line"></i> Speichern
+                        </button>
+                        <button id="recurDeleteBtn" style="display:none;padding:10px 18px;border-radius:var(--radius-md);background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2);cursor:pointer;font-size:0.85rem;font-family:'Plus Jakarta Sans',sans-serif;" onclick="deleteRecurring()">
+                            <i class="ri-delete-bin-line"></i> Löschen
+                        </button>
+                        <button onclick="switchRecurTab('liste')" style="padding:10px 18px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-size:0.85rem;font-family:'Plus Jakarta Sans',sans-serif;">
+                            Abbrechen
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <style>
+    /* ── Erinnerungsleiste ── */
+    .recurring-reminder-bar {
+        background: linear-gradient(135deg, rgba(99,88,230,0.12) 0%, rgba(99,88,230,0.06) 100%);
+        border: 1px solid rgba(99,88,230,0.3);
+        border-radius: var(--radius-lg);
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    .recurring-reminder-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex: 1;
+        min-width: 200px;
+    }
+    .recurring-reminder-icon {
+        width: 40px; height: 40px;
+        border-radius: 10px;
+        background: rgba(99,88,230,0.2);
+        color: var(--accent);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.1rem; flex-shrink: 0;
+    }
+    .recurring-reminder-title {
+        font-weight: 700;
+        font-size: 0.9rem;
+        color: var(--text-1);
+    }
+    .recurring-reminder-sub {
+        font-size: 0.78rem;
+        color: var(--text-3);
+        margin-top: 2px;
+    }
+    .recurring-reminder-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .recurring-book-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 7px 14px;
+        border-radius: var(--radius-md);
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        font-size: 0.8rem; font-weight: 600;
+        cursor: pointer;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        transition: opacity 0.15s;
+        white-space: nowrap;
+    }
+    .recurring-book-btn:hover { opacity: 0.85; }
+    .recurring-book-btn.overdue {
+        background: #ef4444;
+    }
+    .recurring-reminder-manage {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 7px 14px;
+        border-radius: var(--radius-md);
+        background: var(--surface-2);
+        color: var(--text-2);
+        border: 1px solid var(--border);
+        font-size: 0.8rem; font-weight: 600;
+        cursor: pointer;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        transition: var(--transition);
+        white-space: nowrap;
+    }
+    .recurring-reminder-manage:hover { border-color: var(--border-accent); color: var(--text-1); }
+
+    /* ── Vorlage-Karte in der Liste ── */
+    .recur-card {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        transition: var(--transition);
+    }
+    .recur-card:hover { border-color: var(--border-accent); }
+    .recur-card-icon {
+        width: 38px; height: 38px;
+        border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1rem; flex-shrink: 0;
+    }
+    .recur-card-body { flex: 1; min-width: 0; }
+    .recur-card-name { font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .recur-card-meta { font-size: 0.75rem; color: var(--text-3); margin-top: 2px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .recur-card-amount { font-weight: 800; font-size: 0.95rem; white-space: nowrap; }
+    .recur-card-due {
+        font-size: 0.72rem; font-weight: 700;
+        padding: 3px 9px; border-radius: 20px;
+        white-space: nowrap;
+    }
+    .recur-card-due.overdue   { background: rgba(239,68,68,0.12); color: #ef4444; }
+    .recur-card-due.today     { background: rgba(245,158,11,0.12); color: #f59e0b; }
+    .recur-card-due.upcoming  { background: rgba(34,197,94,0.10);  color: #22c55e; }
+    .recur-card-due.future    { background: var(--surface-2); color: var(--text-3); border: 1px solid var(--border); }
+    .recur-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .recur-icon-btn {
+        width: 32px; height: 32px;
+        border-radius: 8px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        color: var(--text-3);
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: 0.95rem;
+        transition: var(--transition);
+    }
+    .recur-icon-btn:hover { color: var(--text-1); border-color: var(--border-accent); }
+    .recur-icon-btn.book { background: rgba(99,88,230,0.1); color: var(--accent); border-color: rgba(99,88,230,0.25); }
+    .recur-icon-btn.book:hover { background: var(--accent); color: #fff; }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="/upgrade-modal.js"></script>
+    <script src="/ausgabentracker.js"></script>
+    <script src="/navheader.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Konto – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div id="kontoDetailRoot">
+        <div style="text-align:center; padding:80px 24px; color:var(--text-3);">
+            <i class="ri-loader-4-line" style="font-size:2rem; display:block; margin-bottom:12px;"></i>
+            Lade Kontodaten…
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+    <script src="/navheader.js"></script>
+    <script>
+    const ACCOUNT_ICONS = {
+        girokonto:'ri-bank-line', sparkonto:'ri-safe-line', haushaltskonto:'ri-home-3-line',
+        bargeld:'ri-money-euro-circle-line', depot:'ri-stock-line', sonstiges:'ri-wallet-3-line'
+    };
+    const ACCOUNT_LABELS = {
+        girokonto:'Girokonto', sparkonto:'Sparkonto', haushaltskonto:'Haushaltskonto',
+        bargeld:'Bargeld', depot:'Depot / Investments', sonstiges:'Sonstiges'
+    };
+    const fmt     = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtSign = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', signDisplay: 'always' });
+
+    const accountId = window.location.pathname.split('/').pop();
+
+    async function loadKonto() {
+        const root = document.getElementById('kontoDetailRoot');
+        try {
+            const [accRes, txRes, fixRes] = await Promise.all([
+                fetch('/users/accounts'),
+                fetch(`/users/accounts/${accountId}/transactions`),
+                fetch('/users/fixkosten')
+            ]);
+            const accounts  = await accRes.json();
+            const txs       = await txRes.json();
+            const fixkosten = await fixRes.json();
+
+            const acc = accounts.find(a => String(a.id) === String(accountId));
+            if (!acc) { root.innerHTML = '<div class="card" style="text-align:center;padding:60px;">Konto nicht gefunden.</div>'; return; }
+
+            const balance = acc.currentBalance ?? acc.balance ?? 0;
+            const icon    = ACCOUNT_ICONS[acc.type] || 'ri-wallet-3-line';
+            const label   = ACCOUNT_LABELS[acc.type] || acc.type;
+            const accountFixkosten = fixkosten.filter(f => String(f.account_id) === String(accountId));
+
+            // Monatliche Statistiken
+            const monthData = {};
+            txs.forEach(t => {
+                const m = (t.date || '').substring(0, 7);
+                if (!m) return;
+                if (!monthData[m]) monthData[m] = { inc: 0, exp: 0, txs: [] };
+                if (t.type === 'Einnahmen') monthData[m].inc += t.amount;
+                else monthData[m].exp += t.amount;
+                monthData[m].txs.push(t);
+            });
+            const months = Object.keys(monthData).sort().reverse();
+
+            // Kategorien-Verteilung
+            const byKat = {};
+            txs.filter(t => t.type === 'Ausgaben').forEach(t => {
+                const k = t.category || 'Ohne Kategorie';
+                byKat[k] = (byKat[k] || 0) + t.amount;
+            });
+            const totalExp = Object.values(byKat).reduce((s, v) => s + v, 0);
+            const topKats = Object.entries(byKat).sort((a, b) => b[1] - a[1]).slice(0, 6);
+
+            // Kumulierter Verlauf für Chart
+            const chartMonths = Object.keys(monthData).sort().slice(-12);
+            let cumBalance = acc.balance || 0;
+            const chartData = [];
+            const allSorted = txs.slice().sort((a, b) => (a.date || '') < (b.date || '') ? -1 : 1);
+            const monthlyDeltas = {};
+            allSorted.forEach(t => {
+                const m = (t.date || '').substring(0, 7);
+                if (!monthlyDeltas[m]) monthlyDeltas[m] = 0;
+                if (t.type === 'Einnahmen') monthlyDeltas[m] += t.amount;
+                else monthlyDeltas[m] -= t.amount;
+            });
+            chartMonths.forEach(m => {
+                cumBalance += (monthlyDeltas[m] || 0);
+                chartData.push(parseFloat(cumBalance.toFixed(2)));
+            });
+
+            // Letzte Transaktionen
+            const recentTxs = txs.slice(0, 30);
+            const txHtml = recentTxs.length === 0
+                ? `<p style="color:var(--text-3);text-align:center;padding:24px;">Keine Transaktionen vorhanden.</p>`
+                : recentTxs.map(t => {
+                    const inc = t.type === 'Einnahmen';
+                    return `<div class="account-tx-row">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:600;font-size:0.87rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.name}</div>
+                            <div style="font-size:0.75rem;color:var(--text-3);">${new Date(t.date).toLocaleDateString('de-DE')} · ${t.category || '—'}</div>
+                        </div>
+                        <div class="${inc ? 'positive' : 'negative'}" style="font-weight:700;font-size:0.9rem;white-space:nowrap;margin-left:12px;">
+                            ${fmtSign.format(t.amount * (inc ? 1 : -1))}
+                        </div>
+                    </div>`;
+                }).join('');
+
+            // Monats-Statistiken
+            const monthStatsHtml = months.slice(0, 6).map(m => {
+                const d = monthData[m];
+                const net = d.inc - d.exp;
+                const ml = new Date(m + '-01').toLocaleDateString('de-DE', { month: 'short', year: 'numeric' });
+                return `<div class="card" style="padding:14px;display:flex;flex-direction:column;gap:4px;">
+                    <div style="font-size:0.72rem;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">${ml}</div>
+                    <div style="display:flex;justify-content:space-between;font-size:0.82rem;">
+                        <span style="color:var(--text-3);">Einnahmen</span>
+                        <span class="positive">${fmt.format(d.inc)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:0.82rem;">
+                        <span style="color:var(--text-3);">Ausgaben</span>
+                        <span class="negative">${fmt.format(d.exp)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:0.85rem;font-weight:700;border-top:1px solid var(--border);margin-top:4px;padding-top:4px;">
+                        <span>Netto</span>
+                        <span style="color:${net >= 0 ? '#22c55e' : '#ef4444'};">${fmtSign.format(net)}</span>
+                    </div>
+                </div>`;
+            }).join('');
+
+            // Kategorien-Balken
+            const katHtml = topKats.map(([k, v]) => {
+                const pct = totalExp > 0 ? (v / totalExp * 100) : 0;
+                return `<div style="margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;font-size:0.83rem;margin-bottom:4px;">
+                        <span style="font-weight:500;">${k}</span>
+                        <span class="negative">${fmt.format(v)} <span style="color:var(--text-3);font-weight:400;">(${pct.toFixed(1)} %)</span></span>
+                    </div>
+                    <div style="background:var(--surface-2);border-radius:4px;height:6px;overflow:hidden;">
+                        <div style="height:100%;width:${pct}%;background:${acc.color};border-radius:4px;transition:width 0.4s;"></div>
+                    </div>
+                </div>`;
+            }).join('');
+
+            // Fixkosten-Liste
+            const fixHtml = accountFixkosten.length === 0
+                ? `<p style="color:var(--text-3);font-size:0.85rem;">Keine Fixkosten für dieses Konto.</p>`
+                : accountFixkosten.map(f => `
+                    <div class="account-tx-row">
+                        <div style="flex:1;">
+                            <div style="font-weight:600;font-size:0.85rem;">${f.name}</div>
+                            <div style="font-size:0.75rem;color:var(--text-3);">Am ${f.datum_tag}. · ${f.haeufigkeit} · ${f.kategorie}</div>
+                        </div>
+                        <div class="negative" style="font-weight:700;font-size:0.85rem;white-space:nowrap;">−${fmt.format(Math.abs(f.betrag))}</div>
+                    </div>`).join('');
+
+            // Gesamte Seite aufbauen
+            document.title = `${acc.name} – Golden Goat Capital`;
+            root.innerHTML = `
+                <!-- Zurück + Header -->
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                    <button onclick="history.back()" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-size:0.85rem;">
+                        <i class="ri-arrow-left-line"></i> Zurück
+                    </button>
+                    <div style="display:flex;align-items:center;gap:12px;flex:1;flex-wrap:wrap;">
+                        <div style="width:48px;height:48px;border-radius:14px;background:${acc.color}22;color:${acc.color};display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;">
+                            <i class="${icon}"></i>
+                        </div>
+                        <div>
+                            <div style="font-size:0.75rem;color:var(--text-3);">${label}</div>
+                            <div style="font-size:1.3rem;font-weight:700;">${acc.name}</div>
+                        </div>
+                        <div style="margin-left:auto;text-align:right;">
+                            <div style="font-size:0.72rem;color:var(--text-3);">Aktueller Stand</div>
+                            <div style="font-size:2rem;font-weight:800;color:${balance >= 0 ? '#22c55e' : '#ef4444'};">${fmt.format(balance)}</div>
+                            <div style="font-size:0.72rem;color:var(--text-3);">Startguthaben: ${fmt.format(acc.balance ?? 0)}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Monats-Statistiken -->
+                ${months.length > 0 ? `
+                <div style="margin-bottom:20px;">
+                    <h4 style="margin:0 0 12px;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Letzte Monate</h4>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;">
+                        ${monthStatsHtml}
+                    </div>
+                </div>` : ''}
+
+                <!-- Chart -->
+                ${chartMonths.length > 1 ? `
+                <div class="card" style="margin-bottom:20px;padding:20px;">
+                    <h4 style="margin:0 0 16px;">Kontostandverlauf</h4>
+                    <div style="height:200px;position:relative;">
+                        <canvas id="kontoChart"></canvas>
+                    </div>
+                </div>` : ''}
+
+                <!-- Haupt-Grid: Transaktionen + Kategorien + Fixkosten -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;" class="finanz-2col-grid">
+                    <div class="card">
+                        <h4 style="margin:0 0 16px;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">
+                            Letzte ${recentTxs.length} Transaktionen
+                            ${txs.length > 30 ? `<span style="color:var(--accent);font-weight:600;">(von ${txs.length})</span>` : ''}
+                        </h4>
+                        <div style="display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto;padding-right:4px;">
+                            ${txHtml}
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:16px;">
+                        ${topKats.length > 0 ? `
+                        <div class="card">
+                            <h4 style="margin:0 0 16px;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Ausgaben nach Kategorie</h4>
+                            ${katHtml}
+                        </div>` : ''}
+                        <div class="card">
+                            <h4 style="margin:0 0 12px;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Fixkosten</h4>
+                            <div style="display:flex;flex-direction:column;gap:6px;">${fixHtml}</div>
+                        </div>
+                    </div>
+                </div>`;
+
+            // Chart rendern
+            if (chartMonths.length > 1) {
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    const canvas = document.getElementById('kontoChart');
+                    if (!canvas) return;
+                    new Chart(canvas, {
+                        type: 'line',
+                        data: {
+                            labels: chartMonths.map(m => new Date(m + '-01').toLocaleDateString('de-DE', { month: 'short', year: 'numeric' })),
+                            datasets: [{
+                                label: 'Kontostand', data: chartData,
+                                borderColor: acc.color, backgroundColor: acc.color + '22',
+                                fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: acc.color
+                            }]
+                        },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: { ticks: { color: '#aaa', callback: v => fmt.format(v) }, grid: { color: 'rgba(255,255,255,0.07)' } },
+                                x: { ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.07)' } }
+                            }
+                        }
+                    });
+                }));
+            }
+        } catch (err) {
+            console.error(err);
+            root.innerHTML = '<div class="card" style="text-align:center;padding:60px;color:#ef4444;">Fehler beim Laden der Kontodaten.</div>';
+        }
+    }
+
+    loadKonto();
+    </script>
+</body>
+</html>

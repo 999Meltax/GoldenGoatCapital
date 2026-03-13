@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haushalt – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div id="hausRoot">
+        <div style="text-align:center;padding:80px 24px;color:var(--text-3);">
+            <i class="ri-loader-4-line" style="font-size:2rem;display:block;margin-bottom:12px;animation:spin 1s linear infinite;"></i>
+            Lade Haushalt…
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Setup-Screen */
+    .haus-setup {
+        max-width: 540px;
+        margin: 60px auto;
+        text-align: center;
+    }
+    .haus-setup-icon {
+        width: 72px; height: 72px;
+        background: rgba(16,185,129,0.12);
+        border-radius: 20px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 2rem; color: var(--haus-accent);
+        margin: 0 auto 24px;
+    }
+    .haus-setup-tabs {
+        display: flex;
+        background: var(--surface-2);
+        border-radius: var(--radius-md);
+        padding: 4px;
+        margin-bottom: 24px;
+        gap: 4px;
+    }
+    .haus-setup-tab {
+        flex: 1; padding: 8px; border: none; background: transparent;
+        color: var(--text-3); border-radius: var(--radius-md);
+        cursor: pointer; font-size: 0.85rem; font-family: 'Plus Jakarta Sans', sans-serif;
+        font-weight: 600; transition: var(--transition);
+    }
+    .haus-setup-tab.active {
+        background: var(--haus-accent); color: #fff;
+    }
+
+    /* Dashboard-Grid */
+    .haus-stats {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .haus-stat-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 18px 20px;
+        display: flex; align-items: center; gap: 14px;
+    }
+    .haus-stat-icon {
+        width: 44px; height: 44px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem; flex-shrink: 0;
+    }
+    .haus-stat-icon.green  { background: rgba(16,185,129,0.15); color: #10b981; }
+    .haus-stat-icon.blue   { background: rgba(59,130,246,0.15);  color: #3b82f6; }
+    .haus-stat-icon.amber  { background: rgba(245,158,11,0.15);  color: #f59e0b; }
+    .haus-stat-icon.red    { background: rgba(239,68,68,0.12);   color: #ef4444; }
+    .haus-stat-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+    .haus-stat-label { font-size: 0.75rem; color: var(--text-3); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .haus-stat-value { font-size: 1.2rem; font-weight: 800; color: var(--text-1); }
+
+    .haus-mid-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .haus-bottom-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    /* Mitglieder-Karten */
+    .haus-member-card {
+        display: flex; gap: 12px; align-items: flex-start;
+        padding: 14px;
+        background: rgba(16,185,129,0.05);
+        border: 1px solid rgba(16,185,129,0.15);
+        border-radius: var(--radius-md);
+        margin-bottom: 10px;
+    }
+    .haus-member-avatar {
+        width: 40px; height: 40px; border-radius: 50%;
+        background: rgba(16,185,129,0.2);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.1rem; color: var(--haus-accent); flex-shrink: 0;
+        font-weight: 700;
+    }
+    .haus-member-name { font-weight: 700; font-size: 0.9rem; }
+    .haus-member-email { font-size: 0.75rem; color: var(--text-3); }
+
+    /* Kostenverteilung pro Person */
+    .haus-split-row {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.84rem;
+    }
+    .haus-split-row:last-child { border-bottom: none; }
+    .haus-split-bar {
+        width: 100%; background: var(--surface-2);
+        border-radius: 4px; height: 5px; overflow: hidden; margin-top: 4px;
+    }
+    .haus-split-bar-fill {
+        height: 100%; border-radius: 4px; background: var(--haus-accent);
+        transition: width 0.4s;
+    }
+
+    /* Einladungs-Code-Box */
+    .haus-invite-box {
+        background: rgba(16,185,129,0.06);
+        border: 1px solid rgba(16,185,129,0.2);
+        border-radius: var(--radius-md);
+        padding: 14px 16px;
+        display: flex; align-items: center; gap: 12px;
+        margin-top: 12px;
+    }
+    .haus-invite-code {
+        font-family: monospace; font-size: 1.1rem; font-weight: 700;
+        color: var(--haus-accent); letter-spacing: 0.12em; flex: 1;
+    }
+
+    @media (max-width: 1300px) {
+        .haus-stats { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 1100px) {
+        .haus-stats { grid-template-columns: repeat(2, 1fr); }
+        .haus-mid-row { grid-template-columns: 1fr; }
+        .haus-bottom-row { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 768px) {
+        .haus-stats { grid-template-columns: repeat(2, 1fr); }
+        .haus-bottom-row { grid-template-columns: 1fr; }
+    }
+    .haus-bottom-card { display: flex; flex-direction: column; overflow: hidden; }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script>
+    const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+
+    async function init() {
+        const root = document.getElementById('hausRoot');
+        try {
+            const res = await fetch('/users/haushalt/status');
+            const data = await res.json();
+
+            if (!data.haushalt) {
+                renderSetup(root);
+            } else {
+                renderDashboard(root, data.haushalt, data.mitglieder, data.konto || null);
+            }
+        } catch (err) {
+            root.innerHTML = '<div class="card" style="text-align:center;padding:60px;color:#ef4444;">Fehler beim Laden.</div>';
+        }
+    }
+
+    // ── Setup-Screen ──────────────────────────────────────────────
+    function renderSetup(root) {
+        root.innerHTML =
+            '<div class="haus-setup">' +
+                '<div class="haus-setup-icon"><i class="ri-home-heart-line"></i></div>' +
+                '<h2 style="margin:0 0 8px;">Haushaltsmodus einrichten</h2>' +
+                '<p style="color:var(--text-3);margin-bottom:28px;">Verwaltet eure Finanzen, Aufgaben und Dokumente gemeinsam als Haushalt.</p>' +
+                '<div class="haus-setup-tabs">' +
+                    '<button class="haus-setup-tab active" onclick="showSetupTab(\'create\', this)">Haushalt erstellen</button>' +
+                    '<button class="haus-setup-tab" onclick="showSetupTab(\'join\', this)">Einladung annehmen</button>' +
+                '</div>' +
+
+                // Tab: Erstellen
+                '<div id="setupCreate" class="card" style="padding:24px;text-align:left;">' +
+                    '<div class="form-group" style="margin-bottom:14px;">' +
+                        '<label class="form-label">Name des Haushalts</label>' +
+                        '<input type="text" id="hausName" placeholder="z.B. Unser Zuhause" class="form-control">' +
+                    '</div>' +
+                    '<div class="form-group" style="margin-bottom:20px;">' +
+                        '<label class="form-label">Dein Anzeigename</label>' +
+                        '<input type="text" id="hausAnzeige" placeholder="z.B. Max" class="form-control">' +
+                    '</div>' +
+                    '<button onclick="createHaushalt()" class="btn-primary" style="width:100%;justify-content:center;">' +
+                        '<i class="ri-home-heart-line"></i> Haushalt erstellen' +
+                    '</button>' +
+                '</div>' +
+
+                // Tab: Beitreten
+                '<div id="setupJoin" class="card" style="padding:24px;text-align:left;display:none;">' +
+                    '<div class="form-group" style="margin-bottom:14px;">' +
+                        '<label class="form-label">Einladungscode</label>' +
+                        '<input type="text" id="joinCode" placeholder="z.B. AB12CD34" class="form-control" style="text-transform:uppercase;">' +
+                    '</div>' +
+                    '<div class="form-group" style="margin-bottom:20px;">' +
+                        '<label class="form-label">Dein Anzeigename</label>' +
+                        '<input type="text" id="joinAnzeige" placeholder="z.B. Lara" class="form-control">' +
+                    '</div>' +
+                    '<button onclick="joinHaushalt()" class="btn-primary" style="width:100%;justify-content:center;">' +
+                        '<i class="ri-group-line"></i> Haushalt beitreten' +
+                    '</button>' +
+                '</div>' +
+
+                '<div id="setupMsg" style="margin-top:12px;text-align:center;font-size:0.85rem;"></div>' +
+            '</div>';
+    }
+
+    function showSetupTab(tab, btn) {
+        document.querySelectorAll('.haus-setup-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('setupCreate').style.display = tab === 'create' ? '' : 'none';
+        document.getElementById('setupJoin').style.display   = tab === 'join'   ? '' : 'none';
+    }
+
+    async function createHaushalt() {
+        const name      = document.getElementById('hausName').value.trim() || 'Unser Haushalt';
+        const anzeige   = document.getElementById('hausAnzeige').value.trim();
+        const msg       = document.getElementById('setupMsg');
+        try {
+            const res = await fetch('/users/haushalt/create', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, anzeigename: anzeige })
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.message);
+            msg.style.color = '#10b981';
+            msg.textContent = 'Haushalt erstellt! Lade...';
+            setTimeout(() => location.reload(), 800);
+        } catch (err) {
+            const msg = document.getElementById('setupMsg');
+            msg.style.color = '#ef4444';
+            msg.textContent = err.message;
+        }
+    }
+
+    async function joinHaushalt() {
+        const code    = document.getElementById('joinCode').value.trim().toUpperCase();
+        const anzeige = document.getElementById('joinAnzeige').value.trim();
+        const msg     = document.getElementById('setupMsg');
+        if (!code) { msg.style.color='#ef4444'; msg.textContent='Bitte Code eingeben.'; return; }
+        try {
+            const res = await fetch('/users/haushalt/einladung/' + code + '/accept', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ anzeigename: anzeige })
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.message);
+            msg.style.color = '#10b981';
+            msg.textContent = 'Erfolgreich beigetreten! Lade...';
+            setTimeout(() => location.reload(), 800);
+        } catch (err) {
+            msg.style.color = '#ef4444';
+            msg.textContent = err.message;
+        }
+    }
+
+    // ── Dashboard ─────────────────────────────────────────────────
+    async function renderDashboard(root, haushalt, mitglieder, kontoData) {
+        const monatStr   = new Date().toISOString().substring(0,7);
+        const monatLabel = new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+
+        const [fixkRes, persRes, gehRes, ausgRes, todoRes, dokRes] = await Promise.all([
+            fetch('/users/haushalt/fixkosten').then(r => r.json()).catch(() => []),
+            fetch('/users/haushalt/persoenlich').then(r => r.json()).catch(() => []),
+            fetch('/users/haushalt/gehaelter?monat=' + monatStr).then(r => r.json()).catch(() => ({ defaults: [], monat: [] })),
+            fetch('/users/haushalt/transaktionen').then(r => r.json()).catch(() => []),
+            fetch('/users/haushalt/todos/data').then(r => r.json()).catch(() => []),
+            fetch('/users/haushalt/dokumente/data').then(r => r.json()).catch(() => []),
+        ]);
+
+        const monatsOverrides = await fetch('/users/haushalt/fixkosten/monat/' + monatStr).then(r => r.json()).catch(() => []);
+
+        const user1 = mitglieder[0] || {};
+        const user2 = mitglieder[1] || null;
+
+        function getEffektiv(fixkost) {
+            const override = monatsOverrides.find(o => o.fixkosten_id == fixkost.id);
+            return {
+                betrag:  override?.betrag       ?? fixkost.betrag,
+                anteil1: override?.anteil_user1  ?? fixkost.anteil_user1,
+                anteil2: override?.anteil_user2  ?? fixkost.anteil_user2,
+            };
+        }
+
+        const totalFixkosten    = fixkRes.reduce((s, f) => s + getEffektiv(f).betrag, 0);
+        const anteil1Gesamt     = fixkRes.reduce((s, f) => { const e = getEffektiv(f); return s + e.betrag * e.anteil1 / 100; }, 0);
+        const anteil2Gesamt     = fixkRes.reduce((s, f) => { const e = getEffektiv(f); return s + e.betrag * e.anteil2 / 100; }, 0);
+        const pers1             = persRes.filter(p => p.user_id === user1.user_id).reduce((s, p) => s + p.betrag, 0);
+        const pers2             = user2 ? persRes.filter(p => p.user_id === user2.user_id).reduce((s, p) => s + p.betrag, 0) : 0;
+
+        function getGehalt(userId) {
+            const m = gehRes.monat.find(g => g.user_id === userId);
+            if (m) return m;
+            return gehRes.defaults.find(g => g.user_id === userId) || { gehalt: 0, sparbetrag: 0 };
+        }
+        const geh1 = getGehalt(user1.user_id);
+        const geh2 = user2 ? getGehalt(user2.user_id) : { gehalt: 0, sparbetrag: 0 };
+
+        const total1 = anteil1Gesamt + pers1;
+        const total2 = anteil2Gesamt + pers2;
+        const frei1  = geh1.gehalt - total1 - geh1.sparbetrag;
+        const frei2  = geh2.gehalt - total2 - geh2.sparbetrag;
+
+        const ausgabenMonat       = ausgRes.filter(a => a.type === 'Ausgaben'  && (a.date || '').startsWith(monatStr));
+        const einnahmenMonat      = ausgRes.filter(a => a.type === 'Einnahmen' && (a.date || '').startsWith(monatStr));
+        const totalAusgabenMonat  = ausgabenMonat.reduce((s, a)  => s + (a.amount || 0), 0);
+        const totalEinnahmenMonat = einnahmenMonat.reduce((s, a) => s + (a.amount || 0), 0);
+
+        const letzteTransaktionen = [...ausgRes]
+            .sort((a,b) => (b.date || '').localeCompare(a.date || ''))
+            .slice(0, 5);
+
+        const offeneRechnungen      = dokRes.filter(d => d.typ === 'rechnung' && d.status !== 'bezahlt');
+        const offeneRechnungenSumme = offeneRechnungen.reduce((s, d) => s + (d.betrag || 0), 0);
+        const offeneTodos           = todoRes.filter(t => !t.completed).length;
+
+        const kontostand  = kontoData ? kontoData.currentBalance : null;
+        const kontoName   = kontoData ? kontoData.name : 'Haushaltskonto';
+        const kontoColor  = kontoData ? (kontoData.color || '#10b981') : '#10b981';
+
+        const name1 = user1.anzeigename || user1.display_name || 'Person 1';
+        const name2 = user2 ? (user2.anzeigename || user2.display_name || 'Person 2') : null;
+
+        const inviteSection = !user2 ? (
+            '<div class="card" style="margin-bottom:20px;padding:20px;">' +
+                '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">' +
+                    '<div style="width:36px;height:36px;border-radius:10px;background:rgba(245,158,11,0.12);color:#f59e0b;display:flex;align-items:center;justify-content:center;"><i class="ri-user-add-line"></i></div>' +
+                    '<div><div style="font-weight:700;font-size:0.9rem;">Partner einladen</div><div style="font-size:0.75rem;color:var(--text-3);">Noch kein zweites Mitglied in diesem Haushalt</div></div>' +
+                '</div>' +
+                '<div style="display:flex;gap:8px;">' +
+                    '<input type="text" id="inviteEmail" placeholder="E-Mail des Partners" style="flex:1;padding:9px 12px;border-radius:var(--radius-md);background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-family:\'Plus Jakarta Sans\',sans-serif;font-size:0.85rem;">' +
+                    '<button onclick="sendInvite()" style="padding:9px 18px;border-radius:var(--radius-md);background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);cursor:pointer;font-size:0.85rem;font-family:\'Plus Jakarta Sans\',sans-serif;font-weight:600;">Code generieren</button>' +
+                '</div>' +
+                '<div id="inviteResult"></div>' +
+            '</div>'
+        ) : '';
+
+        root.innerHTML =
+            '<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">' +
+                '<div>' +
+                    '<h1><i class="ri-home-heart-line" style="color:var(--haus-accent);margin-right:8px;"></i>' + escHtml(haushalt.name) + '</h1>' +
+                    '<p>Haushaltsübersicht · ' + monatLabel + '</p>' +
+                '</div>' +
+                '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+                    '<a href="/users/haushalt/tracker" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:var(--radius-md);background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.25);font-size:0.85rem;text-decoration:none;font-weight:600;"><i class="ri-add-line"></i> Transaktion</a>' +
+                    '<a href="/users/haushalt/ausgaben" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);font-size:0.85rem;text-decoration:none;"><i class="ri-exchange-funds-line"></i> Fixkosten</a>' +
+                    '<a href="/users/haushalt/todos" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);font-size:0.85rem;text-decoration:none;"><i class="ri-checkbox-line"></i> Aufgaben</a>' +
+                '</div>' +
+            '</div>' +
+
+            inviteSection +
+
+            // Stat-Cards
+            '<div class="haus-stats">' +
+                '<div class="haus-stat-card" style="cursor:pointer;" onclick="window.location.href=\'/users/haushalt/konto\'">' +
+                    '<div class="haus-stat-icon" style="background:' + kontoColor + '22;color:' + kontoColor + ';"><i class="ri-bank-card-line"></i></div>' +
+                    '<div class="haus-stat-body">' +
+                        '<div class="haus-stat-label">' + escHtml(kontoName) + '</div>' +
+                        '<div class="haus-stat-value" style="color:' + (kontostand !== null && kontostand < 0 ? '#ef4444' : 'var(--text-1)') + ';">' + (kontostand !== null ? fmt.format(kontostand) : '—') + '</div>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="haus-stat-card">' +
+                    '<div class="haus-stat-icon green"><i class="ri-arrow-up-circle-line"></i></div>' +
+                    '<div class="haus-stat-body">' +
+                        '<div class="haus-stat-label">Einnahmen ' + monatLabel + '</div>' +
+                        '<div class="haus-stat-value" style="color:#22c55e;">' + fmt.format(totalEinnahmenMonat) + '</div>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="haus-stat-card">' +
+                    '<div class="haus-stat-icon red"><i class="ri-arrow-down-circle-line"></i></div>' +
+                    '<div class="haus-stat-body">' +
+                        '<div class="haus-stat-label">Ausgaben ' + monatLabel + '</div>' +
+                        '<div class="haus-stat-value" style="color:#ef4444;">' + fmt.format(totalAusgabenMonat) + '</div>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="haus-stat-card">' +
+                    '<div class="haus-stat-icon blue"><i class="ri-repeat-line"></i></div>' +
+                    '<div class="haus-stat-body">' +
+                        '<div class="haus-stat-label">Gemeins. Fixkosten</div>' +
+                        '<div class="haus-stat-value">' + fmt.format(totalFixkosten) + '</div>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="haus-stat-card" style="cursor:pointer;" onclick="window.location.href=\'/users/haushalt/dokumente\'">' +
+                    '<div class="haus-stat-icon amber"><i class="ri-bill-line"></i></div>' +
+                    '<div class="haus-stat-body">' +
+                        '<div class="haus-stat-label">Offene Rechnungen</div>' +
+                        '<div class="haus-stat-value">' + (offeneRechnungen.length > 0 ? '<span style="color:#f59e0b;">' + offeneRechnungen.length + '</span><span style="font-size:0.8rem;color:var(--text-3);"> (' + fmt.format(offeneRechnungenSumme) + ')</span>' : '0') + '</div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+
+            // Mittlere Zeile
+            '<div class="haus-mid-row">' +
+                '<div class="card">' +
+                    '<div class="card-header">' +
+                        '<h3><i class="ri-scales-line" style="color:var(--haus-accent);margin-right:6px;"></i>Kostenaufteilung ' + monatLabel + '</h3>' +
+                        '<a href="/users/haushalt/ausgaben" style="font-size:0.82rem;color:var(--text-3);">Details <i class="ri-arrow-right-line"></i></a>' +
+                    '</div>' +
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">' +
+                        renderPersonCard(name1, geh1, anteil1Gesamt, pers1, total1, frei1, '#10b981') +
+                        (user2 ? renderPersonCard(name2, geh2, anteil2Gesamt, pers2, total2, frei2, '#3b82f6') : '<div style="display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:0.85rem;padding:20px;border:1px dashed var(--border);border-radius:var(--radius-md);">Noch kein Partner</div>') +
+                    '</div>' +
+                    '<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px;">' +
+                        '<div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">Gemeinsame Fixkosten</div>' +
+                        (fixkRes.length === 0
+                            ? '<p style="color:var(--text-3);font-size:0.85rem;">Noch keine Fixkosten. <a href="/users/haushalt/ausgaben" style="color:var(--haus-accent);">Jetzt hinzufügen →</a></p>'
+                            : fixkRes.slice(0,5).map(f => {
+                                const e = getEffektiv(f);
+                                return '<div class="haus-split-row"><span style="font-weight:500;">' + escHtml(f.name) + '</span><span style="display:flex;gap:8px;"><span style="color:#10b981;font-size:0.8rem;">' + name1 + ': ' + fmt.format(e.betrag * e.anteil1 / 100) + '</span>' + (user2 ? '<span style="color:#3b82f6;font-size:0.8rem;">' + name2 + ': ' + fmt.format(e.betrag * e.anteil2 / 100) + '</span>' : '') + '</span></div>';
+                            }).join('')
+                        ) +
+                    '</div>' +
+                '</div>' +
+
+                '<div style="display:flex;flex-direction:column;gap:16px;">' +
+                    '<div class="card">' +
+                        '<div class="card-header"><h3><i class="ri-group-line" style="color:var(--haus-accent);margin-right:6px;"></i>Mitglieder</h3></div>' +
+                        mitglieder.map(m =>
+                            '<div class="haus-member-card">' +
+                                '<div class="haus-member-avatar">' + (m.anzeigename || m.display_name || '?').charAt(0).toUpperCase() + '</div>' +
+                                '<div><div class="haus-member-name">' + escHtml(m.anzeigename || m.display_name || 'Unbekannt') + '</div><div class="haus-member-email">' + escHtml(m.email) + '</div><div style="font-size:0.72rem;color:var(--text-3);margin-top:2px;">' + (m.rolle === 'admin' ? '👑 Admin' : '👤 Mitglied') + '</div></div>' +
+                            '</div>'
+                        ).join('') +
+                    '</div>' +
+                    '<div class="card">' +
+                        '<div class="card-header"><h3><i class="ri-checkbox-line" style="color:var(--haus-accent);margin-right:6px;"></i>Offene Aufgaben</h3><a href="/users/haushalt/todos" style="font-size:0.82rem;color:var(--text-3);">Alle <i class="ri-arrow-right-line"></i></a></div>' +
+                        (todoRes.filter(t => !t.completed).length === 0
+                            ? '<div style="color:var(--text-3);font-size:0.85rem;text-align:center;padding:16px;">Keine offenen Aufgaben 🎉</div>'
+                            : todoRes.filter(t => !t.completed).slice(0,5).map(t => {
+                                const prio = { hoch: '#ef4444', mittel: '#f59e0b', niedrig: '#22c55e' };
+                                return '<div class="haus-split-row"><div style="display:flex;align-items:center;gap:8px;"><div style="width:8px;height:8px;border-radius:50%;background:' + (prio[t.priority] || '#aaa') + ';flex-shrink:0;"></div><span style="font-weight:500;font-size:0.84rem;">' + escHtml(t.task) + '</span></div>' + (t.due_date ? '<span style="font-size:0.75rem;color:var(--text-3);">' + new Date(t.due_date).toLocaleDateString('de-DE') + '</span>' : '') + '</div>';
+                            }).join('')
+                        ) +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+
+            // Untere Zeile
+            '<div class="haus-bottom-row">' +
+                '<div class="card haus-bottom-card" style="grid-column:span 2;">' +
+                    '<div class="card-header"><h3><i class="ri-exchange-2-line" style="color:var(--haus-accent);margin-right:6px;"></i>Letzte Transaktionen</h3><a href="/users/haushalt/tracker" style="font-size:0.82rem;color:var(--text-3);">Alle <i class="ri-arrow-right-line"></i></a></div>' +
+                    (letzteTransaktionen.length === 0
+                        ? '<div style="color:var(--text-3);font-size:0.85rem;text-align:center;padding:24px;">Noch keine Transaktionen erfasst.</div>'
+                        : letzteTransaktionen.map(t => {
+                            const isAusgabe = t.type === 'Ausgaben';
+                            const eintraeger = mitglieder.find(m => m.user_id === t.eingetragen_von);
+                            return '<div class="haus-split-row">' +
+                                '<div style="display:flex;align-items:center;gap:10px;">' +
+                                    '<div style="width:34px;height:34px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:' + (isAusgabe ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)') + ';color:' + (isAusgabe ? '#ef4444' : '#22c55e') + ';"><i class="' + (isAusgabe ? 'ri-arrow-down-line' : 'ri-arrow-up-line') + '"></i></div>' +
+                                    '<div><div style="font-weight:600;font-size:0.85rem;">' + escHtml(t.name || t.description || '—') + '</div><div style="font-size:0.72rem;color:var(--text-3);">' + (t.date ? new Date(t.date).toLocaleDateString('de-DE') : '—') + (eintraeger ? ' · ' + escHtml(eintraeger.anzeigename || eintraeger.display_name || '') : '') + '</div></div>' +
+                                '</div>' +
+                                '<span style="font-weight:700;font-size:0.9rem;color:' + (isAusgabe ? '#ef4444' : '#22c55e') + ';">' + (isAusgabe ? '−' : '+') + fmt.format(t.amount || 0) + '</span>' +
+                            '</div>';
+                        }).join('')
+                    ) +
+                '</div>' +
+                '<div class="card haus-bottom-card">' +
+                    '<div class="card-header"><h3><i class="ri-bill-line" style="color:#f59e0b;margin-right:6px;"></i>Offene Rechnungen</h3><a href="/users/haushalt/dokumente" style="font-size:0.82rem;color:var(--text-3);">Alle <i class="ri-arrow-right-line"></i></a></div>' +
+                    (offeneRechnungen.length === 0
+                        ? '<div style="color:var(--text-3);font-size:0.85rem;text-align:center;padding:24px;">Keine offenen Rechnungen 🎉</div>'
+                        : offeneRechnungen.slice(0,5).map(d => {
+                            const ueberfaellig = d.faellig_datum && new Date(d.faellig_datum) < new Date();
+                            return '<div class="haus-split-row"><div><div style="font-weight:600;font-size:0.84rem;">' + escHtml(d.name) + '</div><div style="font-size:0.72rem;color:' + (ueberfaellig ? '#ef4444' : 'var(--text-3)') + ';">' + (d.faellig_datum ? (ueberfaellig ? '⚠ Überfällig · ' : 'Fällig · ') + new Date(d.faellig_datum).toLocaleDateString('de-DE') : '—') + '</div></div>' + (d.betrag ? '<span style="font-weight:700;font-size:0.85rem;color:#f59e0b;">' + fmt.format(d.betrag) + '</span>' : '') + '</div>';
+                        }).join('')
+                    ) +
+                '</div>' +
+            '</div>';
+    }
+
+    function renderPersonCard(name, geh, anteilGemein, persFixkosten, total, frei, color) {
+        return '<div style="background:' + color + '10;border:1px solid ' + color + '30;border-radius:var(--radius-md);padding:14px;">' +
+            '<div style="font-weight:700;font-size:0.95rem;color:' + color + ';margin-bottom:12px;">' + escHtml(name) + '</div>' +
+            '<div style="display:flex;flex-direction:column;gap:7px;font-size:0.82rem;">' +
+                '<div style="display:flex;justify-content:space-between;"><span style="color:var(--text-3);">Gehalt</span><span style="font-weight:600;color:#22c55e;">' + fmt.format(geh.gehalt || 0) + '</span></div>' +
+                '<div style="display:flex;justify-content:space-between;"><span style="color:var(--text-3);">Anteil Fixkosten</span><span style="font-weight:600;color:#ef4444;">-' + fmt.format(anteilGemein) + '</span></div>' +
+                '<div style="display:flex;justify-content:space-between;"><span style="color:var(--text-3);">Pers. Fixkosten</span><span style="font-weight:600;color:#ef4444;">-' + fmt.format(persFixkosten) + '</span></div>' +
+                '<div style="display:flex;justify-content:space-between;"><span style="color:var(--text-3);">Sparen</span><span style="font-weight:600;color:#3b82f6;">-' + fmt.format(geh.sparbetrag || 0) + '</span></div>' +
+                '<div style="border-top:1px solid ' + color + '30;padding-top:6px;display:flex;justify-content:space-between;"><span style="font-weight:700;">Frei</span><span style="font-weight:800;color:' + (frei >= 0 ? '#22c55e' : '#ef4444') + ';">' + fmt.format(frei) + '</span></div>' +
+            '</div>' +
+        '</div>';
+    }
+    async function sendInvite() {
+        const email = document.getElementById('inviteEmail').value.trim();
+        const result = document.getElementById('inviteResult');
+        if (!email) { result.innerHTML = '<p style="color:#ef4444;font-size:0.85rem;margin-top:8px;">Bitte E-Mail eingeben.</p>'; return; }
+        try {
+            const res = await fetch('/users/haushalt/invite', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.message);
+            result.innerHTML =
+                '<div class="haus-invite-box">' +
+                    '<div>' +
+                        '<div style="font-size:0.72rem;color:var(--text-3);margin-bottom:3px;">Einladungscode für ' + escHtml(email) + '</div>' +
+                        '<div class="haus-invite-code">' + d.code + '</div>' +
+                    '</div>' +
+                    '<button onclick="navigator.clipboard.writeText(\'' + d.code + '\');this.innerHTML=\'<i class=\\\'ri-check-line\\\'></i> Kopiert\';" ' +
+                        'style="padding:7px 12px;border-radius:var(--radius-md);background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);cursor:pointer;font-size:0.82rem;font-family:\'Plus Jakarta Sans\',sans-serif;">' +
+                        '<i class="ri-clipboard-line"></i> Kopieren' +
+                    '</button>' +
+                '</div>' +
+                '<p style="font-size:0.78rem;color:var(--text-3);margin-top:6px;">Teile diesen Code mit ' + escHtml(email) + '. Er/Sie kann ihn unter "Einladung annehmen" eingeben.</p>';
+        } catch (err) {
+            result.innerHTML = '<p style="color:#ef4444;font-size:0.85rem;margin-top:8px;">' + escHtml(err.message) + '</p>';
+        }
+    }
+
+    function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    init();
+    </script>
+</body>
+</html>

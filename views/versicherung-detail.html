@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Versicherung – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div id="versDetailRoot">
+        <div style="text-align:center; padding:80px 24px; color:var(--text-3);">
+            <i class="ri-loader-4-line" style="font-size:2rem; display:block; margin-bottom:12px; animation:spin 1s linear infinite;"></i>
+            Lade Versicherung…
+        </div>
+    </div>
+
+    <!-- Edit-Modal (inline) -->
+    <div class="vs-overlay" id="vsModal" onclick="closeModal(event)" style="display:none;">
+        <div class="vs-modal" onclick="event.stopPropagation()" style="max-width:680px;width:100%;max-height:90vh;overflow-y:auto;background:var(--surface);border-radius:var(--radius-lg);padding:28px;border:1px solid var(--border);">
+            <div class="vs-modal-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+                <h3 id="modalHeadline" style="margin:0;font-size:1.1rem;display:flex;align-items:center;gap:8px;"><i class="ri-edit-line"></i> Versicherung bearbeiten</h3>
+                <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--text-3);font-size:1.3rem;"><i class="ri-close-line"></i></button>
+            </div>
+            <input type="hidden" id="fId">
+            <div class="vs-kat-picker" id="katPicker" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label class="form-label">Versicherungsname *</label>
+                    <input type="text" id="fName" placeholder="z.B. TK Krankenversicherung">
+                </div>
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label class="form-label">Anbieter / Gesellschaft</label>
+                    <input type="text" id="fAnbieter" placeholder="z.B. Techniker Krankenkasse">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Vertragsnummer</label>
+                    <input type="text" id="fVertragsnr" placeholder="VN-123456">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select id="fStatus"><option value="aktiv">Aktiv</option><option value="pausiert">Pausiert</option><option value="gekuendigt">Gekündigt</option></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Beitrag (€)</label>
+                    <input type="number" id="fBeitrag" step="0.01" placeholder="0,00">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Zahlungsrhythmus</label>
+                    <select id="fRhythmus"><option value="monatlich">Monatlich</option><option value="vierteljaehrlich">Vierteljährlich</option><option value="halbjaehrlich">Halbjährlich</option><option value="jaehrlich">Jährlich</option></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Vertragsbeginn</label>
+                    <input type="date" id="fBeginn">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Vertragsende</label>
+                    <input type="date" id="fEnde">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kündigungsfrist</label>
+                    <input type="text" id="fKfrist" placeholder="z.B. 3 Monate">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Selbstbeteiligung (€)</label>
+                    <input type="number" id="fSB" step="0.01" placeholder="0,00">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Versicherungssumme (€)</label>
+                    <input type="number" id="fVS" step="0.01" placeholder="0,00">
+                </div>
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label class="form-label">Notiz</label>
+                    <textarea id="fNotiz" rows="3" placeholder="Zusätzliche Informationen…" style="width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px;color:var(--text-1);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.88rem;resize:vertical;"></textarea>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:20px;">
+                <button id="saveBtn" onclick="saveVers()" class="btn-primary" style="flex:1;justify-content:center;"><i class="ri-save-line"></i> Speichern</button>
+                <button onclick="closeModal()" style="padding:10px 20px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .vs-detail-layout {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 24px;
+        align-items: start;
+    }
+    @media (max-width: 900px) {
+        .vs-detail-layout { grid-template-columns: 1fr; }
+    }
+    .vs-meta-sticky { position: sticky; top: 100px; display: flex; flex-direction: column; gap: 16px; }
+
+    .vs-detail-field { display: flex; flex-direction: column; gap: 3px; }
+    .vs-detail-lbl { font-size:0.72rem; color:var(--text-3); text-transform:uppercase; letter-spacing:0.05em; font-weight:600; }
+    .vs-detail-val { font-size:0.88rem; color:var(--text-1); font-weight:500; }
+
+    .vs-badge { display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:0.75rem;font-weight:700; }
+    .vs-badge.aktiv      { background:rgba(34,197,94,0.15);  color:#22c55e; }
+    .vs-badge.pausiert   { background:rgba(245,158,11,0.15); color:#f59e0b; }
+    .vs-badge.gekuendigt { background:rgba(239,68,68,0.12);  color:#ef4444; }
+
+    .vs-progress-track { background:var(--surface-2); border-radius:4px; height:8px; overflow:hidden; }
+    .vs-progress-fill  { height:100%; border-radius:4px; transition:width 0.4s; }
+
+    .vs-cost-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+    .vs-cost-lbl { font-size:0.78rem; color:var(--text-3); width:100px; flex-shrink:0; }
+    .vs-cost-track { flex:1; background:var(--surface-2); border-radius:4px; height:5px; overflow:hidden; }
+    .vs-cost-fill  { height:100%; border-radius:4px; }
+    .vs-cost-val { font-size:0.82rem; font-weight:600; width:80px; text-align:right; flex-shrink:0; }
+
+    .vs-warn-strip  { background:rgba(239,68,68,0.1);  color:#ef4444; border-radius:var(--radius-sm); padding:8px 12px; font-size:0.8rem; font-weight:600; display:flex;align-items:center;gap:6px; margin-top:12px; }
+    .vs-kuend-strip { background:rgba(245,158,11,0.1); color:#f59e0b; border-radius:var(--radius-sm); padding:8px 12px; font-size:0.8rem; font-weight:600; display:flex;align-items:center;gap:6px; margin-top:12px; }
+
+    .vs-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px); }
+
+    .vs-kat-btn { display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-size:0.82rem;font-family:'Plus Jakarta Sans',sans-serif;transition:var(--transition); }
+    .vs-kat-btn.active { background:rgba(99,88,230,0.15);color:var(--accent);border-color:rgba(99,88,230,0.3); }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script>
+    const KAT = {
+        kranken:     { label:'Kranken',       icon:'ri-heart-pulse-line',   bg:'rgba(239,68,68,0.12)',   color:'#ef4444' },
+        haftpflicht: { label:'Haftpflicht',   icon:'ri-shield-user-line',   bg:'rgba(99,88,230,0.15)',   color:'#8b7ff5' },
+        kfz:         { label:'KFZ',           icon:'ri-car-line',           bg:'rgba(245,158,11,0.15)',  color:'#f59e0b' },
+        leben:       { label:'Leben & Rente', icon:'ri-user-heart-line',    bg:'rgba(34,197,94,0.15)',   color:'#22c55e' },
+        hausrat:     { label:'Hausrat',       icon:'ri-home-3-line',        bg:'rgba(59,130,246,0.15)',  color:'#3b82f6' },
+        berufs:      { label:'Berufsunfähig', icon:'ri-briefcase-line',     bg:'rgba(168,85,247,0.15)',  color:'#a855f7' },
+        rechtsschutz:{ label:'Rechtsschutz',  icon:'ri-scales-3-line',      bg:'rgba(20,184,166,0.15)',  color:'#14b8a6' },
+        reise:       { label:'Reise',         icon:'ri-flight-takeoff-line',bg:'rgba(249,115,22,0.15)',  color:'#f97316' },
+        unfall:      { label:'Unfall',        icon:'ri-first-aid-kit-line', bg:'rgba(236,72,153,0.15)',  color:'#ec4899' },
+        sonstiges:   { label:'Sonstiges',     icon:'ri-shield-line',        bg:'rgba(107,114,128,0.15)', color:'#9ca3af' },
+    };
+    const RHYTHMUS_FAK   = { monatlich:12, vierteljaehrlich:4, halbjaehrlich:2, jaehrlich:1 };
+    const RHYTHMUS_LABEL = { monatlich:'monatlich', vierteljaehrlich:'vierteljährl.', halbjaehrlich:'halbjährl.', jaehrlich:'jährlich' };
+    const STATUS_LABEL   = { aktiv:'Aktiv', pausiert:'Pausiert', gekuendigt:'Gekündigt' };
+    const fmtEur = new Intl.NumberFormat('de-DE', { style:'currency', currency:'EUR' });
+    const fmtK   = new Intl.NumberFormat('de-DE', { style:'currency', currency:'EUR', maximumFractionDigits:0 });
+
+    let selKat = 'sonstiges';
+
+    function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function fmtDate(d) { return d ? new Date(d).toLocaleDateString('de-DE') : '—'; }
+    function daysUntil(d) { return Math.ceil((new Date(d) - new Date()) / 86400000); }
+    function parseFristTage(f) { if (!f) return 0; return parseInt(f) * (f.includes('Monat') ? 30 : 1); }
+    function jahrBeitrag(v) { return (parseFloat(v.beitrag)||0) * (RHYTHMUS_FAK[v.rhythmus]||12); }
+    function costRow(label, val, max, color) {
+        const pct = max > 0 ? Math.round((val/max)*100) : 0;
+        return '<div class="vs-cost-row"><div class="vs-cost-lbl">' + label + '</div>' +
+            '<div class="vs-cost-track"><div class="vs-cost-fill" style="width:' + pct + '%;background:' + color + ';"></div></div>' +
+            '<div class="vs-cost-val">' + fmtEur.format(val) + '</div></div>';
+    }
+
+    const parts = window.location.pathname.split('/');
+    const versId = parts[parts.length - 2];
+
+    async function loadVersicherung() {
+        const root = document.getElementById('versDetailRoot');
+        try {
+            const res = await fetch('/users/versicherungen/data');
+            if (!res.ok) throw new Error();
+            const all = await res.json();
+            const v = all.find(x => String(x.id) === String(versId));
+            if (!v) throw new Error('Nicht gefunden');
+
+            document.title = v.name + ' – Golden Goat Capital';
+            window._versData = v;
+
+            const cfg = KAT[v.kategorie] || KAT.sonstiges;
+            const jb  = jahrBeitrag(v);
+            const now = new Date();
+
+            // Laufzeit-Fortschrittsbalken
+            let laufzeitHtml = '';
+            if (v.beginn && v.ende) {
+                const start = new Date(v.beginn), end = new Date(v.ende);
+                const pct   = Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
+                const dLeft = daysUntil(v.ende);
+                const bc    = dLeft < 0 ? '#6b7280' : dLeft <= 60 ? 'var(--red)' : dLeft <= 180 ? 'var(--amber)' : 'var(--green)';
+                laufzeitHtml = '<div class="card" style="padding:16px;margin-bottom:14px;">' +
+                    '<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:8px;">' +
+                        '<span style="color:var(--text-3);">Laufzeit</span>' +
+                        '<span style="color:' + bc + ';font-weight:600;">' + (dLeft < 0 ? 'Abgelaufen' : dLeft + ' Tage verbleibend') + '</span>' +
+                    '</div>' +
+                    '<div class="vs-progress-track"><div class="vs-progress-fill" style="width:' + pct + '%;background:' + bc + ';"></div></div>' +
+                    '<div style="display:flex;justify-content:space-between;font-size:0.71rem;color:var(--text-3);margin-top:5px;">' +
+                        '<span>' + fmtDate(v.beginn) + '</span><span>' + fmtDate(v.ende) + '</span>' +
+                    '</div></div>';
+            }
+
+            // Kündigungsfrist
+            let kuendHtml = '';
+            if (v.ende && v.kuendigungsfrist) {
+                const fristTage   = parseFristTage(v.kuendigungsfrist);
+                const kuendDead   = new Date(new Date(v.ende).getTime() - fristTage * 86400000);
+                const daysToKuend = Math.ceil((kuendDead - now) / 86400000);
+                const bc          = daysToKuend <= 0 ? 'var(--red)' : daysToKuend <= 14 ? 'var(--red)' : daysToKuend <= 30 ? 'var(--amber)' : 'var(--green)';
+                kuendHtml = '<div class="card" style="padding:16px;margin-bottom:14px;' + (daysToKuend <= 30 ? 'border-color:rgba(245,158,11,0.3);' : '') + '">' +
+                    '<div style="font-size:0.71rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;"><i class="ri-calendar-close-line" style="margin-right:5px;"></i>Kündigungsfrist</div>' +
+                    '<div style="font-size:0.88rem;color:var(--text-2);">Kündigung spätestens bis: <strong style="color:' + bc + ';">' + kuendDead.toLocaleDateString('de-DE', {day:'2-digit',month:'long',year:'numeric'}) + '</strong></div>' +
+                    (daysToKuend > 0 ? '<div style="font-size:0.8rem;color:' + bc + ';margin-top:4px;">Noch ' + daysToKuend + ' Tage</div>' : '<div style="font-size:0.8rem;color:var(--red);margin-top:4px;font-weight:600;">⚠ Frist abgelaufen!</div>') +
+                '</div>';
+            }
+
+            // Kostenübersicht
+            let kostenHtml = '';
+            if (v.beitrag) {
+                const mon = (parseFloat(v.beitrag)||0) * (RHYTHMUS_FAK[v.rhythmus]||12) / 12;
+                kostenHtml = '<div class="card" style="padding:16px;margin-bottom:14px;">' +
+                    '<div style="font-size:0.71rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">Kostenübersicht</div>' +
+                    costRow('Monatlich', mon, jb, cfg.color) +
+                    costRow('Vierteljährlich', mon*3, jb, cfg.color) +
+                    costRow('Halbjährlich', mon*6, jb, cfg.color) +
+                    costRow('Jährlich', jb, jb, cfg.color) +
+                '</div>';
+            }
+
+            // Warnstreifen
+            let strips = '';
+            if (v.ende) {
+                const d = daysUntil(v.ende);
+                if (d < 0) {
+                    strips += '<div class="vs-warn-strip"><i class="ri-time-line"></i> Vertrag abgelaufen</div>';
+                } else if (v.kuendigungsfrist) {
+                    const kuendBis = d - parseFristTage(v.kuendigungsfrist);
+                    if (kuendBis <= 0) strips += '<div class="vs-warn-strip"><i class="ri-alarm-warning-line"></i> Kündigungsfrist abgelaufen!</div>';
+                    else if (kuendBis <= 30) strips += '<div class="vs-kuend-strip"><i class="ri-calendar-close-line"></i> Kündigung bis in ' + kuendBis + ' Tagen möglich</div>';
+                } else if (d <= 60) {
+                    strips += '<div class="vs-warn-strip"><i class="ri-alarm-warning-line"></i> Läuft in ' + d + ' Tagen ab</div>';
+                }
+            }
+
+            // Detail-Felder
+            const fields = [
+                { l:'Kategorie',    v:cfg.label },
+                { l:'Status',       v:'<span class="vs-badge ' + (v.status||'aktiv') + '">' + (STATUS_LABEL[v.status]||'Aktiv') + '</span>' },
+                v.anbieter           && { l:'Anbieter',         v:esc(v.anbieter) },
+                v.vertragsnr         && { l:'Vertragsnummer',   v:esc(v.vertragsnr) },
+                v.beitrag            && { l:'Beitrag',          v:fmtEur.format(v.beitrag) + ' / ' + (RHYTHMUS_LABEL[v.rhythmus]||v.rhythmus) },
+                v.beitrag            && { l:'Jahreskosten',     v:'<strong style="color:var(--accent-2);">' + fmtK.format(jb) + '</strong>' },
+                v.beginn             && { l:'Vertragsbeginn',   v:fmtDate(v.beginn) },
+                v.ende               && { l:'Vertragsende',     v:fmtDate(v.ende) },
+                v.kuendigungsfrist   && { l:'Kündigungsfrist',  v:esc(v.kuendigungsfrist) },
+                v.selbstbeteiligung  && { l:'Selbstbeteiligung',v:fmtEur.format(v.selbstbeteiligung) },
+                v.versicherungssumme && { l:'Vers.summe',       v:fmtEur.format(v.versicherungssumme) },
+            ].filter(Boolean);
+
+            const fieldsHtml = fields.map(f =>
+                '<div class="vs-detail-field"><div class="vs-detail-lbl">' + f.l + '</div><div class="vs-detail-val">' + f.v + '</div></div>'
+            ).join('');
+
+            let notizHtml = '';
+            if (v.notiz) {
+                notizHtml = '<div class="card" style="padding:16px;">' +
+                    '<div style="font-size:0.71rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Notiz</div>' +
+                    '<div style="font-size:0.87rem;color:var(--text-2);line-height:1.7;white-space:pre-wrap;">' + esc(v.notiz) + '</div></div>';
+            }
+
+            root.innerHTML =
+                // Zurück + Header
+                '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap;">' +
+                    '<button onclick="history.back()" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-size:0.85rem;font-family:\'Plus Jakarta Sans\',sans-serif;">' +
+                        '<i class="ri-arrow-left-line"></i> Zurück' +
+                    '</button>' +
+                    '<div style="display:flex;align-items:center;gap:12px;flex:1;">' +
+                        '<div style="width:48px;height:48px;border-radius:14px;background:' + cfg.bg + ';color:' + cfg.color + ';display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;">' +
+                            '<i class="' + cfg.icon + '"></i>' +
+                        '</div>' +
+                        '<div>' +
+                            '<div style="font-size:0.75rem;color:var(--text-3);">' + cfg.label + '</div>' +
+                            '<h2 style="margin:0;font-size:1.3rem;">' + esc(v.name) + '</h2>' +
+                            (v.anbieter ? '<div style="font-size:0.82rem;color:var(--text-3);">' + esc(v.anbieter) + '</div>' : '') +
+                        '</div>' +
+                        '<span class="vs-badge ' + (v.status||'aktiv') + '" style="margin-left:auto;">' + (STATUS_LABEL[v.status]||'Aktiv') + '</span>' +
+                    '</div>' +
+                '</div>' +
+
+                strips +
+
+                // Zweispalten-Layout
+                '<div class="vs-detail-layout" style="margin-top:' + (strips ? '16px' : '0') + ';">' +
+
+                    // Linke Seite: Laufzeit + Kündigung + Kosten + Notiz
+                    '<div>' +
+                        laufzeitHtml +
+                        kuendHtml +
+                        kostenHtml +
+                        notizHtml +
+                    '</div>' +
+
+                    // Rechte Seite: Details + Aktionen
+                    '<div class="vs-meta-sticky">' +
+                        '<div class="card" style="padding:20px;">' +
+                            '<h4 style="margin:0 0 16px;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Details</h4>' +
+                            '<div style="display:flex;flex-direction:column;gap:12px;">' + fieldsHtml + '</div>' +
+                        '</div>' +
+                        '<div class="card" style="padding:20px;">' +
+                            '<h4 style="margin:0 0 14px;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Aktionen</h4>' +
+                            '<div style="display:flex;flex-direction:column;gap:8px;">' +
+                                '<button onclick="startEdit()" class="btn-primary" style="width:100%;justify-content:center;"><i class="ri-edit-line"></i> Bearbeiten</button>' +
+                                '<button onclick="deleteVers()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border-radius:var(--radius-md);background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2);cursor:pointer;font-size:0.85rem;font-family:\'Plus Jakarta Sans\',sans-serif;">' +
+                                    '<i class="ri-delete-bin-line"></i> Löschen' +
+                                '</button>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+
+                '</div>';
+
+        } catch (err) {
+            root.innerHTML = '<div class="card" style="text-align:center;padding:60px;color:#ef4444;">Versicherung nicht gefunden oder Fehler beim Laden.</div>';
+        }
+    }
+
+    // ── Edit-Modal ─────────────────────────────────────────────
+    function buildKatPicker() {
+        const picker = document.getElementById('katPicker');
+        if (!picker) return;
+        picker.innerHTML = Object.entries(KAT).map(([key, c]) =>
+            '<button type="button" class="vs-kat-btn" data-kat="' + key + '" onclick="pickKat(\'' + key + '\')">' +
+                '<i class="' + c.icon + '" style="color:' + c.color + ';"></i>' + c.label +
+            '</button>'
+        ).join('');
+    }
+    function pickKat(kat) {
+        selKat = kat;
+        document.querySelectorAll('.vs-kat-btn').forEach(b => b.classList.toggle('active', b.dataset.kat === kat));
+    }
+
+    function startEdit() {
+        const v = window._versData;
+        if (!v) return;
+        buildKatPicker();
+        document.getElementById('fId').value        = v.id;
+        document.getElementById('fName').value       = v.name || '';
+        document.getElementById('fAnbieter').value   = v.anbieter || '';
+        document.getElementById('fVertragsnr').value = v.vertragsnr || '';
+        document.getElementById('fBeitrag').value    = v.beitrag || '';
+        document.getElementById('fBeginn').value     = v.beginn || '';
+        document.getElementById('fEnde').value       = v.ende || '';
+        document.getElementById('fNotiz').value      = v.notiz || '';
+        document.getElementById('fSB').value         = v.selbstbeteiligung || '';
+        document.getElementById('fVS').value         = v.versicherungssumme || '';
+        document.getElementById('fStatus').value     = v.status || 'aktiv';
+        document.getElementById('fRhythmus').value   = v.rhythmus || 'monatlich';
+        document.getElementById('fKfrist').value     = v.kuendigungsfrist || '';
+        pickKat(v.kategorie || 'sonstiges');
+        document.getElementById('vsModal').style.display = 'flex';
+    }
+
+    function closeModal(e) {
+        if (e && e.target !== document.getElementById('vsModal')) return;
+        document.getElementById('vsModal').style.display = 'none';
+    }
+
+    async function saveVers() {
+        const btn  = document.getElementById('saveBtn');
+        const id   = document.getElementById('fId').value;
+        const name = document.getElementById('fName').value.trim();
+        if (!name) { alert('Bitte einen Namen eingeben.'); return; }
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ri-loader-4-line" style="animation:spin 1s linear infinite;display:inline-block;"></i> Speichern…';
+
+        const payload = {
+            kategorie: selKat, name,
+            anbieter:           document.getElementById('fAnbieter').value.trim(),
+            vertragsnr:         document.getElementById('fVertragsnr').value.trim(),
+            status:             document.getElementById('fStatus').value,
+            beitrag:            parseFloat(document.getElementById('fBeitrag').value) || null,
+            rhythmus:           document.getElementById('fRhythmus').value,
+            beginn:             document.getElementById('fBeginn').value || null,
+            ende:               document.getElementById('fEnde').value || null,
+            kuendigungsfrist:   document.getElementById('fKfrist').value || null,
+            selbstbeteiligung:  parseFloat(document.getElementById('fSB').value) || null,
+            versicherungssumme: parseFloat(document.getElementById('fVS').value) || null,
+            notiz:              document.getElementById('fNotiz').value.trim(),
+        };
+
+        try {
+            const r = await fetch('/users/versicherungen/' + id, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            });
+            if (!r.ok) throw new Error((await r.json()).message || 'Fehler');
+            document.getElementById('vsModal').style.display = 'none';
+            await loadVersicherung();
+        } catch (err) {
+            alert('Fehler beim Speichern: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-save-line"></i> Speichern';
+        }
+    }
+
+    async function deleteVers() {
+        if (!confirm('Versicherung wirklich löschen?')) return;
+        const v = window._versData;
+        if (!v) return;
+        try {
+            const r = await fetch('/users/versicherungen/delete/' + v.id, { method: 'DELETE' });
+            if (!r.ok) throw new Error();
+            window.location.href = '/users/versicherungen';
+        } catch { alert('Fehler beim Löschen.'); }
+    }
+
+    loadVersicherung();
+    </script>
+</body>
+</html>

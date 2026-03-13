@@ -1,0 +1,58 @@
+</div> <!-- /.page-content -->
+
+    <footer class="containerFooter">
+        <div class="footer-line"></div>
+        <div class="column">
+            <div class="logo">
+                <img src="/assets/goldengoat.png" alt="Golden Goat Capital">
+            </div>
+        </div>
+        <div class="column" id="footerNavColumn">
+            <!-- wird per JS befüllt -->
+        </div>
+        <div class="column">
+            <h4>Features</h4>
+            <a href="/users/zinseszinsrechner">Zinseszinsrechner</a>
+            <a href="/users/kalender">Kalender</a>
+            <a href="/users/tarife">Tarife</a>
+        </div>
+        <div class="column">
+            <h4>Rechtliches</h4>
+            <a href="mailto:kontakt@goldengoatcapital.de">Kontakt</a>
+            <a href="/users/datenschutz">Datenschutz</a>
+            <a href="/users/impressum">Impressum</a>
+            <a href="/users/agb">AGB</a>
+        </div>
+        <div class="copyright">
+            Copyright © 2026 Golden Goat Capital. All Rights Reserved.
+        </div>
+    </footer>
+
+    <script>
+    (function() {
+        const path = window.location.pathname;
+        const isHaushalt = path.startsWith('/users/haushalt') ||
+                           localStorage.getItem('ggc_mode') === 'haushalt';
+        const col = document.getElementById('footerNavColumn');
+        if (!col) return;
+
+        if (isHaushalt) {
+            col.innerHTML =
+                '<h4>Haushalt</h4>' +
+                '<a href="/users/haushalt">Übersicht</a>' +
+                '<a href="/users/haushalt/ausgaben">Ausgaben</a>' +
+                '<a href="/users/haushalt/dokumente">Dokumente</a>' +
+                '<a href="/users/haushalt/todos">Todos</a>';
+        } else {
+            col.innerHTML =
+                '<h4>Mein Bereich</h4>' +
+                '<a href="/users/overview">Dashboard</a>' +
+                '<a href="/users/meine-finanzen">Finanzen</a>' +
+                '<a href="/users/ausgabentracker">Ausgabentracker</a>' +
+                '<a href="/users/versicherungen">Versicherungen</a>' +
+                '<a href="/users/dokumente">Dokumente</a>';
+        }
+    })();
+    </script>
+
+</div> <!-- /.page-wrapper -->
