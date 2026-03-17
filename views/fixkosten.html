@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fixkosten & Abos – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <h1>Fixkosten & Abos</h1>
+            <p>Alle wiederkehrenden Zahlungen an einem Ort</p>
+        </div>
+        <button class="btn-primary" onclick="openModal()">
+            <i class="ri-add-line"></i> Neuer Eintrag
+        </button>
+    </div>
+
+    <!-- Statistik-Karten -->
+    <div class="fk-stat-row">
+        <div class="fk-stat-card">
+            <div class="fk-stat-icon" style="background:rgba(99,88,230,0.12);color:#6358e6;">
+                <i class="ri-money-euro-circle-line"></i>
+            </div>
+            <div>
+                <div class="fk-stat-label">Monatliche Gesamtkosten</div>
+                <div class="fk-stat-val" id="statMonatlich">€ 0,00</div>
+            </div>
+        </div>
+        <div class="fk-stat-card">
+            <div class="fk-stat-icon" style="background:rgba(239,68,68,0.12);color:#ef4444;">
+                <i class="ri-calendar-line"></i>
+            </div>
+            <div>
+                <div class="fk-stat-label">Jährliche Gesamtkosten</div>
+                <div class="fk-stat-val" id="statJaehrlich">€ 0,00</div>
+            </div>
+        </div>
+        <div class="fk-stat-card">
+            <div class="fk-stat-icon" style="background:rgba(34,197,94,0.12);color:#22c55e;">
+                <i class="ri-list-check-2"></i>
+            </div>
+            <div>
+                <div class="fk-stat-label">Aktive Einträge</div>
+                <div class="fk-stat-val" id="statAnzahl">0</div>
+            </div>
+        </div>
+        <div class="fk-stat-card">
+            <div class="fk-stat-icon" style="background:rgba(245,158,11,0.12);color:#f59e0b;">
+                <i class="ri-alarm-warning-line"></i>
+            </div>
+            <div>
+                <div class="fk-stat-label">Fällig in 7 Tagen</div>
+                <div class="fk-stat-val" id="statFaellig">0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter-Leiste -->
+    <div class="fk-filter-bar">
+        <div class="fk-filter-tabs" id="filterTabs">
+            <button class="fk-filter-tab active" data-filter="alle" onclick="setFilter('alle', this)">
+                <i class="ri-apps-line"></i> Alle
+            </button>
+            <button class="fk-filter-tab" data-filter="fixkosten" onclick="setFilter('fixkosten', this)">
+                <i class="ri-home-2-line"></i> Fixkosten
+            </button>
+            <button class="fk-filter-tab" data-filter="abo" onclick="setFilter('abo', this)">
+                <i class="ri-repeat-line"></i> Abos
+            </button>
+            <button class="fk-filter-tab" data-filter="recurring" onclick="setFilter('recurring', this)">
+                <i class="ri-exchange-dollar-line"></i> Wiederkehrend
+            </button>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+            <input type="text" id="searchInput" placeholder="Suchen…" oninput="renderList()"
+                style="width:180px;padding:7px 12px;font-size:0.83rem;">
+            <select id="sortSelect" onchange="renderList()" style="width:auto;padding:7px 12px;font-size:0.83rem;">
+                <option value="name">Name A–Z</option>
+                <option value="betrag_desc">Betrag ↓</option>
+                <option value="betrag_asc">Betrag ↑</option>
+                <option value="faellig">Nächste Fälligkeit</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Liste -->
+    <div id="fkList" class="fk-list">
+        <div class="fk-loading">
+            <i class="ri-loader-4-line" style="animation:spin 1s linear infinite;font-size:1.5rem;"></i>
+            Lade Einträge…
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- MODAL: Eintrag hinzufügen / bearbeiten -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div id="fkModal" class="fk-modal-backdrop" onclick="closeModalBackdrop(event)">
+        <div class="fk-modal-box">
+            <div class="fk-modal-header">
+                <h3 id="modalTitle">Neuer Eintrag</h3>
+                <button onclick="closeModal()" class="fk-modal-close"><i class="ri-close-line"></i></button>
+            </div>
+
+            <!-- Typ-Auswahl -->
+            <div class="fk-type-selector" id="typeSelector">
+                <button class="fk-type-btn active" data-type="fixkosten" onclick="selectType('fixkosten', this)">
+                    <i class="ri-home-2-line"></i>
+                    <span>Fixkosten</span>
+                    <small>Miete, Strom, etc.</small>
+                </button>
+                <button class="fk-type-btn" data-type="abo" onclick="selectType('abo', this)">
+                    <i class="ri-repeat-line"></i>
+                    <span>Abo</span>
+                    <small>Netflix, Spotify, etc.</small>
+                </button>
+                <button class="fk-type-btn" data-type="recurring" onclick="selectType('recurring', this)">
+                    <i class="ri-exchange-dollar-line"></i>
+                    <span>Wiederkehrend</span>
+                    <small>Einnahmen oder Ausgaben</small>
+                </button>
+            </div>
+
+            <div class="fk-modal-body">
+                <!-- Basis-Felder (immer sichtbar) -->
+                <div class="fk-form-grid">
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Bezeichnung *</label>
+                        <input type="text" id="fkName" placeholder="z.B. Miete, Netflix, Gehalt…">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Betrag (€) *</label>
+                        <input type="number" id="fkBetrag" placeholder="0,00" min="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Rhythmus</label>
+                        <select id="fkRhythmus">
+                            <option value="monatlich">Monatlich</option>
+                            <option value="jaehrlich">Jährlich</option>
+                            <option value="viertelj">Vierteljährlich</option>
+                            <option value="halbjaehrl">Halbjährlich</option>
+                            <option value="woechentlich">Wöchentlich</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Kategorie</label>
+                        <select id="fkKategorie">
+                            <option value="wohnen">Wohnen</option>
+                            <option value="versicherung">Versicherung</option>
+                            <option value="streaming">Streaming</option>
+                            <option value="software">Software</option>
+                            <option value="fitness">Fitness</option>
+                            <option value="lebensmittel">Lebensmittel</option>
+                            <option value="transport">Transport</option>
+                            <option value="kommunikation">Kommunikation</option>
+                            <option value="gesundheit">Gesundheit</option>
+                            <option value="bildung">Bildung</option>
+                            <option value="unterhaltung">Unterhaltung</option>
+                            <option value="sonstiges">Sonstiges</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Nächste Fälligkeit</label>
+                        <input type="date" id="fkFaelligkeit">
+                    </div>
+                    <!-- Nur bei Fixkosten: Abbuchungstag -->
+                    <div class="form-group" id="fieldDatumTag">
+                        <label class="form-label">Abbuchungstag (1–31)</label>
+                        <input type="number" id="fkDatumTag" placeholder="1" min="1" max="31" value="1">
+                    </div>
+                    <!-- Nur bei Wiederkehrend: Einnahme/Ausgabe -->
+                    <div class="form-group" id="fieldTxType" style="display:none;">
+                        <label class="form-label">Art</label>
+                        <select id="fkTxType">
+                            <option value="Ausgaben">Ausgabe</option>
+                            <option value="Einnahmen">Einnahme</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Konto (optional)</label>
+                        <select id="fkKonto">
+                            <option value="">Kein Konto verknüpft</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Notiz (optional)</label>
+                        <input type="text" id="fkNotiz" placeholder="z.B. Family-Plan, Jahresabo…">
+                    </div>
+                    <!-- Aktiv-Toggle -->
+                    <div class="form-group" style="grid-column:1/-1;display:flex;align-items:center;gap:10px;">
+                        <label class="form-label" style="margin:0;">Aktiv</label>
+                        <label class="fk-toggle">
+                            <input type="checkbox" id="fkAktiv" checked>
+                            <span class="fk-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <input type="hidden" id="fkEditId" value="">
+                <input type="hidden" id="fkSubtyp" value="fixkosten">
+
+                <div id="fkMsg" style="font-size:0.82rem;text-align:center;min-height:1.2em;"></div>
+            </div>
+
+            <div class="fk-modal-footer">
+                <button class="btn-ghost" onclick="closeModal()">Abbrechen</button>
+                <button class="btn-primary" onclick="saveEintrag()">
+                    <i class="ri-save-line"></i> Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Manuell buchen -->
+    <div id="buchModal" class="fk-modal-backdrop" onclick="closeBuchModal(event)">
+        <div class="fk-modal-box" style="max-width:400px;">
+            <div class="fk-modal-header">
+                <h3>Jetzt buchen</h3>
+                <button onclick="closeBuchModal()" class="fk-modal-close"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="fk-modal-body">
+                <p id="buchInfo" style="color:var(--text-2);font-size:0.9rem;margin:0 0 16px;"></p>
+                <p style="color:var(--text-3);font-size:0.83rem;">
+                    Es wird eine Transaktion im Ausgabentracker erstellt und die nächste Fälligkeit automatisch weitergesetzt.
+                </p>
+            </div>
+            <div class="fk-modal-footer">
+                <button class="btn-ghost" onclick="closeBuchModal()">Abbrechen</button>
+                <button class="btn-primary" onclick="confirmBuchen()">
+                    <i class="ri-check-line"></i> Jetzt buchen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Statistik-Karten ── */
+    .fk-stat-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 24px;
+    }
+    .fk-stat-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+    .fk-stat-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+    }
+    .fk-stat-label { font-size: 0.72rem; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .fk-stat-val   { font-size: 1.2rem; font-weight: 800; color: var(--text-1); }
+
+    /* ── Filter-Leiste ── */
+    .fk-filter-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+    .fk-filter-tabs { display: flex; gap: 4px; }
+    .fk-filter-tab {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 14px;
+        border-radius: var(--radius-md);
+        font-size: 0.83rem;
+        font-weight: 600;
+        color: var(--text-2);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        cursor: pointer;
+        transition: var(--transition);
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .fk-filter-tab:hover { border-color: var(--accent); color: var(--text-1); }
+    .fk-filter-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 16px var(--accent-glow); }
+
+    /* ── Liste ── */
+    .fk-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .fk-loading {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        justify-content: center;
+        padding: 60px;
+        color: var(--text-3);
+    }
+    .fk-item {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        transition: var(--transition);
+    }
+    .fk-item:hover { border-color: var(--border-accent); box-shadow: var(--shadow-accent); }
+    .fk-item.inaktiv { opacity: 0.5; }
+
+    .fk-item-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+        flex-shrink: 0;
+    }
+    .fk-item-body { flex: 1; min-width: 0; }
+    .fk-item-name { font-weight: 700; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fk-item-meta { font-size: 0.75rem; color: var(--text-3); margin-top: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .fk-item-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .badge-fixkosten { background: rgba(99,88,230,0.12); color: #6358e6; }
+    .badge-abo       { background: rgba(236,72,153,0.12); color: #ec4899; }
+    .badge-recurring { background: rgba(34,197,94,0.12);  color: #22c55e; }
+    .badge-recurring.einnahme { background: rgba(59,130,246,0.12); color: #3b82f6; }
+
+    .fk-item-right { text-align: right; flex-shrink: 0; }
+    .fk-item-betrag { font-size: 1.05rem; font-weight: 800; }
+    .fk-item-betrag.ausgabe { color: var(--red, #ef4444); }
+    .fk-item-betrag.einnahme { color: var(--green, #22c55e); }
+    .fk-item-rhythmus { font-size: 0.72rem; color: var(--text-3); margin-top: 2px; }
+
+    .fk-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .fk-btn-sm {
+        padding: 6px 9px;
+        border-radius: 8px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        border: 1px solid var(--border);
+        background: var(--surface-2);
+        color: var(--text-2);
+        transition: var(--transition);
+        font-family: inherit;
+    }
+    .fk-btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+    .fk-btn-sm.danger { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2); color: #ef4444; }
+    .fk-btn-sm.danger:hover { background: rgba(239,68,68,0.15); }
+    .fk-btn-sm.book { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.2); color: #22c55e; }
+    .fk-btn-sm.book:hover { background: rgba(34,197,94,0.15); }
+
+    .fk-faellig-badge {
+        display: inline-block;
+        padding: 1px 7px;
+        border-radius: 20px;
+        font-size: 0.68rem;
+        font-weight: 700;
+    }
+    .fk-faellig-heute { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .fk-faellig-bald  { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .fk-faellig-ok    { background: rgba(34,197,94,0.1);   color: #22c55e; }
+
+    .fk-empty {
+        text-align: center;
+        padding: 80px 24px;
+        color: var(--text-3);
+    }
+    .fk-empty i { font-size: 3rem; display: block; margin-bottom: 12px; opacity: 0.3; }
+
+    /* ── Modal ── */
+    .fk-modal-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.7);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(4px);
+    }
+    .fk-modal-box {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-xl);
+        width: min(580px, 95vw);
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .fk-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--border);
+    }
+    .fk-modal-header h3 { margin: 0; font-size: 1.05rem; }
+    .fk-modal-close {
+        background: none;
+        border: none;
+        color: var(--text-3);
+        font-size: 1.2rem;
+        cursor: pointer;
+        padding: 4px 6px;
+        border-radius: 6px;
+        transition: var(--transition);
+        font-family: inherit;
+    }
+    .fk-modal-close:hover { background: var(--surface-2); color: var(--text-1); }
+    .fk-modal-body { padding: 20px 24px; }
+    .fk-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 16px 24px;
+        border-top: 1px solid var(--border);
+    }
+
+    /* ── Typ-Selektor ── */
+    .fk-type-selector {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        padding: 16px 24px;
+        border-bottom: 1px solid var(--border);
+    }
+    .fk-type-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 12px 8px;
+        border-radius: var(--radius-md);
+        border: 2px solid var(--border);
+        background: var(--surface-2);
+        cursor: pointer;
+        transition: var(--transition);
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        color: var(--text-2);
+    }
+    .fk-type-btn i { font-size: 1.3rem; }
+    .fk-type-btn span { font-size: 0.82rem; font-weight: 700; }
+    .fk-type-btn small { font-size: 0.68rem; color: var(--text-3); text-align: center; }
+    .fk-type-btn:hover { border-color: var(--accent); color: var(--text-1); }
+    .fk-type-btn.active { border-color: var(--accent); background: rgba(99,88,230,0.1); color: var(--accent); }
+
+    /* ── Formular-Grid ── */
+    .fk-form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+    }
+
+    /* ── Toggle ── */
+    .fk-toggle { position: relative; display: inline-block; width: 40px; height: 22px; }
+    .fk-toggle input { opacity: 0; width: 0; height: 0; }
+    .fk-toggle-slider {
+        position: absolute; inset: 0;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        cursor: pointer;
+        transition: .3s;
+    }
+    .fk-toggle-slider:before {
+        content: '';
+        position: absolute;
+        width: 16px; height: 16px;
+        left: 2px; bottom: 2px;
+        background: var(--text-3);
+        border-radius: 50%;
+        transition: .3s;
+    }
+    .fk-toggle input:checked + .fk-toggle-slider { background: var(--accent); border-color: var(--accent); }
+    .fk-toggle input:checked + .fk-toggle-slider:before { transform: translateX(18px); background: #fff; }
+
+    @media (max-width: 900px) {
+        .fk-stat-row { grid-template-columns: repeat(2, 1fr); }
+        .fk-filter-bar { flex-direction: column; align-items: flex-start; }
+        .fk-item-actions { flex-wrap: wrap; }
+    }
+    @media (max-width: 600px) {
+        .fk-stat-row { grid-template-columns: 1fr 1fr; }
+        .fk-type-selector { grid-template-columns: 1fr; }
+        .fk-form-grid { grid-template-columns: 1fr; }
+        .fk-item { flex-wrap: wrap; }
+    }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script src="/fixkosten.js"></script>
+</body>
+</html>

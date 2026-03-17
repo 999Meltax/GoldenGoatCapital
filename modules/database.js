@@ -115,7 +115,7 @@ export default class Database {
             try { await database.query('ALTER TABLE ausgabenDB ADD COLUMN account_id INTEGER'); } catch(e) {}
             try { await database.query('ALTER TABLE ausgabenDB ADD COLUMN recurring_id INTEGER DEFAULT NULL'); } catch(e) {}
 
-            // ── Wiederkehrende Transaktionen ──────────────────────────
+            // ── Wiederkehrende Transaktionen (Legacy – bleibt für Rückwärtskompatibilität) ──
             await database.query(`
                 CREATE TABLE IF NOT EXISTS recurring_transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,6 +132,7 @@ export default class Database {
                     created_at TEXT DEFAULT (datetime('now'))
                 )
             `);
+
             try { await database.query('ALTER TABLE fixkosten ADD COLUMN account_id INTEGER'); } catch(e) {}
             try { await database.query("ALTER TABLE todos ADD COLUMN priority TEXT DEFAULT 'mittel'"); } catch(e) {}
             try { await database.query('ALTER TABLE todos ADD COLUMN due_date TEXT DEFAULT NULL'); } catch(e) {}
@@ -190,7 +191,7 @@ export default class Database {
                 )
             `);
 
-            // ── Abonnements-Tabelle ────────────────────────────────────
+            // ── Abonnements-Tabelle (Legacy – Daten werden in fixkosten migriert) ──
             await database.query(`
                 CREATE TABLE IF NOT EXISTS abos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -251,7 +252,6 @@ export default class Database {
             // ── HAUSHALT-TABELLEN ──────────────────────────────────────
             // ══════════════════════════════════════════════════════════
 
-            // Haushalt: Verbund zweier User
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalte (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -261,7 +261,6 @@ export default class Database {
                 )
             `);
 
-            // Mitglieder eines Haushalts
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_mitglieder (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -273,7 +272,6 @@ export default class Database {
                 )
             `);
 
-            // Einladungen (per E-Mail-Code)
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_einladungen (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -286,7 +284,6 @@ export default class Database {
                 )
             `);
 
-            // Gemeinsame Fixkosten (Miete, Strom, etc.) mit prozentualem Split
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_fixkosten (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -301,7 +298,6 @@ export default class Database {
                 )
             `);
 
-            // Monatliche Überschreibungen für Fixkosten (falls ein Monat abweicht)
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_fixkosten_monat (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -315,7 +311,6 @@ export default class Database {
                 )
             `);
 
-            // Persönliche Fixkosten der einzelnen Mitglieder (nur für sie selbst)
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_persoenliche_fixkosten (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -328,7 +323,6 @@ export default class Database {
                 )
             `);
 
-            // Gehälter der Mitglieder (pro Monat überschreibbar)
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_gehaelter (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -341,7 +335,6 @@ export default class Database {
                 )
             `);
 
-            // Standard-Gehalt (Basis-Wert, wenn kein Monatsoverride existiert)
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_gehaelter_default (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -353,7 +346,6 @@ export default class Database {
                 )
             `);
 
-            // Gemeinsame Ausgaben (frei eingetragen, nicht Fixkosten)
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_ausgaben (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -370,7 +362,6 @@ export default class Database {
                 )
             `);
 
-            // Haushalt-Todos
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_todos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -386,7 +377,6 @@ export default class Database {
                 )
             `);
 
-            // Haushalt-Dokumente (komplett getrennt von privaten Dokumenten)
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_dokumente (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -409,17 +399,13 @@ export default class Database {
                 )
             `);
 
-            // Migrations: datum_tag nachrüsten falls noch nicht vorhanden
             try { await database.query('ALTER TABLE haushalt_fixkosten ADD COLUMN datum_tag INTEGER DEFAULT 1'); } catch(e) {}
             try { await database.query('ALTER TABLE haushalt_fixkosten ADD COLUMN erstellt_von INTEGER DEFAULT 0'); } catch(e) {}
-            // haushalt_transaktionen: Aufteilung + Migration
             try { await database.query('ALTER TABLE haushalt_transaktionen ADD COLUMN ausgabe_id INTEGER DEFAULT NULL'); } catch(e) {}
             try { await database.query('ALTER TABLE haushalt_ausgaben ADD COLUMN tx_id INTEGER DEFAULT NULL'); } catch(e) {}
             try { await database.query('ALTER TABLE haushalt_transaktionen ADD COLUMN anteil_user1 REAL DEFAULT 50'); } catch(e) {}
             try { await database.query('ALTER TABLE haushalt_transaktionen ADD COLUMN anteil_user2 REAL DEFAULT 50'); } catch(e) {}
 
-            // ── HAUSHALTSKONTO ─────────────────────────────────────────────
-            // Gemeinsames Konto des Haushalts (separat von privaten Konten)
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_konten (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -432,7 +418,6 @@ export default class Database {
                 )
             `);
 
-            // Transaktionen für das Haushaltskonto
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_transaktionen (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -450,7 +435,6 @@ export default class Database {
                 )
             `);
 
-            // ── Schulden-Zahlungshistorie ──────────────────────────────
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_tracker_categories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -475,7 +459,7 @@ export default class Database {
             try { await database.query('ALTER TABLE schulden_zahlungen ADD COLUMN transaction_id INTEGER DEFAULT NULL'); } catch(e) {}
             try { await database.query('ALTER TABLE schulden_zahlungen ADD COLUMN account_id INTEGER DEFAULT NULL'); } catch(e) {}
 
-            // ── Steuer-Tabellen ──────────────────────────────────
+            // ── Steuer-Tabellen ──────────────────────────────────────────
             await database.query(`
                 CREATE TABLE IF NOT EXISTS steuer_werbungskosten (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -496,6 +480,85 @@ export default class Database {
                     updated_at TEXT DEFAULT (datetime('now'))
                 )
             `);
+
+            // ══════════════════════════════════════════════════════════
+            // ── UNIFIED FIXKOSTEN: Neue Spalten nachrüsten ─────────────
+            // ══════════════════════════════════════════════════════════
+            // subtyp: 'fixkosten' | 'abo' | 'recurring'
+            try { await database.query("ALTER TABLE fixkosten ADD COLUMN subtyp TEXT DEFAULT 'fixkosten'"); } catch(e) {}
+            try { await database.query("ALTER TABLE fixkosten ADD COLUMN notiz TEXT DEFAULT ''"); } catch(e) {}
+            try { await database.query("ALTER TABLE fixkosten ADD COLUMN naechste_faelligkeit TEXT DEFAULT NULL"); } catch(e) {}
+            try { await database.query("ALTER TABLE fixkosten ADD COLUMN icon TEXT DEFAULT 'ri-repeat-line'"); } catch(e) {}
+            try { await database.query("ALTER TABLE fixkosten ADD COLUMN farbe TEXT DEFAULT '#6358e6'"); } catch(e) {}
+            try { await database.query("ALTER TABLE fixkosten ADD COLUMN aktiv INTEGER DEFAULT 1"); } catch(e) {}
+            try { await database.query("ALTER TABLE fixkosten ADD COLUMN migrated_abo_id INTEGER DEFAULT NULL"); } catch(e) {}
+            try { await database.query("ALTER TABLE fixkosten ADD COLUMN tx_type TEXT DEFAULT 'Ausgaben'"); } catch(e) {}
+
+            // ── Migration: bestehende Abos → fixkosten (subtyp='abo') ──
+            try {
+                const abos = await database.query(
+                    "SELECT * FROM abos",
+                    { type: Sequelize.QueryTypes.SELECT }
+                );
+                for (const abo of abos) {
+                    const exists = await database.query(
+                        "SELECT id FROM fixkosten WHERE user_id=? AND name=? AND subtyp='abo'",
+                        { replacements: [abo.user_id, abo.name], type: Sequelize.QueryTypes.SELECT }
+                    );
+                    if (exists.length === 0) {
+                        await database.query(
+                            `INSERT INTO fixkosten (user_id, name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz, naechste_faelligkeit, aktiv, migrated_abo_id)
+                             VALUES (?, ?, ?, 1, ?, ?, NULL, 'abo', ?, ?, 1, ?)`,
+                            {
+                                replacements: [
+                                    abo.user_id, abo.name, abo.betrag,
+                                    abo.rhythmus || 'monatlich',
+                                    abo.kategorie || 'sonstiges',
+                                    abo.notiz || '',
+                                    abo.naechste_abbuchung || null,
+                                    abo.id
+                                ],
+                                type: Sequelize.QueryTypes.INSERT
+                            }
+                        );
+                    }
+                }
+                console.log(`Abo-Migration: ${abos.length} Einträge verarbeitet`);
+            } catch(e) { console.log('Abo-Migration übersprungen:', e.message); }
+
+            // ── Migration: bestehende recurring_transactions → fixkosten (subtyp='recurring') ──
+            try {
+                const recs = await database.query(
+                    "SELECT * FROM recurring_transactions",
+                    { type: Sequelize.QueryTypes.SELECT }
+                );
+                for (const r of recs) {
+                    const exists = await database.query(
+                        "SELECT id FROM fixkosten WHERE user_id=? AND name=? AND subtyp='recurring'",
+                        { replacements: [r.user_id, r.name], type: Sequelize.QueryTypes.SELECT }
+                    );
+                    if (exists.length === 0) {
+                        await database.query(
+                            `INSERT INTO fixkosten (user_id, name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz, naechste_faelligkeit, aktiv, tx_type)
+                             VALUES (?, ?, ?, 1, ?, ?, ?, 'recurring', ?, ?, ?, ?)`,
+                            {
+                                replacements: [
+                                    r.user_id, r.name, r.amount,
+                                    r.rhythmus || 'monatlich',
+                                    r.category,
+                                    r.account_id || null,
+                                    r.notiz || '',
+                                    r.naechste_faelligkeit || null,
+                                    r.aktiv ?? 1,
+                                    r.type || 'Ausgaben'
+                                ],
+                                type: Sequelize.QueryTypes.INSERT
+                            }
+                        );
+                    }
+                }
+                console.log(`Recurring-Migration: ${recs.length} Einträge verarbeitet`);
+            } catch(e) { console.log('Recurring-Migration übersprungen:', e.message); }
 
         } catch (error) {
             console.error('Unable to connect to the database:', error);
@@ -525,13 +588,8 @@ export default class Database {
             'SELECT * FROM users WHERE Benutzername = ?',
             { replacements: [user], type: Sequelize.QueryTypes.SELECT }
         );
-
-        if (userinfos.length === 0) {
-            return false;
-        }
-
-        const userRecord = userinfos[0];
-        return await bcrypt.compare(passwd, userRecord.Passwort);
+        if (userinfos.length === 0) return false;
+        return await bcrypt.compare(passwd, userinfos[0].Passwort);
     }
 
     async getUserIdByName(username) {
@@ -539,11 +597,7 @@ export default class Database {
             'SELECT id FROM users WHERE Benutzername = ?',
             { replacements: [username], type: Sequelize.QueryTypes.SELECT }
         );
-
-        if (userinfo.length === 0) {
-            return -1;
-        }
-
+        if (userinfo.length === 0) return -1;
         return userinfo[0].id;
     }
 
@@ -552,7 +606,6 @@ export default class Database {
             'SELECT * FROM users WHERE Benutzername = ?',
             { replacements: [user], type: Sequelize.QueryTypes.SELECT }
         );
-
         return userinfos.length > 0;
     }
 
@@ -569,13 +622,8 @@ export default class Database {
             'SELECT * FROM users WHERE Benutzername = ?',
             { replacements: [user], type: Sequelize.QueryTypes.SELECT }
         );
-
-        if (userinfos.length === 0) {
-            return null;
-        }
-
-        const userRecord = userinfos[0];
-        return new Profil(userRecord.Benutzername);
+        if (userinfos.length === 0) return null;
+        return new Profil(userinfos[0].Benutzername);
     }
 
     // ── Profil-Methoden ────────────────────────────────────────
@@ -583,7 +631,6 @@ export default class Database {
     async getUserPlan(userId) {
         const profile = await this.getUserProfile(userId);
         const tarif = profile.tarif || 'basis';
-        // 'basis' und 'free' = Free-Tarif, alles andere = Pro
         return (tarif === 'pro') ? 'pro' : 'free';
     }
 
@@ -652,6 +699,58 @@ export default class Database {
         return rows[0]?.Benutzername || '';
     }
 
+    // ── E-Mail Verifizierung ───────────────────────────────────
+
+    async setVerifyToken(userId, token) {
+        await this._database.query(
+            'UPDATE users SET email_verify_token=?, email_verified=0 WHERE id=?',
+            { replacements: [token, userId], type: Sequelize.QueryTypes.UPDATE }
+        );
+    }
+
+    async verifyEmail(token) {
+        const rows = await this._database.query(
+            'SELECT id FROM users WHERE email_verify_token=?',
+            { replacements: [token], type: Sequelize.QueryTypes.SELECT }
+        );
+        if (!rows.length) return false;
+        await this._database.query(
+            'UPDATE users SET email_verified=1, email_verify_token=NULL, is_new_user=1 WHERE id=?',
+            { replacements: [rows[0].id], type: Sequelize.QueryTypes.UPDATE }
+        );
+        return rows[0].id;
+    }
+
+    async setNewUserDone(userId) {
+        await this._database.query(
+            'UPDATE users SET is_new_user=0 WHERE id=?',
+            { replacements: [userId], type: Sequelize.QueryTypes.UPDATE }
+        );
+    }
+
+    async setResetToken(userId, token, expires) {
+        await this._database.query(
+            'UPDATE users SET reset_token=?, reset_token_expires=? WHERE id=?',
+            { replacements: [token, expires, userId], type: Sequelize.QueryTypes.UPDATE }
+        );
+    }
+
+    async getUserByResetToken(token) {
+        const rows = await this._database.query(
+            'SELECT id, reset_token_expires FROM users WHERE reset_token=?',
+            { replacements: [token], type: Sequelize.QueryTypes.SELECT }
+        );
+        return rows[0] || null;
+    }
+
+    async resetPassword(userId, newPassword) {
+        const hashed = await bcrypt.hash(newPassword, 10);
+        await this._database.query(
+            'UPDATE users SET Passwort=?, reset_token=NULL, reset_token_expires=NULL WHERE id=?',
+            { replacements: [hashed, userId], type: Sequelize.QueryTypes.UPDATE }
+        );
+    }
+
     // ── Einstellungen-Methoden ─────────────────────────────────
 
     async getUserSettings(userId) {
@@ -660,17 +759,9 @@ export default class Database {
             { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
         );
         return rows[0] || {
-            user_id: userId,
-            language: 'de',
-            theme: 'dark',
-            currency: 'EUR',
-            date_format: 'DD.MM.YYYY',
-            notifications_email: 0,
-            notifications_browser: 0,
-            two_factor: 0,
-            reminder_rechnungen: 1,
-            reminder_budget: 1,
-            reminder_sparziele: 1,
+            user_id: userId, language: 'de', theme: 'dark', currency: 'EUR',
+            date_format: 'DD.MM.YYYY', notifications_email: 0, notifications_browser: 0,
+            two_factor: 0, reminder_rechnungen: 1, reminder_budget: 1, reminder_sparziele: 1,
         };
     }
 
@@ -699,10 +790,7 @@ export default class Database {
                reminder_sparziele     = excluded.reminder_sparziele`,
             {
                 replacements: [
-                    userId,
-                    language || 'de',
-                    theme || 'dark',
-                    currency || 'EUR',
+                    userId, language || 'de', theme || 'dark', currency || 'EUR',
                     date_format || 'DD.MM.YYYY',
                     notifications_email  ? 1 : 0,
                     notifications_browser ? 1 : 0,
@@ -717,7 +805,6 @@ export default class Database {
     }
 
     async saveTransaction(userId, name, category, date, amount, type, accountId = null) {
-        console.log(userId, name, category, date, amount, type, accountId);
         const result = await this._database.query(
             'INSERT INTO ausgabenDB (user_id, name, category, date, amount, type, account_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
             { replacements: [userId, name, category, date, amount, type, accountId], type: Sequelize.QueryTypes.INSERT }
@@ -731,19 +818,15 @@ export default class Database {
                 'SELECT id FROM ausgabenDB WHERE user_id = ? AND id = ?',
                 { replacements: [userId, transactionId], type: Sequelize.QueryTypes.SELECT }
             );
-
             await this._database.query(
                 'DELETE FROM ausgabenDB WHERE user_id = ? AND id = ?',
                 { replacements: [userId, transactionId], type: Sequelize.QueryTypes.DELETE }
             );
-
             const existsAfter = await this._database.query(
                 'SELECT id FROM ausgabenDB WHERE user_id = ? AND id = ?',
                 { replacements: [userId, transactionId], type: Sequelize.QueryTypes.SELECT }
             );
-
-            const wasDeleted = existsBefore.length > 0 && existsAfter.length === 0;
-            return wasDeleted;
+            return existsBefore.length > 0 && existsAfter.length === 0;
         } catch (error) {
             console.error('Fehler beim Löschen der Transaktion:', error);
             throw error;
@@ -751,10 +834,10 @@ export default class Database {
     }
 
     async getTransactionsForUser(userId) {
-        const transactions = await this._database.query('SELECT * FROM ausgabenDB WHERE user_id = ?', {
-            replacements: [userId], type: Sequelize.QueryTypes.SELECT
-        });
-        return transactions;
+        return await this._database.query(
+            'SELECT * FROM ausgabenDB WHERE user_id = ?',
+            { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
+        );
     }
 
     async addTodo(userId, task, quantity = 0, priority = 'mittel', due_date = null, label = '', notes = '') {
@@ -843,22 +926,16 @@ export default class Database {
                 'SELECT name FROM categories WHERE id = ? AND user_id = ?',
                 { replacements: [categoryId, userId], type: Sequelize.QueryTypes.SELECT }
             );
-
-            if (category.length === 0) {
-                return false;
-            }
-
+            if (category.length === 0) return false;
             await this._database.query(
                 'UPDATE categories SET name = ? WHERE id = ? AND user_id = ?',
                 { replacements: [newName, categoryId, userId], type: Sequelize.QueryTypes.UPDATE }
             );
-
             const oldName = category[0].name;
             await this._database.query(
                 'UPDATE ausgabenDB SET category = ? WHERE user_id = ? AND category = ?',
                 { replacements: [newName, userId, oldName], type: Sequelize.QueryTypes.UPDATE }
             );
-
             return true;
         } catch (error) {
             console.error('Fehler beim Bearbeiten der Kategorie:', error);
@@ -872,21 +949,15 @@ export default class Database {
                 'SELECT name FROM categories WHERE id = ? AND user_id = ?',
                 { replacements: [categoryId, userId], type: Sequelize.QueryTypes.SELECT }
             );
-
-            if (category.length === 0) {
-                return false;
-            }
-
+            if (category.length === 0) return false;
             const categoryName = category[0].name;
             const transactions = await this._database.query(
                 'SELECT id FROM ausgabenDB WHERE user_id = ? AND category = ?',
                 { replacements: [userId, categoryName], type: Sequelize.QueryTypes.SELECT }
             );
-
             if (transactions.length > 0) {
                 throw new Error('Kategorie kann nicht gelöscht werden, da sie in Transaktionen verwendet wird.');
             }
-
             await this._database.query(
                 'DELETE FROM categories WHERE id = ? AND user_id = ?',
                 { replacements: [categoryId, userId], type: Sequelize.QueryTypes.DELETE }
@@ -911,58 +982,39 @@ export default class Database {
         }
     }
 
-    // Kalender-Methoden
+    // ── Kalender-Methoden ──────────────────────────────────────
+
     async addEvent(userId, start, end, text, color) {
-        try {
-            const result = await this._database.query(
-                'INSERT INTO calendar_events (user_id, start, end, text, color) VALUES (?, ?, ?, ?, ?)',
-                { replacements: [userId, start, end, text, color], type: Sequelize.QueryTypes.INSERT }
-            );
-            return result[0];
-        } catch (error) {
-            console.error('Fehler beim Hinzufügen des Events:', error);
-            throw error;
-        }
+        const result = await this._database.query(
+            'INSERT INTO calendar_events (user_id, start, end, text, color) VALUES (?, ?, ?, ?, ?)',
+            { replacements: [userId, start, end, text, color], type: Sequelize.QueryTypes.INSERT }
+        );
+        return result[0];
     }
 
     async getEventsForUser(userId) {
-        try {
-            return await this._database.query(
-                'SELECT * FROM calendar_events WHERE user_id = ?',
-                { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
-            );
-        } catch (error) {
-            console.error('Fehler beim Abrufen der Events:', error);
-            throw error;
-        }
+        return await this._database.query(
+            'SELECT * FROM calendar_events WHERE user_id = ?',
+            { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
+        );
     }
 
     async updateEvent(userId, eventId, start, end, text, color) {
-        try {
-            await this._database.query(
-                'UPDATE calendar_events SET start = ?, end = ?, text = ?, color = ? WHERE id = ? AND user_id = ?',
-                { replacements: [start, end, text, color, eventId, userId], type: Sequelize.QueryTypes.UPDATE }
-            );
-        } catch (error) {
-            console.error('Fehler beim Aktualisieren des Events:', error);
-            throw error;
-        }
+        await this._database.query(
+            'UPDATE calendar_events SET start = ?, end = ?, text = ?, color = ? WHERE id = ? AND user_id = ?',
+            { replacements: [start, end, text, color, eventId, userId], type: Sequelize.QueryTypes.UPDATE }
+        );
     }
 
     async deleteEvent(userId, eventId) {
-        try {
-            await this._database.query(
-                'DELETE FROM calendar_events WHERE id = ? AND user_id = ?',
-                { replacements: [eventId, userId], type: Sequelize.QueryTypes.DELETE }
-            );
-            return true;
-        } catch (error) {
-            console.error('Fehler beim Löschen des Events:', error);
-            throw error;
-        }
+        await this._database.query(
+            'DELETE FROM calendar_events WHERE id = ? AND user_id = ?',
+            { replacements: [eventId, userId], type: Sequelize.QueryTypes.DELETE }
+        );
+        return true;
     }
 
-    // ==================== FINANZEN-METHODEN ====================
+    // ── Finanzen-Methoden ──────────────────────────────────────
 
     async getMonatlicheAusgaben(userId) {
         return await this._database.query(
@@ -996,7 +1048,7 @@ export default class Database {
             const konto = initial.sparkonto_initial + initial.girokonto_initial + gesamtausgaben + gehalt;
             const bargeld = initial.bargeld_initial || 300;
             const fixSum = fixkostenSum.find(f => f.monat === monat)?.summe || 0;
-            const gesamtvermoegen = konto + bargeld + inv.portfoliowert + inv.cash_ruecklagen;
+            let gesamtvermoegen = konto + bargeld + inv.portfoliowert + inv.cash_ruecklagen;
 
             const manuellMonat = manuelle.filter(m => m.monat === monat);
             manuellMonat.forEach(m => {
@@ -1004,15 +1056,12 @@ export default class Database {
             });
 
             zusammenfassungen.push({
-                monat,
-                gesamtvermoegen,
+                monat, gesamtvermoegen,
                 geld_gesamt: gesamtvermoegen - inv.portfoliowert - inv.cash_ruecklagen,
-                konto,
-                bargeld,
+                konto, bargeld,
                 investments: inv.portfoliowert,
                 cash_ruecklagen: inv.cash_ruecklagen,
-                gehalt,
-                gesamtausgaben,
+                gehalt, gesamtausgaben,
                 fixkosten_sum: fixSum
             });
         }
@@ -1033,19 +1082,16 @@ export default class Database {
     async addAutomatischeEintrage(userId) {
         const today = new Date();
         const day   = today.getDate();
-        const monat = today.toISOString().slice(0, 7); // YYYY-MM
+        const monat = today.toISOString().slice(0, 7);
         const fixkosten = await this.getFixkosten(userId);
 
         for (const fix of fixkosten) {
             if (fix.haeufigkeit === 'monatlich' && day === fix.datum_tag) {
-                // Duplikatschutz: prüfen ob dieser Monat für diese Fixkost schon eingetragen
                 const existing = await this._database.query(
                     "SELECT id FROM ausgabenDB WHERE user_id=? AND recurring_id=? AND date LIKE ?",
                     { replacements: [userId, fix.id, monat + '%'], type: Sequelize.QueryTypes.SELECT }
                 );
                 if (existing.length > 0) continue;
-
-                // Mit recurring_id speichern, damit Fixkosten-Badge angezeigt werden kann
                 await this._database.query(
                     'INSERT INTO ausgabenDB (user_id, name, category, date, amount, type, account_id, recurring_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                     {
@@ -1055,12 +1101,6 @@ export default class Database {
                 );
             }
         }
-    }
-
-    dateToExcelSerial(date = new Date()) {
-        const excelStart = new Date(Date.UTC(1899, 11, 30));
-        const diff = date - excelStart;
-        return Math.floor(diff / (1000 * 60 * 60 * 24));
     }
 
     async addFixkost(userId, name, betrag, datum_tag, haeufigkeit, kategorie) {
@@ -1137,6 +1177,7 @@ export default class Database {
     }
 
     // ── Konten ─────────────────────────────────────────────────
+
     async getAccountsWithBalance(userId) {
         const accounts = await this._database.query(
             'SELECT * FROM accounts WHERE user_id=? ORDER BY id ASC',
@@ -1185,21 +1226,17 @@ export default class Database {
         );
     }
 
-    // Für Haushalt-Import: Transaktionen des Kontos + ggf. nicht zugewiesene (account_id IS NULL) mitnehmen
     async getTransactionsForImport(userId, accountId) {
-        // Wie viele Konten hat der User?
         const accounts = await this._database.query(
             'SELECT id FROM accounts WHERE user_id=?',
             { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
         );
-        // Falls User nur ein Konto hat: auch account_id=NULL-Transaktionen (Legacy) mitnehmen
         if (accounts.length <= 1) {
             return await this._database.query(
                 'SELECT * FROM ausgabenDB WHERE user_id=? AND (account_id=? OR account_id IS NULL) ORDER BY date DESC',
                 { replacements: [userId, accountId], type: Sequelize.QueryTypes.SELECT }
             );
         }
-        // Mehrere Konten: nur explizit verknüpfte Transaktionen
         return await this._database.query(
             'SELECT * FROM ausgabenDB WHERE user_id=? AND account_id=? ORDER BY date DESC',
             { replacements: [userId, accountId], type: Sequelize.QueryTypes.SELECT }
@@ -1207,6 +1244,7 @@ export default class Database {
     }
 
     // ── Outlook OAuth Tokens ───────────────────────────────────
+
     async saveOutlookTokens(userId, accessToken, refreshToken, expiresIn) {
         await this._database.query(`CREATE TABLE IF NOT EXISTS outlook_tokens (user_id INTEGER PRIMARY KEY, access_token TEXT, refresh_token TEXT, expiry INTEGER)`, { type: Sequelize.QueryTypes.RAW });
         await this._database.query(
@@ -1224,7 +1262,12 @@ export default class Database {
         return rows[0] || null;
     }
 
+    async removeOutlookTokens(userId) {
+        await this._database.query('DELETE FROM outlook_tokens WHERE user_id=?', { replacements: [userId], type: Sequelize.QueryTypes.DELETE });
+    }
+
     // ── Analysen ───────────────────────────────────────────────
+
     async getAnalysen(userId) {
         return await this._database.query(
             'SELECT id, title, short_desc, long_desc, image FROM analysen WHERE user_id = ? ORDER BY id DESC',
@@ -1247,10 +1290,6 @@ export default class Database {
         );
     }
 
-    async removeOutlookTokens(userId) {
-        await this._database.query('DELETE FROM outlook_tokens WHERE user_id=?', { replacements: [userId], type: Sequelize.QueryTypes.DELETE });
-    }
-
     // ── Dokumente ──────────────────────────────────────────────
 
     async getDokumente(userId) {
@@ -1259,8 +1298,7 @@ export default class Database {
                     betrag, faellig_datum, aussteller, status, kategorie,
                     brutto, netto, arbeitgeber, monat,
                     steuer_art, steuerjahr, created_at
-             FROM dokumente
-             WHERE user_id = ?
+             FROM dokumente WHERE user_id = ?
              ORDER BY datum DESC, id DESC`,
             { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
         );
@@ -1278,16 +1316,13 @@ export default class Database {
         const {
             typ, name, datum, jahr, notiz, file_data, file_ext, file_mime,
             betrag, faellig_datum, aussteller, status, kategorie,
-            brutto, netto, arbeitgeber, monat,
-            steuer_art, steuerjahr
+            brutto, netto, arbeitgeber, monat, steuer_art, steuerjahr
         } = data;
-
         const result = await this._database.query(
             `INSERT INTO dokumente
              (user_id, typ, name, datum, jahr, notiz, file_data, file_ext, file_mime,
               betrag, faellig_datum, aussteller, status, kategorie,
-              brutto, netto, arbeitgeber, monat,
-              steuer_art, steuerjahr)
+              brutto, netto, arbeitgeber, monat, steuer_art, steuerjahr)
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             {
                 replacements: [
@@ -1318,6 +1353,7 @@ export default class Database {
     }
 
     // ── Versicherungen ─────────────────────────────────────────
+
     async getVersicherungen(userId) {
         return await this._database.query(
             `SELECT * FROM versicherungen WHERE user_id = ? ORDER BY status ASC, name ASC`,
@@ -1378,6 +1414,7 @@ export default class Database {
     }
 
     // ── Steuer-Methoden ────────────────────────────────────────
+
     async getSteuerWerbungskosten(userId, jahr) {
         const where = jahr ? 'AND steuerjahr=?' : '';
         const replacements = jahr ? [userId, jahr] : [userId];
@@ -1432,6 +1469,7 @@ export default class Database {
     }
 
     // ── Budget-Methoden ────────────────────────────────────────
+
     async getBudgets(userId) {
         return await this._database.query(
             'SELECT * FROM budgets WHERE user_id=? ORDER BY kategorie ASC',
@@ -1462,6 +1500,7 @@ export default class Database {
     }
 
     // ── Sparziele-Methoden ─────────────────────────────────────
+
     async getSparziele(userId) {
         return await this._database.query(
             'SELECT * FROM sparziele WHERE user_id=? ORDER BY created_at DESC',
@@ -1498,37 +1537,42 @@ export default class Database {
         );
     }
 
-    // ── Abonnements-Methoden ───────────────────────────────────
+    // ── Abonnements-Methoden (Legacy-Shims – schreiben jetzt in fixkosten) ──
+
     async getAbos(userId) {
-        return await this._database.query(
-            'SELECT * FROM abos WHERE user_id=? ORDER BY name ASC',
+        // Gibt unified fixkosten mit subtyp='abo' zurück (im alten Format)
+        const rows = await this._database.query(
+            "SELECT id, user_id, name, kategorie, betrag, haeufigkeit as rhythmus, naechste_faelligkeit as naechste_abbuchung, notiz FROM fixkosten WHERE user_id=? AND subtyp='abo' ORDER BY name ASC",
             { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
         );
+        return rows;
     }
 
     async addAbo(userId, name, kategorie, betrag, rhythmus, naechste_abbuchung, notiz) {
         const result = await this._database.query(
-            'INSERT INTO abos (user_id, name, kategorie, betrag, rhythmus, naechste_abbuchung, notiz) VALUES (?,?,?,?,?,?,?)',
-            { replacements: [userId, name, kategorie, betrag, rhythmus, naechste_abbuchung || null, notiz || ''], type: Sequelize.QueryTypes.INSERT }
+            `INSERT INTO fixkosten (user_id, name, betrag, datum_tag, haeufigkeit, kategorie, subtyp, notiz, naechste_faelligkeit, aktiv)
+             VALUES (?, ?, ?, 1, ?, ?, 'abo', ?, ?, 1)`,
+            { replacements: [userId, name, betrag, rhythmus || 'monatlich', kategorie || 'sonstiges', notiz || '', naechste_abbuchung || null], type: Sequelize.QueryTypes.INSERT }
         );
         return result[0];
     }
 
     async updateAbo(userId, id, name, kategorie, betrag, rhythmus, naechste_abbuchung, notiz) {
         await this._database.query(
-            'UPDATE abos SET name=?, kategorie=?, betrag=?, rhythmus=?, naechste_abbuchung=?, notiz=? WHERE id=? AND user_id=?',
-            { replacements: [name, kategorie, betrag, rhythmus, naechste_abbuchung || null, notiz || '', id, userId], type: Sequelize.QueryTypes.UPDATE }
+            "UPDATE fixkosten SET name=?, kategorie=?, betrag=?, haeufigkeit=?, naechste_faelligkeit=?, notiz=? WHERE id=? AND user_id=? AND subtyp='abo'",
+            { replacements: [name, kategorie, betrag, rhythmus || 'monatlich', naechste_abbuchung || null, notiz || '', id, userId], type: Sequelize.QueryTypes.UPDATE }
         );
     }
 
     async deleteAbo(userId, id) {
         await this._database.query(
-            'DELETE FROM abos WHERE id=? AND user_id=?',
+            'DELETE FROM fixkosten WHERE id=? AND user_id=?',
             { replacements: [id, userId], type: Sequelize.QueryTypes.DELETE }
         );
     }
 
     // ── Notizen-Methoden ───────────────────────────────────────
+
     async getNotizen(userId) {
         return await this._database.query(
             'SELECT * FROM notizen WHERE user_id=? ORDER BY pinned DESC, updated_at DESC',
@@ -1566,6 +1610,7 @@ export default class Database {
     }
 
     // ── Gewohnheiten-Methoden ──────────────────────────────────
+
     async getGewohnheiten(userId) {
         return await this._database.query(
             'SELECT * FROM gewohnheiten WHERE user_id=? ORDER BY created_at ASC',
@@ -1603,6 +1648,7 @@ export default class Database {
     }
 
     // ── Ziele-Methoden ─────────────────────────────────────────
+
     async getZiele(userId) {
         return await this._database.query(
             'SELECT * FROM ziele WHERE user_id=? ORDER BY kategorie ASC, created_at DESC',
@@ -1633,6 +1679,7 @@ export default class Database {
     }
 
     // ── Schulden-Methoden ──────────────────────────────────────
+
     async getSchulden(userId) {
         return await this._database.query(
             'SELECT * FROM schulden WHERE user_id=? ORDER BY restbetrag DESC',
@@ -1662,7 +1709,6 @@ export default class Database {
             'DELETE FROM schulden WHERE id=? AND user_id=?',
             { replacements: [id, userId], type: Sequelize.QueryTypes.DELETE }
         );
-        // Zugehörige Zahlungen mitlöschen
         await this._database.query(
             'DELETE FROM schulden_zahlungen WHERE schulden_id=? AND user_id=?',
             { replacements: [id, userId], type: Sequelize.QueryTypes.DELETE }
@@ -1670,6 +1716,7 @@ export default class Database {
     }
 
     // ── Schulden-Zahlungshistorie ──────────────────────────────
+
     async getSchuldenZahlungen(userId, schuldenId) {
         return await this._database.query(
             'SELECT * FROM schulden_zahlungen WHERE schulden_id=? AND user_id=? ORDER BY datum DESC, created_at DESC',
@@ -1678,14 +1725,13 @@ export default class Database {
     }
 
     async addSchuldenZahlung(userId, schuldenId, betrag, datum, notiz, accountId = null, alsTransaktion = false) {
-        // Schuldenbezeichnung fuer Transaktion
         let transactionId = null;
         if (alsTransaktion) {
             const schuld = await this._database.query(
-                'SELECT bezeichnung FROM schulden WHERE id=? AND user_id=?',
+                'SELECT name FROM schulden WHERE id=? AND user_id=?',
                 { replacements: [schuldenId, userId], type: Sequelize.QueryTypes.SELECT }
             );
-            const schuldenName = schuld.length ? `Schuldentilgung: ${schuld[0].bezeichnung}` : 'Schuldentilgung';
+            const schuldenName = schuld.length ? `Schuldentilgung: ${schuld[0].name}` : 'Schuldentilgung';
             const txResult = await this._database.query(
                 'INSERT INTO ausgabenDB (user_id, name, category, date, amount, type, account_id) VALUES (?,?,?,?,?,?,?)',
                 { replacements: [userId, schuldenName, 'Schuldentilgung', datum, betrag, 'Ausgaben', accountId || null], type: Sequelize.QueryTypes.INSERT }
@@ -1696,7 +1742,6 @@ export default class Database {
             'INSERT INTO schulden_zahlungen (schulden_id, user_id, betrag, datum, notiz, account_id, transaction_id) VALUES (?,?,?,?,?,?,?)',
             { replacements: [schuldenId, userId, betrag, datum, notiz || '', accountId || null, transactionId], type: Sequelize.QueryTypes.INSERT }
         );
-        // Restbetrag der Schuld reduzieren
         await this._database.query(
             'UPDATE schulden SET restbetrag = MAX(0, restbetrag - ?) WHERE id=? AND user_id=?',
             { replacements: [betrag, schuldenId, userId], type: Sequelize.QueryTypes.UPDATE }
@@ -1711,12 +1756,10 @@ export default class Database {
         );
         if (!rows.length) return false;
         const { betrag, schulden_id, transaction_id } = rows[0];
-        // Restbetrag zurueckbuchen (max. Gesamtbetrag)
         await this._database.query(
             'UPDATE schulden SET restbetrag = MIN(gesamtbetrag, restbetrag + ?) WHERE id=? AND user_id=?',
             { replacements: [betrag, schulden_id, userId], type: Sequelize.QueryTypes.UPDATE }
         );
-        // Verknuepfte Transaktion mitloeschen
         if (transaction_id) {
             await this._database.query(
                 'DELETE FROM ausgabenDB WHERE id=? AND user_id=?',
@@ -1730,19 +1773,23 @@ export default class Database {
         return true;
     }
 
-    // ── Wiederkehrende Transaktionen ──────────────────────────
+    // ── Wiederkehrende Transaktionen (Legacy-Shims) ────────────
+
     async getRecurring(userId) {
-        return await this._database.query(
-            'SELECT * FROM recurring_transactions WHERE user_id=? ORDER BY naechste_faelligkeit ASC',
+        // Gibt unified fixkosten mit subtyp='recurring' im alten Format zurück
+        const rows = await this._database.query(
+            "SELECT id, user_id, name, kategorie as category, betrag as amount, tx_type as type, account_id, haeufigkeit as rhythmus, naechste_faelligkeit, aktiv, notiz FROM fixkosten WHERE user_id=? AND subtyp='recurring' ORDER BY naechste_faelligkeit ASC",
             { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
         );
+        return rows;
     }
 
     async addRecurring(userId, data) {
         const { name, category, amount, type, account_id, rhythmus, naechste_faelligkeit, notiz } = data;
         const result = await this._database.query(
-            'INSERT INTO recurring_transactions (user_id, name, category, amount, type, account_id, rhythmus, naechste_faelligkeit, notiz) VALUES (?,?,?,?,?,?,?,?,?)',
-            { replacements: [userId, name, category, parseFloat(amount), type || 'Ausgaben', account_id || null, rhythmus || 'monatlich', naechste_faelligkeit || null, notiz || ''], type: Sequelize.QueryTypes.INSERT }
+            `INSERT INTO fixkosten (user_id, name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz, naechste_faelligkeit, aktiv, tx_type)
+             VALUES (?, ?, ?, 1, ?, ?, ?, 'recurring', ?, ?, 1, ?)`,
+            { replacements: [userId, name, parseFloat(amount), rhythmus || 'monatlich', category, account_id || null, notiz || '', naechste_faelligkeit || null, type || 'Ausgaben'], type: Sequelize.QueryTypes.INSERT }
         );
         return result[0];
     }
@@ -1750,43 +1797,133 @@ export default class Database {
     async updateRecurring(userId, id, data) {
         const { name, category, amount, type, account_id, rhythmus, naechste_faelligkeit, aktiv, notiz } = data;
         await this._database.query(
-            'UPDATE recurring_transactions SET name=?, category=?, amount=?, type=?, account_id=?, rhythmus=?, naechste_faelligkeit=?, aktiv=?, notiz=? WHERE id=? AND user_id=?',
+            "UPDATE fixkosten SET name=?, kategorie=?, betrag=?, tx_type=?, account_id=?, haeufigkeit=?, naechste_faelligkeit=?, aktiv=?, notiz=? WHERE id=? AND user_id=? AND subtyp='recurring'",
             { replacements: [name, category, parseFloat(amount), type || 'Ausgaben', account_id || null, rhythmus || 'monatlich', naechste_faelligkeit || null, aktiv !== false ? 1 : 0, notiz || '', id, userId], type: Sequelize.QueryTypes.UPDATE }
         );
     }
 
     async deleteRecurring(userId, id) {
         await this._database.query(
-            'DELETE FROM recurring_transactions WHERE id=? AND user_id=?',
+            'DELETE FROM fixkosten WHERE id=? AND user_id=?',
             { replacements: [id, userId], type: Sequelize.QueryTypes.DELETE }
         );
     }
 
     async bookRecurring(userId, recurringId) {
         const rows = await this._database.query(
-            'SELECT * FROM recurring_transactions WHERE id=? AND user_id=?',
+            "SELECT * FROM fixkosten WHERE id=? AND user_id=? AND subtyp='recurring'",
             { replacements: [recurringId, userId], type: Sequelize.QueryTypes.SELECT }
         );
         if (!rows.length) throw new Error('Vorlage nicht gefunden');
         const r = rows[0];
-
         const today = new Date().toISOString().substring(0, 10);
-        const txId = await this.saveTransaction(userId, r.name, r.category, today, r.amount, r.type, r.account_id);
+        const txId = await this.saveTransaction(userId, r.name, r.kategorie, today, r.betrag, r.tx_type || 'Ausgaben', r.account_id);
 
         const base = r.naechste_faelligkeit ? new Date(r.naechste_faelligkeit) : new Date();
         let next = new Date(base);
-        if (r.rhythmus === 'woechentlich')    next.setDate(next.getDate() + 7);
-        else if (r.rhythmus === 'monatlich')  next.setMonth(next.getMonth() + 1);
-        else if (r.rhythmus === 'viertelj')   next.setMonth(next.getMonth() + 3);
-        else if (r.rhythmus === 'halbjaehrl') next.setMonth(next.getMonth() + 6);
-        else if (r.rhythmus === 'jaehrlich')  next.setFullYear(next.getFullYear() + 1);
+        if (r.haeufigkeit === 'woechentlich')    next.setDate(next.getDate() + 7);
+        else if (r.haeufigkeit === 'monatlich')  next.setMonth(next.getMonth() + 1);
+        else if (r.haeufigkeit === 'viertelj')   next.setMonth(next.getMonth() + 3);
+        else if (r.haeufigkeit === 'halbjaehrl') next.setMonth(next.getMonth() + 6);
+        else if (r.haeufigkeit === 'jaehrlich')  next.setFullYear(next.getFullYear() + 1);
         const nextStr = next.toISOString().substring(0, 10);
 
         await this._database.query(
-            'UPDATE recurring_transactions SET naechste_faelligkeit=? WHERE id=? AND user_id=?',
+            'UPDATE fixkosten SET naechste_faelligkeit=? WHERE id=? AND user_id=?',
             { replacements: [nextStr, recurringId, userId], type: Sequelize.QueryTypes.UPDATE }
         );
+        return { txId, nextFaelligkeit: nextStr };
+    }
 
+    // ══════════════════════════════════════════════════════════
+    // ── UNIFIED FIXKOSTEN/ABOS/RECURRING ──────────────────────
+    // ══════════════════════════════════════════════════════════
+
+    async getFixkostenUnified(userId) {
+        return await this._database.query(
+            `SELECT * FROM fixkosten WHERE user_id=? ORDER BY 
+             CASE subtyp WHEN 'fixkosten' THEN 1 WHEN 'abo' THEN 2 WHEN 'recurring' THEN 3 ELSE 4 END,
+             name ASC`,
+            { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
+        );
+    }
+
+    async addFixkostUnified(userId, data) {
+        const { name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz, naechste_faelligkeit, icon, farbe, aktiv, tx_type } = data;
+        const result = await this._database.query(
+            `INSERT INTO fixkosten (user_id, name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz, naechste_faelligkeit, icon, farbe, aktiv, tx_type)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            {
+                replacements: [
+                    userId, name, parseFloat(betrag) || 0,
+                    parseInt(datum_tag) || 1,
+                    haeufigkeit || 'monatlich',
+                    kategorie || 'sonstiges',
+                    account_id || null,
+                    subtyp || 'fixkosten',
+                    notiz || '',
+                    naechste_faelligkeit || null,
+                    icon || 'ri-repeat-line',
+                    farbe || '#6358e6',
+                    aktiv !== false ? 1 : 0,
+                    tx_type || 'Ausgaben'
+                ],
+                type: Sequelize.QueryTypes.INSERT
+            }
+        );
+        return result[0];
+    }
+
+    async updateFixkostUnified(userId, id, data) {
+        const { name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz, naechste_faelligkeit, icon, farbe, aktiv, tx_type } = data;
+        await this._database.query(
+            `UPDATE fixkosten SET name=?, betrag=?, datum_tag=?, haeufigkeit=?, kategorie=?, account_id=?,
+             subtyp=?, notiz=?, naechste_faelligkeit=?, icon=?, farbe=?, aktiv=?, tx_type=?
+             WHERE id=? AND user_id=?`,
+            {
+                replacements: [
+                    name, parseFloat(betrag) || 0,
+                    parseInt(datum_tag) || 1,
+                    haeufigkeit || 'monatlich',
+                    kategorie || 'sonstiges',
+                    account_id || null,
+                    subtyp || 'fixkosten',
+                    notiz || '',
+                    naechste_faelligkeit || null,
+                    icon || 'ri-repeat-line',
+                    farbe || '#6358e6',
+                    aktiv !== false ? 1 : 0,
+                    tx_type || 'Ausgaben',
+                    id, userId
+                ],
+                type: Sequelize.QueryTypes.UPDATE
+            }
+        );
+    }
+
+    async bookFixkostUnified(userId, fixkostId) {
+        const rows = await this._database.query(
+            'SELECT * FROM fixkosten WHERE id=? AND user_id=?',
+            { replacements: [fixkostId, userId], type: Sequelize.QueryTypes.SELECT }
+        );
+        if (!rows.length) throw new Error('Eintrag nicht gefunden');
+        const f = rows[0];
+        const today = new Date().toISOString().substring(0, 10);
+        const txId = await this.saveTransaction(userId, f.name, f.kategorie, today, f.betrag, f.tx_type || 'Ausgaben', f.account_id);
+
+        const base = f.naechste_faelligkeit ? new Date(f.naechste_faelligkeit) : new Date();
+        let next = new Date(base);
+        if (f.haeufigkeit === 'woechentlich')     next.setDate(next.getDate() + 7);
+        else if (f.haeufigkeit === 'monatlich')   next.setMonth(next.getMonth() + 1);
+        else if (f.haeufigkeit === 'viertelj')    next.setMonth(next.getMonth() + 3);
+        else if (f.haeufigkeit === 'halbjaehrl')  next.setMonth(next.getMonth() + 6);
+        else if (f.haeufigkeit === 'jaehrlich')   next.setFullYear(next.getFullYear() + 1);
+        const nextStr = next.toISOString().substring(0, 10);
+
+        await this._database.query(
+            'UPDATE fixkosten SET naechste_faelligkeit=? WHERE id=? AND user_id=?',
+            { replacements: [nextStr, fixkostId, userId], type: Sequelize.QueryTypes.UPDATE }
+        );
         return { txId, nextFaelligkeit: nextStr };
     }
 
@@ -1794,7 +1931,6 @@ export default class Database {
     // ── HAUSHALT-METHODEN ──────────────────────────────────────
     // ══════════════════════════════════════════════════════════
 
-    // Haushalt für User holen (oder null wenn keiner)
     async getHaushaltForUser(userId) {
         const rows = await this._database.query(
             `SELECT h.*, hm.anzeigename, hm.rolle
@@ -1807,7 +1943,6 @@ export default class Database {
         return rows[0] || null;
     }
 
-    // Alle Mitglieder eines Haushalts (mit Profilinfos)
     async getHaushaltMitglieder(haushaltId) {
         return await this._database.query(
             `SELECT hm.user_id, hm.anzeigename, hm.rolle,
@@ -1822,7 +1957,6 @@ export default class Database {
         );
     }
 
-    // Haushalt erstellen
     async createHaushalt(userId, name, anzeigename) {
         const result = await this._database.query(
             'INSERT INTO haushalte (name, erstellt_von) VALUES (?,?)',
@@ -1836,19 +1970,15 @@ export default class Database {
         return haushaltId;
     }
 
-    // Haushalt verlassen (letztes Mitglied → Haushalt + Daten löschen)
     async leaveHaushalt(haushaltId, userId) {
-        // Mitglied entfernen
         await this._database.query(
             'DELETE FROM haushalt_mitglieder WHERE haushalt_id=? AND user_id=?',
             { replacements: [haushaltId, userId], type: Sequelize.QueryTypes.DELETE }
         );
-        // Verbleibende Mitglieder prüfen
         const remaining = await this._database.query(
             'SELECT id FROM haushalt_mitglieder WHERE haushalt_id=?',
             { replacements: [haushaltId], type: Sequelize.QueryTypes.SELECT }
         );
-        // Wenn niemand mehr übrig: Haushalt komplett löschen
         if (remaining.length === 0) {
             const tables = [
                 'haushalt_transaktionen', 'haushalt_konten', 'haushalt_ausgaben',
@@ -1857,36 +1987,22 @@ export default class Database {
                 'haushalt_dokumente', 'haushalt_einladungen'
             ];
             for (const t of tables) {
-                await this._database.query(
-                    `DELETE FROM ${t} WHERE haushalt_id=?`,
-                    { replacements: [haushaltId], type: Sequelize.QueryTypes.DELETE }
-                );
+                await this._database.query(`DELETE FROM ${t} WHERE haushalt_id=?`, { replacements: [haushaltId], type: Sequelize.QueryTypes.DELETE });
             }
-            await this._database.query(
-                'DELETE FROM haushalte WHERE id=?',
-                { replacements: [haushaltId], type: Sequelize.QueryTypes.DELETE }
-            );
+            await this._database.query('DELETE FROM haushalte WHERE id=?', { replacements: [haushaltId], type: Sequelize.QueryTypes.DELETE });
         } else {
-            // Wenn der Admin geht: nächstes Mitglied zum Admin machen
             const isAdmin = await this._database.query(
                 'SELECT id FROM haushalte WHERE id=? AND erstellt_von=?',
                 { replacements: [haushaltId, userId], type: Sequelize.QueryTypes.SELECT }
             );
             if (isAdmin.length > 0) {
                 const newAdmin = remaining[0];
-                await this._database.query(
-                    'UPDATE haushalte SET erstellt_von=? WHERE id=?',
-                    { replacements: [newAdmin.id, haushaltId], type: Sequelize.QueryTypes.UPDATE }
-                );
-                await this._database.query(
-                    'UPDATE haushalt_mitglieder SET rolle=? WHERE id=?',
-                    { replacements: ['admin', newAdmin.id], type: Sequelize.QueryTypes.UPDATE }
-                );
+                await this._database.query('UPDATE haushalte SET erstellt_von=? WHERE id=?', { replacements: [newAdmin.id, haushaltId], type: Sequelize.QueryTypes.UPDATE });
+                await this._database.query('UPDATE haushalt_mitglieder SET rolle=? WHERE id=?', { replacements: ['admin', newAdmin.id], type: Sequelize.QueryTypes.UPDATE });
             }
         }
     }
 
-    // Einladung erstellen
     async createHaushaltEinladung(haushaltId, eingeladenVon, email, code) {
         await this._database.query(
             'INSERT OR REPLACE INTO haushalt_einladungen (haushalt_id, eingeladen_von, email, code) VALUES (?,?,?,?)',
@@ -1894,7 +2010,6 @@ export default class Database {
         );
     }
 
-    // Einladung per Code holen
     async getEinladungByCode(code) {
         const rows = await this._database.query(
             `SELECT e.*, h.name as haushalt_name, u.Benutzername as eingeladen_von_email
@@ -1907,18 +2022,14 @@ export default class Database {
         return rows[0] || null;
     }
 
-    // Einladung annehmen
     async acceptEinladung(code, userId, anzeigename) {
         const einladung = await this.getEinladungByCode(code);
         if (!einladung) throw new Error('Einladung ungültig oder bereits verwendet');
-
-        // Prüfen ob User bereits Mitglied ist
         const existing = await this._database.query(
             'SELECT id FROM haushalt_mitglieder WHERE haushalt_id=? AND user_id=?',
             { replacements: [einladung.haushalt_id, userId], type: Sequelize.QueryTypes.SELECT }
         );
         if (existing.length > 0) throw new Error('Du bist bereits Mitglied dieses Haushalts');
-
         await this._database.query(
             'INSERT INTO haushalt_mitglieder (haushalt_id, user_id, anzeigename, rolle) VALUES (?,?,?,?)',
             { replacements: [einladung.haushalt_id, userId, anzeigename || '', 'mitglied'], type: Sequelize.QueryTypes.INSERT }
@@ -1930,7 +2041,6 @@ export default class Database {
         return einladung.haushalt_id;
     }
 
-    // Anzeigenamen aktualisieren
     async updateHaushaltAnzeigename(haushaltId, userId, anzeigename) {
         await this._database.query(
             'UPDATE haushalt_mitglieder SET anzeigename=? WHERE haushalt_id=? AND user_id=?',
@@ -1938,15 +2048,12 @@ export default class Database {
         );
     }
 
-    // Haushalt umbenennen
     async updateHaushaltName(haushaltId, name) {
         await this._database.query(
             'UPDATE haushalte SET name=? WHERE id=?',
             { replacements: [name, haushaltId], type: Sequelize.QueryTypes.UPDATE }
         );
     }
-
-    // ── Haushalt-Fixkosten ─────────────────────────────────────
 
     async getHaushaltFixkosten(haushaltId) {
         return await this._database.query(
@@ -1983,7 +2090,6 @@ export default class Database {
         );
     }
 
-    // Monats-Override für Fixkosten (falls ein Monat abweicht)
     async getHaushaltFixkostenMonat(haushaltId, monat) {
         return await this._database.query(
             'SELECT * FROM haushalt_fixkosten_monat WHERE haushalt_id=? AND monat=?',
@@ -2010,8 +2116,6 @@ export default class Database {
             { replacements: [haushaltId, fixkostenId, monat], type: Sequelize.QueryTypes.DELETE }
         );
     }
-
-    // ── Persönliche Fixkosten ──────────────────────────────────
 
     async getHaushaltPersoenlicheFixkosten(haushaltId) {
         return await this._database.query(
@@ -2044,8 +2148,6 @@ export default class Database {
         );
     }
 
-    // ── Gehälter ───────────────────────────────────────────────
-
     async getHaushaltGehaelterDefault(haushaltId) {
         return await this._database.query(
             'SELECT * FROM haushalt_gehaelter_default WHERE haushalt_id=?',
@@ -2057,9 +2159,7 @@ export default class Database {
         await this._database.query(
             `INSERT INTO haushalt_gehaelter_default (haushalt_id, user_id, gehalt, sparbetrag)
              VALUES (?,?,?,?)
-             ON CONFLICT(haushalt_id, user_id) DO UPDATE SET
-               gehalt = excluded.gehalt,
-               sparbetrag = excluded.sparbetrag`,
+             ON CONFLICT(haushalt_id, user_id) DO UPDATE SET gehalt=excluded.gehalt, sparbetrag=excluded.sparbetrag`,
             { replacements: [haushaltId, userId, gehalt || 0, sparbetrag || 0], type: Sequelize.QueryTypes.INSERT }
         );
     }
@@ -2075,14 +2175,10 @@ export default class Database {
         await this._database.query(
             `INSERT INTO haushalt_gehaelter (haushalt_id, user_id, monat, gehalt, sparbetrag)
              VALUES (?,?,?,?,?)
-             ON CONFLICT(haushalt_id, user_id, monat) DO UPDATE SET
-               gehalt = excluded.gehalt,
-               sparbetrag = excluded.sparbetrag`,
+             ON CONFLICT(haushalt_id, user_id, monat) DO UPDATE SET gehalt=excluded.gehalt, sparbetrag=excluded.sparbetrag`,
             { replacements: [haushaltId, userId, monat, gehalt || 0, sparbetrag || 0], type: Sequelize.QueryTypes.INSERT }
         );
     }
-
-    // ── Haushalt-Ausgaben (freie Ausgaben) ──────────────────────
 
     async getHaushaltAusgaben(haushaltId) {
         return await this._database.query(
@@ -2114,8 +2210,6 @@ export default class Database {
             { replacements: [id, haushaltId], type: Sequelize.QueryTypes.DELETE }
         );
     }
-
-    // ── Haushalt-Todos ──────────────────────────────────────────
 
     async getHaushaltTodos(haushaltId) {
         return await this._database.query(
@@ -2162,14 +2256,11 @@ export default class Database {
         );
     }
 
-    // ── Haushalt-Dokumente ──────────────────────────────────────
-
     async getHaushaltDokumente(haushaltId) {
         return await this._database.query(
             `SELECT id, typ, name, datum, jahr, notiz, file_ext, file_mime,
                     betrag, faellig_datum, aussteller, status, kategorie, created_at, hochgeladen_von
-             FROM haushalt_dokumente
-             WHERE haushalt_id=?
+             FROM haushalt_dokumente WHERE haushalt_id=?
              ORDER BY datum DESC, id DESC`,
             { replacements: [haushaltId], type: Sequelize.QueryTypes.SELECT }
         );
@@ -2217,16 +2308,23 @@ export default class Database {
         );
     }
 
-    // ══════════════════════════════════════════════════════════
-    // ── HAUSHALTSKONTO ─────────────────────────────────────────
-    // ══════════════════════════════════════════════════════════
-
     async getHaushaltKonto(haushaltId) {
         const rows = await this._database.query(
             'SELECT * FROM haushalt_konten WHERE haushalt_id = ? LIMIT 1',
             { replacements: [haushaltId], type: Sequelize.QueryTypes.SELECT }
         );
         return rows[0] || null;
+    }
+
+    async getHaushaltKontoMitStand(haushaltId) {
+        const konto = await this.getHaushaltKonto(haushaltId);
+        if (!konto) return null;
+        const rows = await this._database.query(
+            `SELECT COALESCE(SUM(CASE WHEN type='Einnahmen' THEN amount ELSE -amount END),0) AS delta
+             FROM haushalt_transaktionen WHERE haushalt_id=?`,
+            { replacements: [haushaltId], type: Sequelize.QueryTypes.SELECT }
+        );
+        return { ...konto, currentBalance: konto.balance + (rows[0]?.delta || 0) };
     }
 
     async createHaushaltKonto(haushaltId, name, balance, color) {
@@ -2252,17 +2350,9 @@ export default class Database {
     }
 
     async deleteHaushaltKonto(haushaltId) {
-        await this._database.query(
-            'DELETE FROM haushalt_konten WHERE haushalt_id=?',
-            { replacements: [haushaltId], type: Sequelize.QueryTypes.DELETE }
-        );
-        await this._database.query(
-            'DELETE FROM haushalt_transaktionen WHERE haushalt_id=?',
-            { replacements: [haushaltId], type: Sequelize.QueryTypes.DELETE }
-        );
+        await this._database.query('DELETE FROM haushalt_konten WHERE haushalt_id=?', { replacements: [haushaltId], type: Sequelize.QueryTypes.DELETE });
+        await this._database.query('DELETE FROM haushalt_transaktionen WHERE haushalt_id=?', { replacements: [haushaltId], type: Sequelize.QueryTypes.DELETE });
     }
-
-    // ── Haushalt-Transaktionen ─────────────────────────────────
 
     async getHaushaltTransaktionen(haushaltId) {
         return await this._database.query(
@@ -2308,185 +2398,47 @@ export default class Database {
         );
     }
 
-    // Kontostand berechnen (Startguthaben +/- alle Transaktionen)
-    async getHaushaltKontoMitStand(haushaltId) {
-        const konto = await this.getHaushaltKonto(haushaltId);
-        if (!konto) return null;
-        const txs = await this.getHaushaltTransaktionen(haushaltId);
-        let currentBalance = konto.balance || 0;
-        txs.forEach(t => {
-            if (t.type === 'Einnahmen') currentBalance += t.amount;
-            else currentBalance -= t.amount;
-        });
-        return { ...konto, currentBalance: parseFloat(currentBalance.toFixed(2)), transaktionen: txs };
-    }
-
-    // Auto-Einträge: Haushalt-Fixkosten in Transaktionen eintragen (täglich via Cron)
     async addHaushaltFixkostenTransaktionen(haushaltId) {
         const today = new Date();
+        const day = today.getDate();
         const monat = today.toISOString().slice(0, 7);
-        const tag   = today.getDate();
-
         const fixkosten = await this.getHaushaltFixkosten(haushaltId);
+
         for (const fix of fixkosten) {
-            const fixTag = parseInt(fix.datum_tag || 1);
-            if (fixTag !== tag) continue;
-            // Prüfen ob für diesen Monat bereits eingetragen
-            const existing = await this._database.query(
-                'SELECT id FROM haushalt_transaktionen WHERE haushalt_id=? AND fixkost_id=? AND date LIKE ?',
-                { replacements: [haushaltId, fix.id, monat + '%'], type: Sequelize.QueryTypes.SELECT }
-            );
-            if (existing.length > 0) continue;
-            await this._database.query(
-                'INSERT INTO haushalt_transaktionen (haushalt_id, eingetragen_von, name, category, amount, type, date, is_fixkost, fixkost_id) VALUES (?,?,?,?,?,?,?,1,?)',
-                {
-                    replacements: [haushaltId, 0, fix.name, fix.kategorie || 'Sonstiges', fix.betrag, 'Ausgaben', today.toISOString().slice(0, 10), fix.id],
-                    type: Sequelize.QueryTypes.INSERT
-                }
-            );
+            if (fix.rhythmus === 'monatlich' && day === (fix.datum_tag || 1)) {
+                const existing = await this._database.query(
+                    "SELECT id FROM haushalt_transaktionen WHERE haushalt_id=? AND fixkost_id=? AND date LIKE ?",
+                    { replacements: [haushaltId, fix.id, monat + '%'], type: Sequelize.QueryTypes.SELECT }
+                );
+                if (existing.length > 0) continue;
+                const mitglieder = await this.getHaushaltMitglieder(haushaltId);
+                const eingetragen_von = mitglieder[0]?.user_id || 0;
+                await this._database.query(
+                    'INSERT INTO haushalt_transaktionen (haushalt_id, eingetragen_von, name, category, amount, type, date, is_fixkost, fixkost_id) VALUES (?,?,?,?,?,?,?,1,?)',
+                    { replacements: [haushaltId, eingetragen_von, fix.name, fix.kategorie, fix.betrag, 'Ausgaben', today.toISOString().substring(0, 10), fix.id], type: Sequelize.QueryTypes.INSERT }
+                );
+            }
         }
-    }
-
-    // ── Passwort-Reset-Methoden ────────────────────────────────
-
-    async setResetToken(email, token, expires) {
-        await this._database.query(
-            'UPDATE users SET reset_token=?, reset_token_expires=? WHERE Benutzername=?',
-            { replacements: [token, expires, email], type: Sequelize.QueryTypes.UPDATE }
-        );
-    }
-
-    async getUserByResetToken(token) {
-        const rows = await this._database.query(
-            'SELECT id, Benutzername as email, reset_token_expires FROM users WHERE reset_token=?',
-            { replacements: [token], type: Sequelize.QueryTypes.SELECT }
-        );
-        return rows[0] || null;
-    }
-
-    async resetPassword(token, hashedPassword) {
-        await this._database.query(
-            'UPDATE users SET Passwort=?, reset_token=NULL, reset_token_expires=NULL WHERE reset_token=?',
-            { replacements: [hashedPassword, token], type: Sequelize.QueryTypes.UPDATE }
-        );
-    }
-
-    // ── Account löschen (DSGVO) ───────────────────────────────
-
-    async setVerifyToken(userId, token) {
-        await this._database.query(
-            'UPDATE users SET email_verify_token=? WHERE id=?',
-            { replacements: [token, userId], type: Sequelize.QueryTypes.UPDATE }
-        );
-    }
-
-    async getUserByVerifyToken(token) {
-        const rows = await this._database.query(
-            'SELECT id, Benutzername as email, email_verified FROM users WHERE email_verify_token=?',
-            { replacements: [token], type: Sequelize.QueryTypes.SELECT }
-        );
-        return rows[0] || null;
-    }
-
-    async verifyEmail(token) {
-        await this._database.query(
-            'UPDATE users SET email_verified=1, email_verify_token=NULL WHERE email_verify_token=?',
-            { replacements: [token], type: Sequelize.QueryTypes.UPDATE }
-        );
     }
 
     async getHaushaltTrackerCategories(haushaltId) {
         return await this._database.query(
-            'SELECT id, name FROM haushalt_tracker_categories WHERE haushalt_id=? ORDER BY name ASC',
+            'SELECT * FROM haushalt_tracker_categories WHERE haushalt_id=? ORDER BY name ASC',
             { replacements: [haushaltId], type: Sequelize.QueryTypes.SELECT }
         );
     }
 
     async addHaushaltTrackerCategory(haushaltId, name) {
-        try {
-            await this._database.query(
-                'INSERT OR IGNORE INTO haushalt_tracker_categories (haushalt_id, name) VALUES (?,?)',
-                { replacements: [haushaltId, name], type: Sequelize.QueryTypes.INSERT }
-            );
-        } catch (e) { /* UNIQUE-Konflikt ignorieren */ }
+        await this._database.query(
+            'INSERT OR IGNORE INTO haushalt_tracker_categories (haushalt_id, name) VALUES (?,?)',
+            { replacements: [haushaltId, name], type: Sequelize.QueryTypes.INSERT }
+        );
     }
 
     async deleteHaushaltTrackerCategory(haushaltId, name) {
         await this._database.query(
             'DELETE FROM haushalt_tracker_categories WHERE haushalt_id=? AND name=?',
             { replacements: [haushaltId, name], type: Sequelize.QueryTypes.DELETE }
-        );
-    }
-
-    async renameHaushaltTrackerCategory(haushaltId, oldName, newName) {
-        await this._database.query(
-            'UPDATE haushalt_tracker_categories SET name=? WHERE haushalt_id=? AND name=?',
-            { replacements: [newName, haushaltId, oldName], type: Sequelize.QueryTypes.UPDATE }
-        );
-        // Bestehende Transaktionen ebenfalls umbenennen
-        await this._database.query(
-            'UPDATE haushalt_transaktionen SET category=? WHERE haushalt_id=? AND category=?',
-            { replacements: [newName, haushaltId, oldName], type: Sequelize.QueryTypes.UPDATE }
-        );
-    }
-
-    async completeOnboarding(userId) {
-        await this._database.query(
-            'UPDATE users SET is_new_user=0 WHERE id=?',
-            { replacements: [userId], type: Sequelize.QueryTypes.UPDATE }
-        );
-    }
-
-    async deleteUserAccount(userId) {
-        const tables = [
-            ['ausgabenDB',                    'user_id'],
-            ['todos',                         'user_id'],
-            ['categories',                    'user_id'],
-            ['calendar_events',               'user_id'],
-            ['fixkosten',                     'user_id'],
-            ['accounts',                      'user_id'],
-            ['user_profiles',                 'user_id'],
-            ['user_settings',                 'user_id'],
-            ['analysen',                      'user_id'],
-            ['dokumente',                     'user_id'],
-            ['versicherungen',                'user_id'],
-            ['budgets',                       'user_id'],
-            ['sparziele',                     'user_id'],
-            ['abos',                          'user_id'],
-            ['notizen',                       'user_id'],
-            ['gewohnheiten',                  'user_id'],
-            ['ziele',                         'user_id'],
-            ['schulden',                      'user_id'],
-            ['schulden_zahlungen',            'user_id'],
-            ['recurring_transactions',        'user_id'],
-            ['steuer_werbungskosten',         'user_id'],
-            ['steuer_assistent',              'user_id'],
-            ['finanzen_investments',          'user_id'],
-            ['finanzen_konfig',               'user_id'],
-            ['finanzen_manuelle_eintraege',   'user_id'],
-            ['outlook_tokens',               'user_id'],
-            ['reminder_log',                 'user_id'],
-        ];
-
-        for (const [table, col] of tables) {
-            try {
-                await this._database.query(
-                    `DELETE FROM ${table} WHERE ${col}=?`,
-                    { replacements: [userId], type: Sequelize.QueryTypes.DELETE }
-                );
-            } catch (e) { /* Tabelle existiert evtl. noch nicht */ }
-        }
-
-        // Haushalt-Mitgliedschaft beenden (leaveHaushalt übernimmt ggf. Löschung)
-        try {
-            const haushalt = await this.getHaushaltForUser(userId);
-            if (haushalt) await this.leaveHaushalt(haushalt.id, userId);
-        } catch (e) {}
-
-        // User selbst löschen
-        await this._database.query(
-            'DELETE FROM users WHERE id=?',
-            { replacements: [userId], type: Sequelize.QueryTypes.DELETE }
         );
     }
 }

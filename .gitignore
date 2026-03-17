@@ -1,5 +1,4 @@
-.vscode
-.idea
-*.iml
-*.ipr
-node_modules/
+.env 
+node_modules/ 
+dist/ 
+*.log 

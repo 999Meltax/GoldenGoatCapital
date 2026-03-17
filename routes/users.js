@@ -711,15 +711,67 @@ router.get('/finanzen/investments', requireLogin, async (req, res) => {
 // ====================== FEHLENDE ROUTEN HINZUFÜGEN ======================
 
 // 1. Fixkosten laden
-router.get('/fixkosten', requireLogin, async (req, res) => {
+// ══════════════════════════════════════════════════════════
+// ── UNIFIED FIXKOSTEN/ABOS/RECURRING ──────────────────────
+// ══════════════════════════════════════════════════════════
+
+// Seite: einzige Anlaufstelle für alle wiederkehrenden Zahlungen
+router.get('/fixkosten', requireLogin, (req, res) => {
+    res.render('fixkosten', { isLoggedIn: true });
+});
+
+// API: Alle unified Einträge laden
+router.get('/fixkosten/unified', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
-        const fixkosten = await db.getFixkosten(req.session.userId);
-        res.json(fixkosten || []);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json([]);
-    }
+        res.json(await db.getFixkostenUnified(req.session.userId));
+    } catch (err) { res.status(500).json([]); }
+});
+
+// API: Legacy-Liste (für meine-finanzen, overview etc.)
+router.get('/fixkosten/list', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        res.json(await db.getFixkosten(req.session.userId) || []);
+    } catch (err) { res.status(500).json([]); }
+});
+
+// API: Neuen unified Eintrag hinzufügen
+router.post('/fixkosten/unified/add', requireLogin, async (req, res) => {
+    const { name, betrag } = req.body;
+    if (!name || betrag === undefined) return res.status(400).json({ message: 'Name und Betrag erforderlich' });
+    try {
+        const db = await Database.getInstance();
+        const id = await db.addFixkostUnified(req.session.userId, req.body);
+        res.status(201).json({ id, message: 'Eintrag gespeichert' });
+    } catch (err) { console.error(err); res.status(500).json({ message: 'Interner Serverfehler' }); }
+});
+
+// API: Unified Eintrag aktualisieren
+router.put('/fixkosten/unified/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.updateFixkostUnified(req.session.userId, req.params.id, req.body);
+        res.json({ message: 'Aktualisiert' });
+    } catch (err) { res.status(500).json({ message: 'Fehler' }); }
+});
+
+// API: Unified Eintrag löschen
+router.delete('/fixkosten/unified/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.deleteFixkost(req.session.userId, req.params.id);
+        res.json({ message: 'Gelöscht' });
+    } catch (err) { res.status(500).json({ message: 'Fehler' }); }
+});
+
+// API: Unified Eintrag manuell buchen
+router.post('/fixkosten/unified/:id/book', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const result = await db.bookFixkostUnified(req.session.userId, req.params.id);
+        res.json({ message: 'Gebucht', ...result });
+    } catch (err) { res.status(500).json({ message: err.message || 'Fehler' }); }
 });
 
 // 2. Initialwerte laden
