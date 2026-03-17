@@ -716,7 +716,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const [txRes, accRes, fixRes, dokRes, todoRes, evRes, schuldenRes] = await Promise.all([
             fetch('/users/getTransactions'),
             fetch('/users/accounts'),
-            fetch('/users/fixkosten'),
+            fetch('/users/fixkosten/unified'),
             fetch('/users/dokumente/data'),
             fetch('/users/todos', { headers: { Accept: 'application/json' } }),
             fetch('/users/events'),

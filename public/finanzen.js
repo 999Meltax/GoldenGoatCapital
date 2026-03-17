@@ -99,10 +99,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectedColor = opt.dataset.color;
     });
 
-    document.getElementById('fixkostenForm')?.addEventListener('submit', addFixkost);
-    document.getElementById('initialwerteForm')?.addEventListener('submit', setInitialwerte);
-    document.getElementById('manuelleForm')?.addEventListener('submit', addManuelle);
-
     document.addEventListener('click', e => {
         const wrap = document.getElementById('finanzenFilterWrap');
         if (wrap && !wrap.contains(e.target)) {
@@ -135,7 +131,7 @@ async function loadAllData() {
         fetch('/users/finanzen/ausgaben'),
         fetch('/users/finanzen/investments'),
         fetch('/users/categories'),
-        fetch('/users/fixkosten'),
+        fetch('/users/fixkosten/list'),
         fetch('/users/initialwerte'),
         fetch('/users/manuelle-eintraege'),
         fetch('/users/getTransactions')
@@ -160,7 +156,6 @@ async function loadAllData() {
     renderZusammenfassung();
     renderAusgaben();
     renderInvestments();
-    renderEinstellungen();
     populateAccountSelects();
     requestAnimationFrame(() => requestAnimationFrame(() => renderDashboardGraphs()));
 }
@@ -366,7 +361,7 @@ async function saveAccount() {
     await loadAllData();
 }
 async function confirmDeleteAccount(id, name) {
-    ggcConfirm(`Konto „${name}“ wirklich löschen? Transaktionen bleiben erhalten, werden aber keinem Konto mehr zugewiesen.`, async () => {
+    ggcConfirm(`Konto „${name}" wirklich löschen? Transaktionen bleiben erhalten, werden aber keinem Konto mehr zugewiesen.`, async () => {
         const ids = getFinanzenActiveIds();
         if (ids) { ids.delete(String(id)); setFinanzenActiveIds(ids); }
         await fetch(`/users/accounts/${id}`, { method: 'DELETE' });
@@ -375,56 +370,10 @@ async function confirmDeleteAccount(id, name) {
 }
 
 // =====================================================
-// SELECTS BEFÜLLEN
+// SELECTS BEFÜLLEN (für andere Bereiche)
 // =====================================================
 function populateAccountSelects() {
-    const options = '<option value="">Kein Konto</option>' +
-        accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-    ['fixkostenAccountSelect', 'fkEditAccount'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = options;
-    });
-}
-
-// =====================================================
-// FIXKOSTEN MODAL
-// =====================================================
-function openFixkostenModal(id) {
-    const f = fixkosten.find(x => x.id === id);
-    if (!f) return;
-    document.getElementById('fixkostenEditId').value   = id;
-    document.getElementById('fkEditName').value        = f.name;
-    document.getElementById('fkEditBetrag').value      = f.betrag;
-    document.getElementById('fkEditTag').value         = f.datum_tag;
-    document.getElementById('fkEditHaeufigkeit').value = f.haeufigkeit;
-    document.getElementById('fkEditKategorie').value   = f.kategorie;
-    document.getElementById('fkEditAccount').value     = f.account_id || '';
-    document.getElementById('fixkostenEditModal').style.display = 'flex';
-}
-function closeFixkostenModal() {
-    document.getElementById('fixkostenEditModal').style.display = 'none';
-}
-async function saveFixkostenEdit() {
-    const id = document.getElementById('fixkostenEditId').value;
-    const body = {
-        name:        document.getElementById('fkEditName').value.trim(),
-        betrag:      parseFloat(document.getElementById('fkEditBetrag').value),
-        datum_tag:   parseInt(document.getElementById('fkEditTag').value),
-        haeufigkeit: document.getElementById('fkEditHaeufigkeit').value,
-        kategorie:   document.getElementById('fkEditKategorie').value.trim(),
-        account_id:  document.getElementById('fkEditAccount').value || null
-    };
-    await fetch(`/users/fixkosten/${id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-    });
-    closeFixkostenModal();
-    await loadAllData();
-}
-async function deleteFixkost(id) {
-    ggcConfirm('Fixkosten wirklich löschen?', async () => {
-        await fetch(`/users/fixkosten/${id}`, { method: 'DELETE' });
-        await loadAllData();
-    });
+    // Keine Fixkosten-Selects mehr hier nötig
 }
 
 // =====================================================
@@ -497,7 +446,7 @@ function toggleZusFilter() {
 }
 
 // =====================================================
-// 1. ZUSAMMENFASSUNG – eine einheitliche Tabelle
+// 1. ZUSAMMENFASSUNG
 // =====================================================
 function renderZusammenfassung() { try {
     buildZusFilterUI();
@@ -508,7 +457,7 @@ function renderZusammenfassung() { try {
 
     const monthSet = new Set();
     filteredTx.forEach(t => { const m = (t.date || '').substring(0, 7); if (m) monthSet.add(m); });
-    const months = [...monthSet].sort().reverse(); // neueste zuerst
+    const months = [...monthSet].sort().reverse();
 
     const tbody = document.getElementById('zusammenfassungTable');
     if (!tbody) return;
@@ -518,7 +467,6 @@ function renderZusammenfassung() { try {
         return;
     }
 
-    // Kontostand eines Kontos bis Ende eines Monats berechnen
     function balanceUpTo(acc, untilMonth) {
         let sum = acc.balance || 0;
         transactions.filter(t => String(t.account_id) === String(acc.id) && (t.date || '').substring(0, 7) <= untilMonth)
@@ -526,11 +474,9 @@ function renderZusammenfassung() { try {
         return sum;
     }
 
-    // Fixkosten-Summe (monatlich einmalig)
     const monthlyFixSum = fixkosten.filter(f => f.haeufigkeit === 'monatlich' && (!f.account_id || activeIds.has(String(f.account_id))))
         .reduce((s, f) => s + Math.abs(f.betrag || 0), 0);
 
-    // Header aufbauen: Monat | Einnahmen | Ausgaben | Nettoergebnis | Fixkosten | je Konto ...
     const kontoHeaders = activeAccounts.map(a =>
         `<th style="border-left:3px solid ${a.color}; padding-left:10px;">${a.name}</th>`
     ).join('');
@@ -646,42 +592,38 @@ function toggleAusFilter() {
 }
 
 // =====================================================
-// 2. AUSGABEN – aus transactions, mit Kategorie-Drill-down
+// 2. AUSGABEN
 // =====================================================
 function renderAusgaben() { try {
     buildAusFilterUI();
-    // Nur Transaktionen der aktiven Konten
     const activeIds = new Set(getAusActiveAccounts().map(a => String(a.id)));
     const ausIds    = getAusActiveIds();
     const filteredTx = transactions.filter(t => !t.account_id
-        ? (ausIds === null)          // Tx ohne Konto: nur wenn "Alle" aktiv
+        ? (ausIds === null)
         : activeIds.has(String(t.account_id))
     );
 
-    // Alle Monate aus gefilterten Transaktionen
     const monthSet = new Set();
     filteredTx.forEach(t => { const m = (t.date || '').substring(0, 7); if (m) monthSet.add(m); });
     const monate = [...monthSet].sort().reverse();
 
-    // Monats-Dropdown befüllen
     const sel = document.getElementById('ausgabenMonatSelect');
     if (sel) {
         const currentVal = sel.value;
         sel.innerHTML = monate.map(m =>
             `<option value="${m}">${new Date(m + '-01').toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}</option>`
         ).join('');
-        // Vorherige Auswahl beibehalten wenn noch vorhanden
         if (currentVal && monate.includes(currentVal)) sel.value = currentVal;
     }
 
-    // Fixkosten-Tabelle – gefiltert nach aktiven Konten
+    // Fixkosten-Tabelle – nur lesend, kein Edit/Delete
     const fkTable = document.getElementById('fixkostenTable');
     if (fkTable) {
         const activeFixkosten = fixkosten.filter(f =>
             !f.account_id || ausIds === null || activeIds.has(String(f.account_id))
         );
         if (!activeFixkosten.length) {
-            fkTable.innerHTML = '<thead><tr><th>Name</th><th>Betrag</th><th>Fälligkeit</th><th>Konto</th></tr></thead><tbody><tr><td colspan="4" style="color:var(--text-3);">Keine Fixkosten für diese Konten.</td></tr></tbody>';
+            fkTable.innerHTML = '<thead><tr><th>Name</th><th>Betrag</th><th>Fälligkeit</th><th>Konto</th></tr></thead><tbody><tr><td colspan="4" style="color:var(--text-3);">Keine Fixkosten für diese Konten. <a href="/users/fixkosten" style="color:var(--accent);">Verwalten →</a></td></tr></tbody>';
         } else {
             const fixRows = activeFixkosten.map(f => {
                 const accName = f.account_id
@@ -737,11 +679,9 @@ function renderAusgaben() { try {
         }
     }
 
-    // Kategorie-Drill-down für aktuell gewählten Monat
     renderAusgabenKategorien();
 } catch(e) { console.error('renderAusgaben:', e); } }
 
-// Wird auch beim Monat-Wechsel per onchange aufgerufen
 function renderAusgabenKategorien() { try {
     const sel    = document.getElementById('ausgabenMonatSelect');
     const monat  = sel ? sel.value : null;
@@ -763,7 +703,6 @@ function renderAusgabenKategorien() { try {
     const ausgaben = monTx.filter(t => t.type === 'Ausgaben');
     const einnahmen = monTx.filter(t => t.type === 'Einnahmen');
 
-    // Nach Kategorie gruppieren
     const byKat = {};
     [...ausgaben, ...einnahmen].forEach(t => {
         const kat = t.category || 'Ohne Kategorie';
@@ -795,13 +734,12 @@ function renderAusgabenKategorien() { try {
 } catch(e) { console.error('renderAusgabenKategorien:', e); } }
 
 // =====================================================
-// 3. INVESTMENTS – aus Depot- & Sparkonto-Transaktionen
+// 3. INVESTMENTS
 // =====================================================
 function renderInvestments() { try {
     const depotAccounts = accounts.filter(a => a.type === 'depot');
     const sparAccounts  = accounts.filter(a => a.type === 'sparkonto');
 
-    // Stat-Karten oben
     const statsEl = document.getElementById('investmentStats');
     if (statsEl) {
         const totalPortfolio = depotAccounts.reduce((s, a) => s + (a.currentBalance ?? a.balance ?? 0), 0);
@@ -825,7 +763,6 @@ function renderInvestments() { try {
             </div>`;
     }
 
-    // Depot-Konten-Tabelle
     const depotTable = document.getElementById('depotKontenTable');
     if (depotTable) {
         if (!depotAccounts.length) {
@@ -851,7 +788,6 @@ function renderInvestments() { try {
         }
     }
 
-    // Monatsverlauf: Portfolio- & Cash-Wert je Monat aus Transaktionen berechnen
     const invTable = document.getElementById('investmentsTable');
     if (invTable) {
         const allInvAccounts = [...depotAccounts, ...sparAccounts];
@@ -1058,73 +994,4 @@ function renderDashboardGraphs() {
     createChartFromTx('vermoegenChart', 'Gesamtvermögen', getDashActiveAccounts('finanzen_chart_vermoegen'), 'vermoegen', '#2563eb', 'rgba(37,99,235,0.1)');
     createChartFromTx('portfolioChart', 'Portfoliowert',  getDashActiveAccounts('finanzen_chart_portfolio'), 'vermoegen', '#16a34a', 'rgba(22,163,74,0.1)');
     createChartFromTx('cashChart',      'Cash-Rücklagen', getDashActiveAccounts('finanzen_chart_cash'),      'vermoegen', '#eab308', 'rgba(234,179,8,0.1)');
-}
-
-// =====================================================
-// 5. EINSTELLUNGEN
-// =====================================================
-function renderEinstellungen() {
-    const fixList = document.getElementById('fixkostenList');
-    if (fixList) {
-        if (!fixkosten.length) {
-            fixList.innerHTML = '<li style="color:var(--text-3);font-size:0.85rem;padding:8px 0;">Noch keine Fixkosten eingetragen.</li>';
-        } else {
-            fixList.innerHTML = fixkosten.map(f => {
-                const accName = f.account_id
-                    ? (accounts.find(a => String(a.id) === String(f.account_id))?.name || 'Unbekanntes Konto')
-                    : 'Kein Konto';
-                return `<li style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);">
-                    <div>
-                        <div style="font-weight:600;font-size:0.88rem;">${f.name}</div>
-                        <div style="font-size:0.78rem;color:var(--text-3);">${fmt.format(Math.abs(f.betrag || 0))} · Am ${f.datum_tag}. · ${f.haeufigkeit}</div>
-                        <div style="font-size:0.76rem;color:var(--text-3);">${accName}</div>
-                    </div>
-                    <div style="display:flex;gap:6px;flex-shrink:0;">
-                        <button onclick="openFixkostenModal(${f.id})" style="padding:4px 10px;font-size:0.78rem;border-radius:6px;background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;"><i class="ri-pencil-line"></i></button>
-                        <button onclick="deleteFixkost(${f.id})" style="padding:4px 10px;font-size:0.78rem;border-radius:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2);cursor:pointer;"><i class="ri-delete-bin-line"></i></button>
-                    </div>
-                </li>`;
-            }).join('');
-        }
-    }
-
-    const manList = document.getElementById('manuelleList');
-    if (manList) {
-        if (!manuelle.length) {
-            manList.innerHTML = '<li style="color:var(--text-3);font-size:0.85rem;padding:8px 0;">Noch keine Einträge.</li>';
-        } else {
-            manList.innerHTML = manuelle.map(m => `
-                <li style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
-                    <div style="font-size:0.87rem;">${m.monat} – ${m.spalte_name}: <strong>${fmt.format(m.wert || 0)}</strong></div>
-                    <button onclick="deleteManuelle(${m.id})" style="padding:4px 10px;font-size:0.78rem;border-radius:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2);cursor:pointer;"><i class="ri-delete-bin-line"></i></button>
-                </li>`).join('');
-        }
-    }
-}
-
-// =====================================================
-// FORMULAR-HANDLER
-// =====================================================
-async function addFixkost(e) {
-    e.preventDefault();
-    await fetch('/users/fixkosten/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-    e.target.reset();
-    await loadAllData();
-}
-async function setInitialwerte(e) {
-    e.preventDefault();
-    await fetch('/users/initialwerte', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-    await loadAllData();
-}
-async function addManuelle(e) {
-    e.preventDefault();
-    await fetch('/users/manuelle-eintraege', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-    e.target.reset();
-    await loadAllData();
-}
-async function deleteManuelle(id) {
-    ggcConfirm('Eintrag löschen?', async () => {
-        await fetch(`/users/manuelle-eintraege/${id}`, { method: 'DELETE' });
-        await loadAllData();
-    });
 }

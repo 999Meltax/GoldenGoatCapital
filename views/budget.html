@@ -15,7 +15,7 @@
     <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
         <div>
             <h1>Budget & Sparziele</h1>
-            <p>Plane deine Ausgaben, tracke Ziele und verwalte deine Abos</p>
+            <p>Plane deine Ausgaben und tracke deine Sparziele</p>
         </div>
     </div>
 
@@ -26,9 +26,6 @@
         </button>
         <button class="budget-tab" onclick="switchTab('sparzieleTab', this)">
             <i class="ri-flag-line"></i> Sparziele
-        </button>
-        <button class="budget-tab" onclick="switchTab('abosTab', this)">
-            <i class="ri-repeat-line"></i> Abonnements
         </button>
     </div>
 
@@ -159,112 +156,6 @@
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════ -->
-    <!-- TAB 3: ABONNEMENTS -->
-    <!-- ═══════════════════════════════════════════════════ -->
-    <div id="abosTab" class="budget-tab-content">
-
-        <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;" class="budget-main-grid">
-
-            <!-- Abo-Liste + Statistiken -->
-            <div style="display:flex;flex-direction:column;gap:20px;">
-
-                <!-- Kosten-Übersicht -->
-                <div class="budget-stat-row" style="grid-template-columns:repeat(3,1fr);">
-                    <div class="budget-stat-card blue">
-                        <div class="budget-stat-label">Monatlich</div>
-                        <div class="budget-stat-val" id="aboMonatlich">€ 0,00</div>
-                    </div>
-                    <div class="budget-stat-card red">
-                        <div class="budget-stat-label">Jährlich</div>
-                        <div class="budget-stat-val" id="aboJaehrlich">€ 0,00</div>
-                    </div>
-                    <div class="budget-stat-card amber">
-                        <div class="budget-stat-label">Anzahl Abos</div>
-                        <div class="budget-stat-val" id="aboAnzahl">0</div>
-                    </div>
-                </div>
-
-                <!-- Abo-Tabelle -->
-                <div class="card" style="padding:0;overflow:hidden;">
-                    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-                        <h3 style="margin:0;">Meine Abonnements</h3>
-                        <select id="aboFilterKat" onchange="renderAbos()" style="width:auto;padding:6px 12px;font-size:0.82rem;">
-                            <option value="">Alle Kategorien</option>
-                            <option value="streaming">Streaming</option>
-                            <option value="software">Software</option>
-                            <option value="fitness">Fitness</option>
-                            <option value="news">News & Magazine</option>
-                            <option value="musik">Musik</option>
-                            <option value="gaming">Gaming</option>
-                            <option value="sonstiges">Sonstiges</option>
-                        </select>
-                    </div>
-                    <div id="aboList" style="display:flex;flex-direction:column;">
-                        <div style="text-align:center;padding:40px;color:var(--text-3);">
-                            <i class="ri-loader-4-line" style="font-size:1.5rem;display:block;margin-bottom:8px;animation:spin 1s linear infinite;"></i>
-                            Lade Abonnements…
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Abo-Formular -->
-            <div class="card" style="position:sticky;top:90px;">
-                <h3 style="margin:0 0 20px;">Abo hinzufügen</h3>
-                <div style="display:flex;flex-direction:column;gap:14px;">
-                    <div class="form-group">
-                        <label class="form-label">Name</label>
-                        <input type="text" id="aboName" placeholder="z.B. Netflix">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Kategorie</label>
-                        <select id="aboKategorie">
-                            <option value="streaming">Streaming</option>
-                            <option value="software">Software</option>
-                            <option value="fitness">Fitness</option>
-                            <option value="news">News & Magazine</option>
-                            <option value="musik">Musik</option>
-                            <option value="gaming">Gaming</option>
-                            <option value="sonstiges">Sonstiges</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Betrag (€)</label>
-                        <input type="number" id="aboBetrag" placeholder="9.99" min="0" step="0.01">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Rhythmus</label>
-                        <select id="aboRhythmus">
-                            <option value="monatlich">Monatlich</option>
-                            <option value="jaehrlich">Jährlich</option>
-                            <option value="vierteljaehrlich">Vierteljährlich</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Nächste Abbuchung</label>
-                        <input type="date" id="aboNaechste">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Notiz (optional)</label>
-                        <input type="text" id="aboNotiz" placeholder="z.B. Family-Plan">
-                    </div>
-                    <input type="hidden" id="aboEditId" value="">
-                    <div style="display:flex;gap:8px;">
-                        <button class="btn-primary" style="flex:1;justify-content:center;" onclick="saveAbo()">
-                            <i class="ri-save-line"></i> Speichern
-                        </button>
-                        <button class="btn-ghost btn-sm" id="aboCancelBtn" style="display:none;" onclick="resetAboForm()">
-                            Abbrechen
-                        </button>
-                    </div>
-                    <div id="aboMsg" style="font-size:0.82rem;text-align:center;"></div>
-                </div>
-            </div>
-
-        </div>
-    </div>
-
     <!-- Modal: Budget für Kategorie festlegen -->
     <div id="budgetModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
         <div class="card" style="width:min(420px,90vw);padding:28px;">
@@ -378,7 +269,6 @@
     .budget-stat-label { font-size:0.72rem;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px; }
     .budget-stat-val   { font-size:1.3rem;font-weight:800;color:var(--text-1); }
 
-    /* Kategorie-Budget Balken */
     .kat-budget-row {
         display: flex;
         flex-direction: column;
@@ -387,27 +277,23 @@
         border-bottom: 1px solid var(--border);
     }
     .kat-budget-row:last-child { border-bottom: none; }
-
     .kat-budget-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         font-size: 0.88rem;
     }
-
     .kat-budget-bar-wrap {
         background: var(--surface-2);
         border-radius: 6px;
         height: 8px;
         overflow: hidden;
     }
-
     .kat-budget-bar {
         height: 100%;
         border-radius: 6px;
         transition: width 0.5s ease;
     }
-
     .kat-budget-footer {
         display: flex;
         justify-content: space-between;
@@ -415,7 +301,6 @@
         color: var(--text-3);
     }
 
-    /* Sparziele */
     .sparziel-card {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -449,29 +334,6 @@
         margin: 10px 0 6px;
     }
     .sz-bar { height: 100%; border-radius: 6px; transition: width 0.5s ease; }
-
-    /* Abonnements */
-    .abo-row {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 14px 20px;
-        border-bottom: 1px solid var(--border);
-        transition: var(--transition);
-    }
-    .abo-row:last-child { border-bottom: none; }
-    .abo-row:hover { background: var(--surface-2); }
-
-    .abo-icon {
-        width: 40px;
-        height: 40px;
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.1rem;
-        flex-shrink: 0;
-    }
 
     @media (max-width: 900px) {
         .budget-stat-row { grid-template-columns: repeat(2, 1fr); }

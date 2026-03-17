@@ -65,7 +65,6 @@
         <button class="tab" data-tab="zusammenfassung">Zusammenfassung</button>
         <button class="tab" data-tab="ausgaben">Ausgaben</button>
         <button class="tab" data-tab="investments">Investments</button>
-        <button class="tab" data-tab="einstellungen">Einstellungen</button>
     </div>
 
     <!-- ══════════════════════════════════════════ DASHBOARD ══ -->
@@ -185,7 +184,6 @@
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
                     <h4 style="margin:0;">Kategorien</h4>
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                        <!-- Konto-Filter -->
                         <div class="account-filter-wrap" id="ausFilterWrap">
                             <button class="account-filter-btn" id="ausFilterBtn" onclick="toggleAusFilter()">
                                 <span class="filter-dot all" id="ausFilterDot"></span>
@@ -211,9 +209,12 @@
                 </div>
             </div>
 
-            <!-- Fixkosten -->
+            <!-- Fixkosten-Übersicht (nur lesend, Link zur Verwaltung) -->
             <div class="card">
-                <h4 style="margin:0 0 16px;">Fixkosten</h4>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                    <h4 style="margin:0;">Fixkosten</h4>
+                    <a href="/users/fixkosten" style="font-size:0.82rem;color:var(--accent);text-decoration:none;font-weight:600;display:flex;align-items:center;gap:4px;">Verwalten <i class="ri-arrow-right-line"></i></a>
+                </div>
                 <div style="overflow-x:auto;">
                     <table id="fixkostenTable" class="finanz-table" style="width:100%;"></table>
                 </div>
@@ -246,71 +247,6 @@
                 <div style="overflow-x:auto;">
                     <table id="investmentsTable" class="finanz-table" style="width:100%;"></table>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════ EINSTELLUNGEN ══ -->
-    <div id="einstellungen" class="finanz-tab">
-        <div class="grid-3" style="align-items:start;">
-
-            <div class="card">
-                <div class="card-header"><h3>Fixkosten</h3></div>
-                <form id="fixkostenForm" style="display:flex;flex-direction:column;gap:10px;">
-                    <input type="text" name="name" placeholder="Name (z.B. McFit)" required>
-                    <input type="number" name="betrag" placeholder="Betrag (z.B. -24.90)" step="0.01" required>
-                    <input type="number" name="datum_tag" placeholder="Tag im Monat (1-31)" min="1" max="31" required>
-                    <select name="haeufigkeit" required>
-                        <option value="monatlich">Monatlich</option>
-                        <option value="woechentlich">Wöchentlich</option>
-                        <option value="jaehrlich">Jährlich</option>
-                    </select>
-                    <input type="text" name="kategorie" placeholder="Kategorie" required>
-                    <select name="account_id" id="fixkostenAccountSelect">
-                        <option value="">Kein Konto zugewiesen</option>
-                    </select>
-                    <button type="submit" class="btn-primary" style="width:100%;justify-content:center;">Hinzufügen</button>
-                </form>
-                <ul id="fixkostenList" style="margin-top:16px; list-style:none; display:flex; flex-direction:column; gap:8px;"></ul>
-            </div>
-
-            <div class="card">
-                <div class="card-header"><h3>Initialwerte</h3></div>
-                <form id="initialwerteForm" style="display:flex;flex-direction:column;gap:10px;">
-                    <div class="form-group">
-                        <label class="form-label">Sparkonto Startwert</label>
-                        <input type="number" name="sparkonto_initial" placeholder="€ 0,00" step="0.01">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Girokonto Startwert</label>
-                        <input type="number" name="girokonto_initial" placeholder="€ 0,00" step="0.01">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Bargeld Startwert</label>
-                        <input type="number" name="bargeld_initial" placeholder="€ 300,00" step="0.01" value="300">
-                    </div>
-                    <button type="submit" class="btn-primary" style="width:100%;justify-content:center;">Speichern</button>
-                </form>
-            </div>
-
-            <div class="card">
-                <div class="card-header"><h3>Manuelle Anpassungen</h3></div>
-                <form id="manuelleForm" style="display:flex;flex-direction:column;gap:10px;">
-                    <div class="form-group">
-                        <label class="form-label">Monat (YYYY-MM)</label>
-                        <input type="text" name="monat" placeholder="z.B. 2024-01" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Spaltenname</label>
-                        <input type="text" name="spalte_name" placeholder="z.B. Gehalt" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Wert</label>
-                        <input type="number" name="wert" placeholder="€ 0,00" step="0.01" required>
-                    </div>
-                    <button type="submit" class="btn-primary" style="width:100%;justify-content:center;">Hinzufügen</button>
-                </form>
-                <ul id="manuelleList" style="margin-top:16px; list-style:none; display:flex; flex-direction:column; gap:8px;"></ul>
             </div>
         </div>
     </div>
@@ -355,35 +291,6 @@
             <div style="display:flex; gap:8px;">
                 <button class="btn-primary" onclick="saveAccount()" style="flex:1; justify-content:center;"><i class="ri-save-line"></i> Speichern</button>
                 <button onclick="closeAccountModal()" style="padding:9px 20px; border-radius:var(--radius-md); cursor:pointer; background:var(--surface-2); color:var(--text-2); border:1px solid var(--border);">Abbrechen</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ── Modal: Fixkosten bearbeiten ── -->
-    <div id="fixkostenEditModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1002; align-items:center; justify-content:center;">
-        <div class="modal-content-category" style="max-width:420px; width:92%;">
-            <span class="close" onclick="closeFixkostenModal()">×</span>
-            <h3 style="margin-bottom:20px;">Fixkosten bearbeiten</h3>
-            <input type="hidden" id="fixkostenEditId">
-            <div class="form-group" style="margin-bottom:10px;"><label class="form-label">Name</label><input type="text" id="fkEditName"></div>
-            <div class="form-group" style="margin-bottom:10px;"><label class="form-label">Betrag (€)</label><input type="number" id="fkEditBetrag" step="0.01"></div>
-            <div class="form-group" style="margin-bottom:10px;"><label class="form-label">Tag im Monat</label><input type="number" id="fkEditTag" min="1" max="31"></div>
-            <div class="form-group" style="margin-bottom:10px;">
-                <label class="form-label">Häufigkeit</label>
-                <select id="fkEditHaeufigkeit">
-                    <option value="monatlich">Monatlich</option>
-                    <option value="woechentlich">Wöchentlich</option>
-                    <option value="jaehrlich">Jährlich</option>
-                </select>
-            </div>
-            <div class="form-group" style="margin-bottom:10px;"><label class="form-label">Kategorie</label><input type="text" id="fkEditKategorie"></div>
-            <div class="form-group" style="margin-bottom:20px;">
-                <label class="form-label">Konto</label>
-                <select id="fkEditAccount"><option value="">Kein Konto</option></select>
-            </div>
-            <div style="display:flex; gap:8px;">
-                <button class="btn-primary" onclick="saveFixkostenEdit()" style="flex:1; justify-content:center;"><i class="ri-save-line"></i> Speichern</button>
-                <button onclick="closeFixkostenModal()" style="padding:9px 20px; border-radius:var(--radius-md); cursor:pointer; background:var(--surface-2); color:var(--text-2); border:1px solid var(--border);">Abbrechen</button>
             </div>
         </div>
     </div>

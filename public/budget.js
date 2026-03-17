@@ -7,7 +7,6 @@ let budgetMonat = new Date().toISOString().slice(0, 7); // YYYY-MM
 let allTransactions = [];
 let allBudgets = [];
 let allSparziele = [];
-let allAbos = [];
 let donutChart = null;
 
 // ═══════════════════════════════════════════════════════════
@@ -26,48 +25,26 @@ function switchTab(tabId, btn) {
 document.addEventListener('DOMContentLoaded', async () => {
     await loadAll();
     updateMonthLabel();
-
-    // Hash-basiertes Tab-Öffnen: /users/budget#abos öffnet direkt den Abos-Tab
-    if (window.location.hash === '#abos') {
-        const aboBtn = document.querySelector('.budget-tab:nth-child(3)');
-        if (aboBtn) switchTab('abosTab', aboBtn);
-    }
-
-    // Wenn man bereits auf Budget ist und den Abonnements-Link erneut klickt
-    // (gleicher Hash → kein hashchange), trotzdem Tab öffnen
-    window.addEventListener('hashchange', () => {
-        if (window.location.hash === '#abos') {
-            const aboBtn = document.querySelector('.budget-tab:nth-child(3)');
-            if (aboBtn) switchTab('abosTab', aboBtn);
-        } else if (!window.location.hash) {
-            const budgetBtn = document.querySelector('.budget-tab:nth-child(1)');
-            if (budgetBtn) switchTab('budgetTab', budgetBtn);
-        }
-    });
 });
 
 async function loadAll() {
     try {
-        const [txRes, budgetRes, szRes, aboRes] = await Promise.all([
+        const [txRes, budgetRes, szRes] = await Promise.all([
             fetch('/users/getTransactions'),
             fetch('/users/budgets'),
-            fetch('/users/sparziele'),
-            fetch('/users/abos')
+            fetch('/users/sparziele')
         ]);
         allTransactions = txRes.ok ? await txRes.json() : [];
         allBudgets      = budgetRes.ok ? await budgetRes.json() : [];
         allSparziele    = szRes.ok ? await szRes.json() : [];
-        allAbos         = aboRes.ok ? await aboRes.json() : [];
     } catch (e) {
         console.error('Fehler beim Laden:', e);
         allTransactions = [];
         allBudgets = [];
         allSparziele = [];
-        allAbos = [];
     }
     renderBudget();
     renderSparziele();
-    renderAbos();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -423,146 +400,6 @@ function resetSparForm() {
     document.getElementById('szEditId').value  = '';
     document.getElementById('szCancelBtn').style.display = 'none';
     document.querySelectorAll('.sz-color-dot').forEach((d, i) => d.classList.toggle('active', i === 0));
-}
-
-// ═══════════════════════════════════════════════════════════
-// ABONNEMENTS
-// ═══════════════════════════════════════════════════════════
-const ABO_ICONS = {
-    streaming: { icon: 'ri-film-line',       color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-    software:  { icon: 'ri-code-box-line',   color: '#6358e6', bg: 'rgba(99,88,230,0.12)' },
-    fitness:   { icon: 'ri-heart-pulse-line',color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
-    news:      { icon: 'ri-newspaper-line',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
-    musik:     { icon: 'ri-music-line',      color: '#ec4899', bg: 'rgba(236,72,153,0.12)' },
-    gaming:    { icon: 'ri-gamepad-line',    color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
-    sonstiges: { icon: 'ri-shopping-bag-line',color: '#a0a0b8',bg: 'rgba(160,160,184,0.1)' },
-};
-
-function renderAbos() {
-    const filterKat = document.getElementById('aboFilterKat').value;
-    const filtered  = filterKat ? allAbos.filter(a => a.kategorie === filterKat) : allAbos;
-
-    // Statistiken
-    let monatlich = 0;
-    allAbos.forEach(a => {
-        if (a.rhythmus === 'monatlich')         monatlich += a.betrag;
-        else if (a.rhythmus === 'jaehrlich')    monatlich += a.betrag / 12;
-        else if (a.rhythmus === 'vierteljaehrlich') monatlich += a.betrag / 3;
-    });
-    document.getElementById('aboMonatlich').textContent = fmt.format(monatlich);
-    document.getElementById('aboJaehrlich').textContent = fmt.format(monatlich * 12);
-    document.getElementById('aboAnzahl').textContent    = allAbos.length;
-
-    const listEl = document.getElementById('aboList');
-    if (filtered.length === 0) {
-        listEl.innerHTML = '<div style="text-align:center;padding:50px;color:var(--text-3);"><i class="ri-repeat-line" style="font-size:2.5rem;display:block;margin-bottom:12px;opacity:0.3;"></i>' + (allAbos.length === 0 ? 'Noch keine Abonnements.' : 'Keine Abonnements in dieser Kategorie.') + '</div>';
-        return;
-    }
-
-    const rhythmusLabel = { monatlich: 'mtl.', jaehrlich: 'jährl.', vierteljaehrlich: 'quartl.' };
-
-    listEl.innerHTML = filtered.map(abo => {
-        const cfg = ABO_ICONS[abo.kategorie] || ABO_ICONS.sonstiges;
-        let naechsteInfo = '';
-        if (abo.naechste_abbuchung) {
-            const d = new Date(abo.naechste_abbuchung);
-            const tage = Math.ceil((d - new Date()) / (1000 * 60 * 60 * 24));
-            naechsteInfo = tage <= 0 ? 'Heute fällig' : (tage === 1 ? 'Morgen fällig' : 'in ' + tage + ' Tagen');
-        }
-
-        return '<div class="abo-row">' +
-            '<div class="abo-icon" style="background:' + cfg.bg + ';color:' + cfg.color + ';">' +
-                '<i class="' + cfg.icon + '"></i>' +
-            '</div>' +
-            '<div style="flex:1;min-width:0;">' +
-                '<div style="font-weight:600;font-size:0.9rem;">' + escHtml(abo.name) + '</div>' +
-                '<div style="font-size:0.75rem;color:var(--text-3);margin-top:2px;">' +
-                    abo.kategorie.charAt(0).toUpperCase() + abo.kategorie.slice(1) +
-                    (abo.notiz ? ' · ' + escHtml(abo.notiz) : '') +
-                    (naechsteInfo ? ' · <span style="color:' + (naechsteInfo.includes('Heute') ? '#ef4444' : 'var(--text-3)') + ';">' + naechsteInfo + '</span>' : '') +
-                '</div>' +
-            '</div>' +
-            '<div style="text-align:right;flex-shrink:0;">' +
-                '<div style="font-weight:800;font-size:0.95rem;color:var(--red);">' + fmt.format(abo.betrag) + '</div>' +
-                '<div style="font-size:0.72rem;color:var(--text-3);">' + (rhythmusLabel[abo.rhythmus] || abo.rhythmus) + '</div>' +
-            '</div>' +
-            '<div style="display:flex;gap:6px;margin-left:8px;">' +
-                '<button onclick="editAbo(' + abo.id + ')" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);padding:5px 8px;border-radius:8px;cursor:pointer;font-size:0.8rem;font-family:inherit;"><i class="ri-edit-line"></i></button>' +
-                '<button onclick="deleteAbo(' + abo.id + ')" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#ef4444;padding:5px 8px;border-radius:8px;cursor:pointer;font-size:0.8rem;font-family:inherit;"><i class="ri-delete-bin-line"></i></button>' +
-            '</div>' +
-        '</div>';
-    }).join('');
-}
-
-async function saveAbo() {
-    const name      = document.getElementById('aboName').value.trim();
-    const kategorie = document.getElementById('aboKategorie').value;
-    const betrag    = parseFloat(document.getElementById('aboBetrag').value);
-    const rhythmus  = document.getElementById('aboRhythmus').value;
-    const naechste  = document.getElementById('aboNaechste').value;
-    const notiz     = document.getElementById('aboNotiz').value.trim();
-    const editId    = document.getElementById('aboEditId').value;
-
-    if (!name || isNaN(betrag)) { showMsg('aboMsg', 'Bitte Name und Betrag ausfüllen.', true); return; }
-
-    try {
-        let res;
-        const body = { name, kategorie, betrag, rhythmus, naechste_abbuchung: naechste || null, notiz };
-        if (editId) {
-            res = await fetch('/users/abos/' + editId, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-        } else {
-            res = await fetch('/users/abos/add', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-        }
-        if (!res.ok) throw new Error();
-        showMsg('aboMsg', editId ? 'Aktualisiert!' : 'Abo hinzugefügt!', false);
-        resetAboForm();
-        const aboRes = await fetch('/users/abos');
-        allAbos = aboRes.ok ? await aboRes.json() : [];
-        renderAbos();
-    } catch { showMsg('aboMsg', 'Fehler beim Speichern.', true); }
-}
-
-function editAbo(id) {
-    const abo = allAbos.find(a => a.id === id);
-    if (!abo) return;
-    document.getElementById('aboName').value      = abo.name;
-    document.getElementById('aboKategorie').value = abo.kategorie;
-    document.getElementById('aboBetrag').value    = abo.betrag;
-    document.getElementById('aboRhythmus').value  = abo.rhythmus;
-    document.getElementById('aboNaechste').value  = abo.naechste_abbuchung || '';
-    document.getElementById('aboNotiz').value     = abo.notiz || '';
-    document.getElementById('aboEditId').value    = abo.id;
-    document.getElementById('aboCancelBtn').style.display = '';
-    document.getElementById('aboName').scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-async function deleteAbo(id) {
-    if (!confirm('Abonnement wirklich löschen?')) return;
-    try {
-        await fetch('/users/abos/' + id, { method: 'DELETE' });
-        const aboRes = await fetch('/users/abos');
-        allAbos = aboRes.ok ? await aboRes.json() : [];
-        renderAbos();
-    } catch { alert('Fehler beim Löschen.'); }
-}
-
-function resetAboForm() {
-    document.getElementById('aboName').value      = '';
-    document.getElementById('aboKategorie').value = 'streaming';
-    document.getElementById('aboBetrag').value    = '';
-    document.getElementById('aboRhythmus').value  = 'monatlich';
-    document.getElementById('aboNaechste').value  = '';
-    document.getElementById('aboNotiz').value     = '';
-    document.getElementById('aboEditId').value    = '';
-    document.getElementById('aboCancelBtn').style.display = 'none';
 }
 
 // ═══════════════════════════════════════════════════════════
