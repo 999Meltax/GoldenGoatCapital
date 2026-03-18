@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Haushaltskonto – Golden Goat Capital</title>
+    <title>Haushaltskonten – Golden Goat Capital</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
     <link rel="stylesheet" href="/styles.css">
     <link rel="icon" type="image/png" href="/assets/goldengoat.png">
@@ -14,7 +14,7 @@
     <div id="hkRoot">
         <div style="text-align:center;padding:80px 24px;color:var(--text-3);">
             <i class="ri-loader-4-line" style="font-size:2rem;display:block;margin-bottom:12px;animation:spin 1s linear infinite;"></i>
-            Lade Haushaltskonto…
+            Lade Haushaltskonten…
         </div>
     </div>
 
@@ -42,95 +42,86 @@
     .hk-import-card h4 { margin: 0 0 6px; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
     .hk-import-card p  { font-size: 0.82rem; color: var(--text-3); margin: 0 0 16px; }
 
-    .hk-header-card {
-        background: var(--surface); border: 1px solid var(--border);
-        border-radius: var(--radius-lg); padding: 28px 32px;
-        margin-bottom: 20px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+    /* Konten-Grid */
+    .hk-konten-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
     }
-    .hk-konto-icon {
-        width: 64px; height: 64px; border-radius: 18px;
+    .hk-konto-card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-lg); padding: 22px;
+        display: flex; flex-direction: column; gap: 14px;
+        transition: var(--transition);
+    }
+    .hk-konto-card:hover { border-color: var(--border-accent); }
+    .hk-konto-card-header { display: flex; align-items: center; gap: 14px; }
+    .hk-konto-card-icon {
+        width: 46px; height: 46px; border-radius: 13px;
         display: flex; align-items: center; justify-content: center;
-        font-size: 1.75rem; flex-shrink: 0;
+        font-size: 1.3rem; flex-shrink: 0;
     }
-    .hk-konto-balance { font-size: 2.4rem; font-weight: 800; line-height: 1; }
-    .hk-konto-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+    .hk-konto-card-name { font-weight: 700; font-size: 1rem; color: var(--text-1); }
+    .hk-konto-card-type { font-size: 0.74rem; color: var(--text-3); margin-top: 2px; }
+    .hk-konto-card-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
+    .hk-konto-icon-btn {
+        width: 30px; height: 30px; border-radius: 8px;
+        background: var(--surface-2); border: 1px solid var(--border);
+        color: var(--text-3); display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: 0.9rem; transition: var(--transition);
+    }
+    .hk-konto-icon-btn:hover { color: var(--text-1); border-color: var(--border-accent); }
+    .hk-konto-card-balance {
+        font-size: 2rem; font-weight: 900; line-height: 1; letter-spacing: -0.02em;
+    }
+    .hk-konto-card-meta { font-size: 0.73rem; color: var(--text-3); margin-top: 4px; }
 
-    .hk-stats {
-        display: grid; grid-template-columns: repeat(4, 1fr);
-        gap: 14px; margin-bottom: 20px;
+    /* Konto hinzufügen Karte */
+    .hk-add-card {
+        background: var(--surface); border: 2px dashed var(--border);
+        border-radius: var(--radius-lg); padding: 22px;
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: 10px; cursor: pointer;
+        transition: var(--transition); min-height: 160px; color: var(--text-3);
     }
-    .hk-stat-card {
-        background: var(--surface); border: 1px solid var(--border);
-        border-radius: var(--radius-lg); padding: 18px 20px;
-    }
-    .hk-stat-label { font-size: 0.72rem; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
-    .hk-stat-val { font-size: 1.2rem; font-weight: 800; }
+    .hk-add-card:hover { border-color: var(--haus-accent); color: var(--haus-accent); background: rgba(16,185,129,0.04); }
+    .hk-add-card i { font-size: 1.8rem; }
+    .hk-add-card span { font-size: 0.85rem; font-weight: 600; }
 
-    .hk-main-grid {
-        display: grid; grid-template-columns: 1fr 320px;
-        gap: 20px; align-items: start;
-    }
-
-    .hk-tx-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+    /* Transaktionsliste */
+    .hk-tx-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
     .hk-tx-row:last-child { border-bottom: none; }
     .hk-tx-icon { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 0.88rem; flex-shrink: 0; }
     .hk-tx-body { flex: 1; min-width: 0; }
     .hk-tx-name { font-weight: 600; font-size: 0.87rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .hk-tx-meta { font-size: 0.72rem; color: var(--text-3); margin-top: 2px; display: flex; gap: 6px; flex-wrap: wrap; }
-    .hk-fixkost-badge {
-        display: inline-flex; align-items: center; gap: 3px;
-        background: rgba(99,88,230,0.12); color: var(--accent);
-        border-radius: 4px; padding: 1px 6px; font-size: 0.68rem; font-weight: 700;
-    }
 
-    .hk-cta-banner {
-        background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(16,185,129,0.03) 100%);
-        border: 1px solid rgba(16,185,129,0.25); border-radius: var(--radius-lg);
-        padding: 20px 24px; display: flex; align-items: center; gap: 16px;
-        margin-bottom: 20px; text-decoration: none; color: inherit;
-        transition: var(--transition); cursor: pointer;
-    }
-    .hk-cta-banner:hover { border-color: var(--haus-accent); background: rgba(16,185,129,0.12); }
-    .hk-cta-icon {
-        width: 48px; height: 48px; border-radius: 14px;
-        background: rgba(16,185,129,0.15); color: var(--haus-accent);
-        display: flex; align-items: center; justify-content: center;
-        font-size: 1.4rem; flex-shrink: 0;
-    }
-
-    .hk-kat-bar { display: flex; flex-direction: column; gap: 10px; }
-    .hk-kat-item { font-size: 0.82rem; }
-    .hk-kat-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
-    .hk-kat-track { background: var(--surface-2); border-radius: 4px; height: 6px; overflow: hidden; }
-    .hk-kat-fill  { height: 100%; border-radius: 4px; transition: width 0.5s; }
-
-    @media (max-width: 900px) { .hk-main-grid { grid-template-columns: 1fr; } .hk-stats { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 500px)  { .hk-header-card { padding: 18px 16px; } }
+    @media (max-width: 600px) { .hk-konten-grid { grid-template-columns: 1fr; } }
     </style>
 
     <script>
     const fmt     = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
     const fmtSign = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', signDisplay: 'always' });
 
-    let kontoData    = null;
+    let kontenData   = [];
     let haushaltInfo = null;
 
     async function init() {
         try {
             haushaltInfo = await fetch('/users/haushalt/status').then(r => r.json());
             if (!haushaltInfo?.haushalt) return renderNoHaushalt();
-            await loadKonto();
-        } catch (e) {
+            await loadKonten();
+        } catch(e) {
             document.getElementById('hkRoot').innerHTML =
                 '<div style="text-align:center;padding:60px;color:#ef4444;"><i class="ri-error-warning-line" style="font-size:2rem;display:block;margin-bottom:12px;"></i>Fehler beim Laden.</div>';
         }
     }
 
-    async function loadKonto() {
-        const res = await fetch('/users/haushalt/konto/data').then(r => r.json()).catch(() => null);
-        const k = res?.konto || null;
-        if (!k || !k.id) return renderSetup();
-        kontoData = k;
+    async function loadKonten() {
+        const res  = await fetch('/users/haushalt/konto/data').then(r => r.json()).catch(() => null);
+        kontenData = res?.konten || [];
+        if (kontenData.length === 0) return renderSetup();
         renderHauptseite();
     }
 
@@ -147,28 +138,28 @@
     function renderSetup() {
         const root = document.getElementById('hkRoot');
         root.innerHTML =
+            '<div class="page-header"><div><h1><i class="ri-bank-card-line" style="color:var(--haus-accent);margin-right:8px;"></i>Haushaltskonten einrichten</h1>' +
+            '<p>Ihr könnt mehrere Konten pro Haushalt führen — z.B. Haushaltskasse, gemeinsames Konto, Kreditkarte.</p></div></div>' +
             '<div class="hk-setup">' +
                 '<div class="hk-setup-hero">' +
                     '<div class="hk-setup-icon"><i class="ri-bank-card-line"></i></div>' +
-                    '<h2 style="margin:0 0 8px;">Haushaltskonto einrichten</h2>' +
-                    '<p style="color:var(--text-3);margin:0;">Verwaltet gemeinsame Finanzen an einem Ort. Fixkosten werden automatisch eingetragen.</p>' +
+                    '<h2 style="margin:0 0 8px;">Erstes Konto anlegen</h2>' +
+                    '<p style="color:var(--text-3);margin:0;">Legt gemeinsam Konten an und behaltet den Überblick.</p>' +
                 '</div>' +
-
                 '<div class="hk-import-card">' +
                     '<h4><i class="ri-add-circle-line" style="color:var(--haus-accent);"></i> Neues Konto erstellen</h4>' +
-                    '<p>Legt ein neues gemeinsames Haushaltskonto an.</p>' +
+                    '<p>Legt ein neues Haushaltskonto an.</p>' +
                     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">' +
                         '<div class="form-group" style="margin:0;"><label class="form-label">Kontoname</label><input type="text" id="newKontoName" placeholder="z.B. Haushaltskasse"></div>' +
                         '<div class="form-group" style="margin:0;"><label class="form-label">Startguthaben (€)</label><input type="number" id="newKontoBalance" placeholder="0,00" step="0.01"></div>' +
                     '</div>' +
-                    '<div class="form-group" style="margin:0 0 12px;"><label class="form-label">Farbe</label><input type="color" id="newKontoColor" value="#10b981" style="height:42px;padding:4px 8px;"></div>' +
+                    '<div class="form-group" style="margin:0 0 12px;"><label class="form-label">Farbe</label><input type="color" id="newKontoColor" value="#10b981" style="height:42px;padding:4px 8px;width:100%;"></div>' +
                     '<button class="btn-primary" style="background:var(--haus-accent);" onclick="createKonto()"><i class="ri-add-line"></i> Konto erstellen</button>' +
                     '<div id="createMsg" style="margin-top:10px;font-size:0.83rem;"></div>' +
                 '</div>' +
-
                 '<div class="hk-import-card">' +
                     '<h4><i class="ri-link" style="color:var(--accent);"></i> Privates Konto verknüpfen</h4>' +
-                    '<p>Verknüpfe ein bestehendes privates Konto als Haushaltskonto.</p>' +
+                    '<p>Verknüpfe ein bestehendes privates Konto mit dem Haushalt.</p>' +
                     '<div class="form-group" style="margin:0 0 12px;"><label class="form-label">Konto auswählen</label><select id="linkKontoSelect"><option value="">Lade Konten…</option></select></div>' +
                     '<button class="btn-primary" onclick="linkKonto()"><i class="ri-link"></i> Verknüpfen</button>' +
                     '<div id="linkMsg" style="margin-top:10px;font-size:0.83rem;"></div>' +
@@ -178,191 +169,216 @@
         fetch('/users/haushalt/konto/meine-privaten').then(r => r.json()).then(konten => {
             const sel = document.getElementById('linkKontoSelect');
             if (!konten?.length) { sel.innerHTML = '<option>Keine privaten Konten gefunden</option>'; return; }
-            sel.innerHTML = konten.map(k => '<option value="' + k.id + '">' + escHtml(k.name) + ' (' + fmt.format(k.balance || 0) + ')</option>').join('');
+            sel.innerHTML = '<option value="">Konto wählen…</option>' +
+                konten.map(k => '<option value="' + k.id + '">' + escHtml(k.name) + ' (' + fmt.format(k.balance || 0) + ')</option>').join('');
         }).catch(() => {});
     }
 
     async function createKonto() {
-        const name = document.getElementById('newKontoName').value.trim();
-        const balance = parseFloat(document.getElementById('newKontoBalance').value) || 0;
-        const color = document.getElementById('newKontoColor').value;
-        const msg = document.getElementById('createMsg');
-        if (!name) { msg.style.color = '#ef4444'; msg.textContent = 'Bitte einen Namen eingeben.'; return; }
-        const res = await fetch('/users/haushalt/konto/create', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, balance, color }) });
+        const name    = document.getElementById('newKontoName')?.value.trim();
+        const balance = parseFloat(document.getElementById('newKontoBalance')?.value) || 0;
+        const color   = document.getElementById('newKontoColor')?.value || '#10b981';
+        const msg     = document.getElementById('createMsg');
+        if (!name) { if(msg){msg.style.color='#ef4444';msg.textContent='Bitte einen Namen eingeben.';} return; }
+        const res  = await fetch('/users/haushalt/konto/create', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, balance, color }) });
         const data = await res.json();
-        if (!res.ok) { msg.style.color = '#ef4444'; msg.textContent = data.message; return; }
-        await loadKonto();
+        if (!res.ok) { if(msg){msg.style.color='#ef4444';msg.textContent=data.message;} return; }
+        await loadKonten();
     }
 
     async function linkKonto() {
-        const id = document.getElementById('linkKontoSelect').value;
+        const id  = document.getElementById('linkKontoSelect')?.value;
         const msg = document.getElementById('linkMsg');
-        if (!id) { msg.style.color = '#ef4444'; msg.textContent = 'Bitte ein Konto auswählen.'; return; }
-        const res = await fetch('/users/haushalt/konto/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ account_id: id }) });
+        if (!id) { if(msg){msg.style.color='#ef4444';msg.textContent='Bitte ein Konto auswählen.';} return; }
+        const res  = await fetch('/users/haushalt/konto/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ account_id: id }) });
         const data = await res.json();
-        if (!res.ok) { msg.style.color = '#ef4444'; msg.textContent = data.message; return; }
-        await loadKonto();
+        if (!res.ok) { if(msg){msg.style.color='#ef4444';msg.textContent=data.message;} return; }
+        await loadKonten();
     }
 
-    // ── Hauptseite ─────────────────────────────────────────────────
+    // ── Hauptseite ─────────────────────────────────────────────
     function renderHauptseite() {
-        const k   = kontoData;
-        const txs = k.transaktionen || [];
-        const heute     = new Date().toISOString().slice(0, 7);
-        const monatTxs  = txs.filter(t => (t.date || '').startsWith(heute));
-        const einnahmen = monatTxs.filter(t => t.type === 'Einnahmen').reduce((s, t) => s + t.amount, 0);
-        const ausgaben  = monatTxs.filter(t => t.type === 'Ausgaben').reduce((s, t) => s + t.amount, 0);
-        const balColor  = k.currentBalance >= 0 ? '#22c55e' : '#ef4444';
-
         const root = document.getElementById('hkRoot');
+        const gesamtBalance = kontenData.reduce((s, k) => s + (k.currentBalance ?? k.balance ?? 0), 0);
+        const gesamtColor   = gesamtBalance >= 0 ? '#22c55e' : '#ef4444';
+
         root.innerHTML =
-            '<div class="page-header">' +
+            '<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">' +
                 '<div>' +
-                    '<h1><i class="ri-bank-card-line" style="color:var(--haus-accent);margin-right:8px;"></i>Haushaltskonto</h1>' +
-                    '<p>Kontoübersicht für ' + escHtml(haushaltInfo.haushalt.name) + '</p>' +
+                    '<h1><i class="ri-bank-card-line" style="color:var(--haus-accent);margin-right:8px;"></i>Haushaltskonten</h1>' +
+                    '<p>' + escHtml(haushaltInfo.haushalt.name) + ' · ' + kontenData.length + ' Konto' + (kontenData.length !== 1 ? 'en' : '') +
+                    ' · Gesamt: <b style="color:' + gesamtColor + ';">' + fmt.format(gesamtBalance) + '</b></p>' +
                 '</div>' +
+                '<a href="/users/haushalt/tracker" class="btn-primary" style="background:var(--haus-accent);text-decoration:none;"><i class="ri-exchange-2-line"></i> Transaktionen</a>' +
             '</div>' +
-
-            '<a class="hk-cta-banner" href="/users/haushalt/tracker">' +
-                '<div class="hk-cta-icon"><i class="ri-exchange-2-line"></i></div>' +
-                '<div style="flex:1;">' +
-                    '<div style="font-weight:700;font-size:0.95rem;margin-bottom:2px;">Transaktionen verwalten</div>' +
-                    '<div style="font-size:0.8rem;color:var(--text-3);">Alle Transaktionen mit Filtern, Sortierung, Diagrammen und CSV-Export</div>' +
+            '<div class="hk-konten-grid" id="hkKontenGrid"></div>' +
+            '<div class="card" style="margin-bottom:20px;">' +
+                '<div class="card-header">' +
+                    '<h3><i class="ri-exchange-2-line" style="color:var(--haus-accent);margin-right:6px;"></i>Letzte Transaktionen</h3>' +
+                    '<a href="/users/haushalt/tracker" style="font-size:0.8rem;color:var(--haus-accent);text-decoration:none;font-weight:600;">Alle anzeigen <i class="ri-arrow-right-line"></i></a>' +
                 '</div>' +
-                '<i class="ri-arrow-right-line" style="color:var(--haus-accent);font-size:1.2rem;"></i>' +
-            '</a>' +
+                '<div id="hkRecentTxs"><div style="text-align:center;padding:20px;color:var(--text-3);"><i class="ri-loader-4-line" style="animation:spin 1s linear infinite;display:inline-block;"></i></div></div>' +
+            '</div>';
 
-            '<div class="hk-header-card">' +
-                '<div class="hk-konto-icon" style="background:' + k.color + '22;color:' + k.color + ';"><i class="ri-bank-card-line"></i></div>' +
-                '<div>' +
-                    '<div style="font-size:0.75rem;color:var(--text-3);margin-bottom:4px;">' + escHtml(k.name) + '</div>' +
-                    '<div class="hk-konto-balance" style="color:' + balColor + ';">' + fmt.format(k.currentBalance) + '</div>' +
-                    '<div style="font-size:0.73rem;color:var(--text-3);margin-top:4px;">Startguthaben: ' + fmt.format(k.balance) + (k.linked_account_id ? ' · <span style="color:var(--haus-accent);">🔗 Mit privatem Konto verknüpft</span>' : '') + '</div>' +
-                '</div>' +
-                '<div class="hk-konto-actions">' +
-                    '<button onclick="openEditKontoModal()" style="padding:8px 14px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;font-size:0.83rem;font-weight:600;"><i class="ri-settings-3-line"></i> Konto bearbeiten</button>' +
-                '</div>' +
-            '</div>' +
+        renderKontenGrid();
+        loadRecentTxs();
+    }
 
-            '<div class="hk-stats">' +
-                '<div class="hk-stat-card"><div class="hk-stat-label">Einnahmen (Monat)</div><div class="hk-stat-val positive">' + fmt.format(einnahmen) + '</div></div>' +
-                '<div class="hk-stat-card"><div class="hk-stat-label">Ausgaben (Monat)</div><div class="hk-stat-val negative">' + fmt.format(ausgaben) + '</div></div>' +
-                '<div class="hk-stat-card"><div class="hk-stat-label">Netto (Monat)</div><div class="hk-stat-val" style="color:' + (einnahmen - ausgaben >= 0 ? '#22c55e' : '#ef4444') + ';">' + fmtSign.format(einnahmen - ausgaben) + '</div></div>' +
-                '<div class="hk-stat-card"><div class="hk-stat-label">Transaktionen gesamt</div><div class="hk-stat-val">' + txs.length + '</div></div>' +
-            '</div>' +
+    function renderKontenGrid() {
+        const grid = document.getElementById('hkKontenGrid');
+        if (!grid) return;
 
-            '<div class="hk-main-grid">' +
-                '<div class="card">' +
-                    '<div class="card-header" style="margin-bottom:16px;">' +
-                        '<h3>Letzte Transaktionen</h3>' +
-                        '<a href="/users/haushalt/tracker" style="font-size:0.8rem;color:var(--haus-accent);text-decoration:none;font-weight:600;display:flex;align-items:center;gap:4px;">Alle anzeigen <i class="ri-arrow-right-line"></i></a>' +
+        const cards = kontenData.map(k => {
+            const bal       = k.currentBalance ?? k.balance ?? 0;
+            const balColor  = bal >= 0 ? '#22c55e' : '#ef4444';
+            const iconColor = k.color || '#10b981';
+            return '<div class="hk-konto-card">' +
+                '<div class="hk-konto-card-header">' +
+                    '<div class="hk-konto-card-icon" style="background:' + iconColor + '20;color:' + iconColor + ';"><i class="ri-bank-card-line"></i></div>' +
+                    '<div style="flex:1;min-width:0;">' +
+                        '<div class="hk-konto-card-name">' + escHtml(k.name) + '</div>' +
+                        '<div class="hk-konto-card-type">' + (k.linked_account_id ? '<i class="ri-link" style="color:var(--haus-accent);"></i> Verknüpft' : 'Haushaltskonto') + '</div>' +
                     '</div>' +
-                    renderRecentTxs(txs) +
+                    '<div class="hk-konto-card-actions">' +
+                        '<button class="hk-konto-icon-btn" onclick="openEditModal(' + k.id + ')" title="Bearbeiten"><i class="ri-settings-3-line"></i></button>' +
+                        (kontenData.length > 1 ? '<button class="hk-konto-icon-btn" onclick="deleteKonto(' + k.id + ',\'' + escHtml(k.name).replace(/'/g, "\\'") + '\')" title="Löschen" style="color:#ef4444;border-color:rgba(239,68,68,0.2);"><i class="ri-delete-bin-line"></i></button>' : '') +
+                    '</div>' +
                 '</div>' +
-                '<div class="card">' +
-                    '<h4 style="margin:0 0 16px;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Ausgaben nach Kategorie (Monat)</h4>' +
-                    '<div class="hk-kat-bar" id="hkKatChart"></div>' +
+                '<div>' +
+                    '<div class="hk-konto-card-balance" style="color:' + balColor + ';">' + fmt.format(bal) + '</div>' +
+                    '<div class="hk-konto-card-meta">Startguthaben: ' + fmt.format(k.balance) + '</div>' +
                 '</div>' +
             '</div>';
+        });
 
-        renderKatChart();
+        cards.push(
+            '<div class="hk-add-card" onclick="openAddKontoModal()">' +
+                '<i class="ri-add-circle-line"></i>' +
+                '<span>Konto hinzufügen</span>' +
+            '</div>'
+        );
+
+        grid.innerHTML = cards.join('');
     }
 
-    function renderRecentTxs(txs) {
-        const recent = txs.slice(0, 8);
-        if (!recent.length) return '<div style="text-align:center;padding:40px;color:var(--text-3);font-size:0.85rem;"><i class="ri-exchange-2-line" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.3;"></i>Noch keine Transaktionen<br><a href="/users/haushalt/tracker" style="color:var(--haus-accent);text-decoration:none;font-weight:600;">Erste Transaktion eintragen →</a></div>';
-        return recent.map(t => {
-            const inc = t.type === 'Einnahmen';
-            return '<div class="hk-tx-row">' +
-                '<div class="hk-tx-icon" style="background:' + (inc ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.1)') + ';color:' + (inc ? '#22c55e' : '#ef4444') + ';"><i class="' + (inc ? 'ri-arrow-down-line' : 'ri-arrow-up-line') + '"></i></div>' +
-                '<div class="hk-tx-body">' +
-                    '<div class="hk-tx-name">' + escHtml(t.name) + '</div>' +
-                    '<div class="hk-tx-meta"><span>' + new Date(t.date).toLocaleDateString('de-DE') + '</span><span>' + escHtml(t.category || '—') + '</span>' + (t.is_fixkost ? '<span class="hk-fixkost-badge"><i class="ri-repeat-line"></i> Fixkosten</span>' : '') + '</div>' +
-                '</div>' +
-                '<span class="' + (inc ? 'positive' : 'negative') + '" style="font-weight:800;font-size:0.9rem;white-space:nowrap;">' + fmtSign.format(t.amount * (inc ? 1 : -1)) + '</span>' +
-            '</div>';
-        }).join('');
-    }
-
-    function renderKatChart() {
-        const txs = kontoData.transaktionen || [];
-        const heute = new Date().toISOString().slice(0, 7);
-        const byKat = {};
-        txs.filter(t => t.type === 'Ausgaben' && (t.date || '').startsWith(heute)).forEach(t => { byKat[t.category || 'Sonstiges'] = (byKat[t.category || 'Sonstiges'] || 0) + t.amount; });
-        const total  = Object.values(byKat).reduce((s, v) => s + v, 0);
-        const sorted = Object.entries(byKat).sort((a, b) => b[1] - a[1]).slice(0, 7);
-        const el = document.getElementById('hkKatChart');
+    async function loadRecentTxs() {
+        const el = document.getElementById('hkRecentTxs');
         if (!el) return;
-        if (!sorted.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:0.82rem;">Keine Ausgaben diesen Monat</div>'; return; }
-        const color = kontoData.color || '#10b981';
-        el.innerHTML = sorted.map(([k, v]) => {
-            const pct = total > 0 ? (v / total * 100) : 0;
-            return '<div class="hk-kat-item"><div class="hk-kat-header"><span style="font-weight:500;">' + escHtml(k) + '</span><span class="negative" style="font-weight:700;">' + fmt.format(v) + '</span></div><div class="hk-kat-track"><div class="hk-kat-fill" style="width:' + pct + '%;background:' + color + ';"></div></div></div>';
-        }).join('');
+        try {
+            const txs = await fetch('/users/haushalt/transaktionen').then(r => r.json());
+            const recent = (txs || []).slice(0, 8);
+            if (!recent.length) {
+                el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);font-size:0.85rem;"><i class="ri-exchange-2-line" style="font-size:1.5rem;display:block;margin-bottom:8px;opacity:0.3;"></i>Noch keine Transaktionen</div>';
+                return;
+            }
+            el.innerHTML = recent.map(t => {
+                const inc       = t.type === 'Einnahmen';
+                const kontoName = kontenData.find(k => k.id === t.konto_id)?.name || '';
+                return '<div class="hk-tx-row">' +
+                    '<div class="hk-tx-icon" style="background:' + (inc ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.1)') + ';color:' + (inc ? '#22c55e' : '#ef4444') + ';"><i class="' + (inc ? 'ri-arrow-down-line' : 'ri-arrow-up-line') + '"></i></div>' +
+                    '<div class="hk-tx-body">' +
+                        '<div class="hk-tx-name">' + escHtml(t.name) + '</div>' +
+                        '<div class="hk-tx-meta">' +
+                            '<span>' + new Date(t.date).toLocaleDateString('de-DE') + '</span>' +
+                            '<span>' + escHtml(t.category || '—') + '</span>' +
+                            (kontoName ? '<span style="color:var(--haus-accent);">' + escHtml(kontoName) + '</span>' : '') +
+                        '</div>' +
+                    '</div>' +
+                    '<span style="font-weight:800;font-size:0.9rem;white-space:nowrap;color:' + (inc ? '#22c55e' : '#ef4444') + ';">' + fmtSign.format(t.amount * (inc ? 1 : -1)) + '</span>' +
+                '</div>';
+            }).join('');
+        } catch {
+            el.innerHTML = '<div style="color:var(--text-3);font-size:0.82rem;padding:16px;">Transaktionen konnten nicht geladen werden.</div>';
+        }
     }
 
-    function openEditKontoModal() {
-        const k = kontoData;
+    // ── Modals ─────────────────────────────────────────────────
+    function openEditModal(kontoId) {
+        const k = kontenData.find(k => k.id === kontoId);
+        if (!k) return;
+        openKontoModal({
+            title: 'Konto bearbeiten',
+            name: k.name, balance: k.balance, color: k.color || '#10b981',
+            onSave: async (name, balance, color) => {
+                const res = await fetch('/users/haushalt/konto/' + kontoId, {
+                    method: 'PATCH', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ name, balance, color })
+                });
+                if (!res.ok) throw new Error((await res.json()).message || 'Fehler');
+            }
+        });
+    }
 
-        // Altes Modal entfernen falls vorhanden
-        const existing = document.getElementById('editKontoOverlay');
-        if (existing) existing.remove();
+    function openAddKontoModal() {
+        openKontoModal({
+            title: 'Neues Konto hinzufügen',
+            name: '', balance: 0, color: '#10b981',
+            onSave: async (name, balance, color) => {
+                const res = await fetch('/users/haushalt/konto/create', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ name, balance, color })
+                });
+                if (!res.ok) throw new Error((await res.json()).message || 'Fehler');
+            }
+        });
+    }
+
+    function openKontoModal({ title, name, balance, color, onSave }) {
+        const ex = document.getElementById('hkModalOverlay');
+        if (ex) ex.remove();
 
         const overlay = document.createElement('div');
-        overlay.id = 'editKontoOverlay';
-        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
-
-        const modal = document.createElement('div');
-        modal.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:420px;';
-        modal.innerHTML =
-            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
-                '<h3 style="margin:0;">Konto bearbeiten</h3>' +
-                '<button id="editKontoCloseX" style="width:32px;height:32px;border-radius:8px;background:var(--surface-2);border:none;color:var(--text-2);cursor:pointer;font-size:1.1rem;"><i class="ri-close-line"></i></button>' +
-            '</div>' +
-            '<div style="display:flex;flex-direction:column;gap:14px;">' +
-                '<div class="form-group"><label class="form-label">Kontoname</label><input type="text" id="editKontoName" value="' + escHtml(k.name) + '"></div>' +
-                '<div class="form-group"><label class="form-label">Startguthaben (€)</label><input type="number" id="editKontoBalance" value="' + k.balance + '" step="0.01"></div>' +
-                '<div class="form-group"><label class="form-label">Farbe</label><input type="color" id="editKontoColor" value="' + k.color + '" style="height:42px;padding:4px 8px;width:100%;"></div>' +
-            '</div>' +
-            '<div style="display:flex;gap:8px;margin-top:20px;">' +
-                '<button id="editKontoSave" class="btn-primary" style="flex:1;justify-content:center;background:var(--haus-accent);"><i class="ri-save-line"></i> Speichern</button>' +
-                '<button id="editKontoCancel" style="padding:10px 20px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;">Abbrechen</button>' +
-            '</div>' +
-            '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">' +
-                '<button id="editKontoDelete" style="width:100%;padding:9px;border-radius:var(--radius-md);background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;font-size:0.83rem;font-weight:600;"><i class="ri-delete-bin-line"></i> Konto löschen</button>' +
+        overlay.id = 'hkModalOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+        overlay.innerHTML =
+            '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:420px;">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
+                    '<h3 style="margin:0;">' + escHtml(title) + '</h3>' +
+                    '<button id="hkMClose" style="width:32px;height:32px;border-radius:8px;background:var(--surface-2);border:none;color:var(--text-2);cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;"><i class="ri-close-line"></i></button>' +
+                '</div>' +
+                '<div style="display:flex;flex-direction:column;gap:14px;">' +
+                    '<div class="form-group"><label class="form-label">Kontoname</label><input type="text" id="hkMName" value="' + escHtml(name) + '" placeholder="z.B. Haushaltskasse"></div>' +
+                    '<div class="form-group"><label class="form-label">Startguthaben (€)</label><input type="number" id="hkMBalance" value="' + balance + '" step="0.01"></div>' +
+                    '<div class="form-group"><label class="form-label">Farbe</label><input type="color" id="hkMColor" value="' + color + '" style="height:42px;padding:4px 8px;width:100%;"></div>' +
+                '</div>' +
+                '<div id="hkMMsg" style="font-size:0.82rem;margin-top:10px;min-height:1.2em;"></div>' +
+                '<div style="display:flex;gap:8px;margin-top:20px;">' +
+                    '<button id="hkMSave" class="btn-primary" style="flex:1;justify-content:center;background:var(--haus-accent);"><i class="ri-save-line"></i> Speichern</button>' +
+                    '<button id="hkMCancel" style="padding:10px 20px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;">Abbrechen</button>' +
+                '</div>' +
             '</div>';
-
-        overlay.appendChild(modal);
         document.body.appendChild(overlay);
 
-        // Schließ-Handler
-        const closeModal = () => overlay.remove();
-        document.getElementById('editKontoCloseX').addEventListener('click', closeModal);
-        document.getElementById('editKontoCancel').addEventListener('click', closeModal);
-        overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+        const close = () => overlay.remove();
+        document.getElementById('hkMClose').onclick   = close;
+        document.getElementById('hkMCancel').onclick  = close;
+        overlay.onclick = e => { if (e.target === overlay) close(); };
 
-        // Speichern
-        document.getElementById('editKontoSave').addEventListener('click', async () => {
-            const name    = document.getElementById('editKontoName').value.trim();
-            const balance = parseFloat(document.getElementById('editKontoBalance').value) || 0;
-            const color   = document.getElementById('editKontoColor').value;
-            if (!name) { alert('Bitte Namen eingeben.'); return; }
-            const res = await fetch('/users/haushalt/konto', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, balance, color })
-            });
-            if (res.ok) { closeModal(); await loadKonto(); }
-            else { alert('Fehler beim Speichern.'); }
-        });
+        document.getElementById('hkMSave').onclick = async () => {
+            const n   = document.getElementById('hkMName').value.trim();
+            const b   = parseFloat(document.getElementById('hkMBalance').value) || 0;
+            const c   = document.getElementById('hkMColor').value;
+            const msg = document.getElementById('hkMMsg');
+            if (!n) { msg.style.color='#ef4444'; msg.textContent='Bitte Namen eingeben.'; return; }
+            msg.style.color = 'var(--text-3)'; msg.textContent = 'Speichern…';
+            try {
+                await onSave(n, b, c);
+                close();
+                await loadKonten();
+            } catch(err) {
+                msg.style.color='#ef4444'; msg.textContent = err.message || 'Fehler.';
+            }
+        };
+    }
 
-        // Löschen
-        document.getElementById('editKontoDelete').addEventListener('click', async () => {
-            if (!confirm('Haushaltskonto und alle Transaktionen wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
-            const res = await fetch('/users/haushalt/konto', { method: 'DELETE' });
-            if (res.ok) { closeModal(); await loadKonto(); }
-            else { alert('Fehler beim Löschen.'); }
-        });
+    async function deleteKonto(kontoId, kontoName) {
+        if (!confirm('Konto "' + kontoName + '" löschen?\n\nDie Transaktionen bleiben erhalten, werden aber keinem Konto mehr zugeordnet.')) return;
+        try {
+            const res = await fetch('/users/haushalt/konto/' + kontoId, { method: 'DELETE' });
+            const data = await res.json();
+            if (!res.ok) { alert(data.message || 'Fehler'); return; }
+            await loadKonten();
+        } catch { alert('Fehler beim Löschen.'); }
     }
 
     function escHtml(str) {

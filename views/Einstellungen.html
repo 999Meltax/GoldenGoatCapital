@@ -274,18 +274,112 @@
             <div id="section-sicherheit" class="einstell-section" style="display:none;">
                 <h3 class="einstell-section-title"><i class="ri-shield-check-line"></i> Sicherheit</h3>
 
+                <!-- ── 2FA ── -->
                 <div class="einstell-group">
                     <div class="einstell-group-label">Zwei-Faktor-Authentifizierung</div>
 
-                    <div class="einstell-toggle-row">
-                        <div>
-                            <div class="einstell-row-title"><i class="ri-shield-keyhole-line" style="margin-right:6px;color:var(--accent);"></i>2FA aktivieren</div>
-                            <div class="einstell-row-desc">Schütze deinen Account mit einem zweiten Faktor beim Login (kommt bald)</div>
+                    <!-- Status-Zeile (immer sichtbar) -->
+                    <div class="einstell-toggle-row" id="twoFaStatusRow">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <div style="width:40px;height:40px;border-radius:10px;background:rgba(99,88,230,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">
+                                <i class="ri-shield-keyhole-line"></i>
+                            </div>
+                            <div>
+                                <div class="einstell-row-title">2FA-Status</div>
+                                <div class="einstell-row-desc" id="twoFaStatusText">Wird geladen…</div>
+                            </div>
                         </div>
-                        <label class="einstell-toggle">
-                            <input type="checkbox" id="twoFactor">
-                            <span class="einstell-toggle-slider"></span>
-                        </label>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <span id="twoFaBadge" style="display:none;font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:20px;"></span>
+                            <button id="twoFaToggleBtn" class="btn-primary" style="font-size:0.82rem;padding:7px 16px;white-space:nowrap;" onclick="twoFaToggle()">
+                                Laden…
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Setup-Flow (schrittweise, initial versteckt) -->
+                    <div id="twoFaSetup" style="display:none;margin-top:20px;">
+
+                        <!-- Schritt 1: QR-Code scannen -->
+                        <div id="twoFaStep1">
+                            <div style="font-size:0.82rem;color:var(--text-2);margin-bottom:16px;line-height:1.6;">
+                                <b>Schritt 1:</b> Scanne den QR-Code mit deiner Authenticator-App
+                                (z.B. Google Authenticator, Authy, 1Password).
+                            </div>
+                            <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;">
+                                <div style="background:#fff;padding:10px;border-radius:12px;flex-shrink:0;">
+                                    <div id="twoFaQrCanvas" style="width:160px;height:160px;"></div>
+                                </div>
+                                <div style="flex:1;min-width:200px;">
+                                    <div style="font-size:0.75rem;color:var(--text-3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Manueller Schlüssel</div>
+                                    <div id="twoFaSecret" style="font-family:'Courier New',monospace;font-size:0.88rem;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;letter-spacing:0.1em;color:var(--text-1);word-break:break-all;"></div>
+                                    <div style="font-size:0.74rem;color:var(--text-3);margin-top:8px;line-height:1.5;">
+                                        <i class="ri-information-line"></i> Falls du den QR-Code nicht scannen kannst, gib diesen Schlüssel manuell in deiner App ein.
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn-primary" style="margin-top:18px;font-size:0.85rem;" onclick="twoFaGoStep2()">
+                                <i class="ri-arrow-right-line"></i> Weiter
+                            </button>
+                        </div>
+
+                        <!-- Schritt 2: Code bestätigen -->
+                        <div id="twoFaStep2" style="display:none;">
+                            <div style="font-size:0.82rem;color:var(--text-2);margin-bottom:16px;line-height:1.6;">
+                                <b>Schritt 2:</b> Gib den 6-stelligen Code aus deiner Authenticator-App ein, um die Einrichtung zu bestätigen.
+                            </div>
+                            <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                                <div class="form-group" style="margin:0;flex:1;min-width:160px;">
+                                    <label class="form-label">Bestätigungscode</label>
+                                    <input type="text" id="twoFaConfirmCode" placeholder="000 000" maxlength="6"
+                                        inputmode="numeric" autocomplete="one-time-code"
+                                        style="font-size:1.3rem;letter-spacing:0.2em;text-align:center;font-weight:700;"
+                                        onkeydown="if(event.key==='Enter') twoFaConfirm()">
+                                </div>
+                                <button class="btn-primary" style="font-size:0.85rem;padding:10px 20px;" onclick="twoFaConfirm()">
+                                    <i class="ri-check-line"></i> Aktivieren
+                                </button>
+                            </div>
+                            <div id="twoFaConfirmMsg" style="font-size:0.82rem;margin-top:10px;"></div>
+                            <button onclick="twoFaGoStep1()" style="margin-top:10px;font-size:0.78rem;background:none;border:none;color:var(--text-3);cursor:pointer;padding:0;font-family:inherit;">← Zurück</button>
+                        </div>
+
+                        <!-- Schritt 3: Backup-Codes -->
+                        <div id="twoFaStep3" style="display:none;">
+                            <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:18px;display:flex;gap:10px;align-items:flex-start;">
+                                <i class="ri-checkbox-circle-line" style="color:#22c55e;font-size:1.2rem;flex-shrink:0;margin-top:1px;"></i>
+                                <div style="font-size:0.85rem;color:var(--text-1);"><b>2FA erfolgreich aktiviert!</b> Speichere jetzt deine Backup-Codes sicher ab.</div>
+                            </div>
+                            <div style="font-size:0.82rem;color:var(--text-2);margin-bottom:14px;line-height:1.6;">
+                                Diese <b>8 Einmal-Codes</b> kannst du verwenden falls du keinen Zugang zu deiner Authenticator-App hast. Jeder Code kann nur einmal verwendet werden.
+                            </div>
+                            <div id="twoFaBackupCodes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;font-family:'Courier New',monospace;font-size:0.9rem;"></div>
+                            <button class="btn-primary" style="font-size:0.83rem;" onclick="twoFaCopyBackupCodes()">
+                                <i class="ri-clipboard-line"></i> Codes kopieren
+                            </button>
+                            <button onclick="twoFaSetupDone()" style="margin-left:8px;padding:9px 18px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-size:0.83rem;font-family:inherit;">
+                                Fertig
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Deaktivieren-Dialog -->
+                    <div id="twoFaDisable" style="display:none;margin-top:20px;">
+                        <div style="font-size:0.82rem;color:var(--text-2);margin-bottom:14px;line-height:1.6;">
+                            Gib dein aktuelles Passwort ein, um 2FA zu deaktivieren.
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                            <div class="form-group" style="margin:0;flex:1;min-width:200px;">
+                                <label class="form-label">Passwort bestätigen</label>
+                                <input type="password" id="twoFaDisablePw" placeholder="••••••••"
+                                    onkeydown="if(event.key==='Enter') twoFaDisableConfirm()">
+                            </div>
+                            <button class="btn-primary" style="font-size:0.85rem;padding:10px 20px;background:#ef4444;box-shadow:none;" onclick="twoFaDisableConfirm()">
+                                <i class="ri-shield-off-line"></i> Deaktivieren
+                            </button>
+                        </div>
+                        <div id="twoFaDisableMsg" style="font-size:0.82rem;margin-top:10px;"></div>
+                        <button onclick="twoFaCancelDisable()" style="margin-top:8px;font-size:0.78rem;background:none;border:none;color:var(--text-3);cursor:pointer;padding:0;font-family:inherit;">Abbrechen</button>
                     </div>
                 </div>
 
@@ -317,10 +411,6 @@
                         </a>
                     </div>
                 </div>
-
-                <button class="btn-primary" onclick="saveSettings()" style="margin-top:8px;">
-                    <i class="ri-save-line"></i> Sicherheit speichern
-                </button>
             </div>
 
             <!-- ── Datenschutz ── -->
@@ -695,9 +785,155 @@
         setTimeout(() => { el.style.display = 'none'; }, 3500);
     }
 
-    document.addEventListener('DOMContentLoaded', loadSettings);
+    // ── 2FA Logik ─────────────────────────────────────────────
+    let _twoFaEnabled = false;
+    let _twoFaBackupCodes = [];
+
+    async function load2FaStatus() {
+        try {
+            const res  = await fetch('/users/2fa/status');
+            const data = await res.json();
+            _twoFaEnabled = data.enabled;
+            render2FaStatus();
+        } catch { render2FaStatus(); }
+    }
+
+    function render2FaStatus() {
+        const badge   = document.getElementById('twoFaBadge');
+        const text    = document.getElementById('twoFaStatusText');
+        const btn     = document.getElementById('twoFaToggleBtn');
+        if (_twoFaEnabled) {
+            badge.textContent = '● Aktiv';
+            badge.style.display = 'inline-block';
+            badge.style.background = 'rgba(34,197,94,0.12)';
+            badge.style.color = '#22c55e';
+            badge.style.border = '1px solid rgba(34,197,94,0.2)';
+            text.textContent = 'Dein Konto ist mit einem Authenticator geschützt.';
+            btn.textContent = '2FA deaktivieren';
+            btn.style.background = 'rgba(239,68,68,0.1)';
+            btn.style.color = '#ef4444';
+            btn.style.border = '1px solid rgba(239,68,68,0.25)';
+            btn.style.boxShadow = 'none';
+        } else {
+            badge.style.display = 'none';
+            text.textContent = '2FA ist deaktiviert. Aktiviere es für mehr Sicherheit.';
+            btn.innerHTML = '<i class="ri-shield-keyhole-line"></i> 2FA einrichten';
+            btn.style.cssText = '';
+        }
+    }
+
+    async function twoFaToggle() {
+        if (_twoFaEnabled) {
+            // Deaktivieren-Flow zeigen
+            document.getElementById('twoFaSetup').style.display = 'none';
+            document.getElementById('twoFaDisable').style.display = '';
+            document.getElementById('twoFaDisablePw').value = '';
+            document.getElementById('twoFaDisableMsg').textContent = '';
+            setTimeout(() => document.getElementById('twoFaDisablePw').focus(), 60);
+        } else {
+            // Setup starten
+            document.getElementById('twoFaDisable').style.display = 'none';
+            document.getElementById('twoFaSetup').style.display = '';
+            twoFaGoStep1();
+            // Secret + QR laden
+            try {
+                const res  = await fetch('/users/2fa/setup', { method: 'POST' });
+                const data = await res.json();
+                const qrEl = document.getElementById('twoFaQrCanvas');
+                        qrEl.innerHTML = '';
+                        if (typeof QRCode !== 'undefined') {
+                            new QRCode(qrEl, { text: data.otpauthUrl, width: 160, height: 160, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+                        } else {
+                            qrEl.innerHTML = '<div style="font-size:0.75rem;color:#666;text-align:center;padding:20px;">QR-Bibliothek lädt…</div>';
+                        }
+                document.getElementById('twoFaSecret').textContent = data.secret;
+                _twoFaBackupCodes = data.backupCodes;
+            } catch {
+                showToast('Fehler beim Laden des QR-Codes', 'error');
+            }
+        }
+    }
+
+    function twoFaGoStep1() {
+        document.getElementById('twoFaStep1').style.display = '';
+        document.getElementById('twoFaStep2').style.display = 'none';
+        document.getElementById('twoFaStep3').style.display = 'none';
+    }
+
+    function twoFaGoStep2() {
+        document.getElementById('twoFaStep1').style.display = 'none';
+        document.getElementById('twoFaStep2').style.display = '';
+        document.getElementById('twoFaStep3').style.display = 'none';
+        document.getElementById('twoFaConfirmCode').value = '';
+        document.getElementById('twoFaConfirmMsg').textContent = '';
+        setTimeout(() => document.getElementById('twoFaConfirmCode').focus(), 60);
+    }
+
+    async function twoFaConfirm() {
+        const code = document.getElementById('twoFaConfirmCode').value.replace(/\s/g, '');
+        const msg  = document.getElementById('twoFaConfirmMsg');
+        if (!code || code.length !== 6) { msg.style.color = '#ef4444'; msg.textContent = 'Bitte einen 6-stelligen Code eingeben.'; return; }
+        msg.style.color = 'var(--text-3)'; msg.textContent = 'Verifiziere…';
+        try {
+            const res  = await fetch('/users/2fa/enable', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code })
+            });
+            const data = await res.json();
+            if (!res.ok) { msg.style.color = '#ef4444'; msg.textContent = data.message; return; }
+            // Backup-Codes anzeigen
+            _twoFaBackupCodes = data.backupCodes;
+            const codesEl = document.getElementById('twoFaBackupCodes');
+            codesEl.innerHTML = _twoFaBackupCodes.map(c =>
+                `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;text-align:center;">${c}</div>`
+            ).join('');
+            document.getElementById('twoFaStep2').style.display = 'none';
+            document.getElementById('twoFaStep3').style.display = '';
+            _twoFaEnabled = true;
+            render2FaStatus();
+        } catch { msg.style.color = '#ef4444'; msg.textContent = 'Fehler. Bitte versuche es erneut.'; }
+    }
+
+    function twoFaCopyBackupCodes() {
+        navigator.clipboard.writeText(_twoFaBackupCodes.join('\n'))
+            .then(() => showToast('Backup-Codes kopiert!', 'success'))
+            .catch(() => showToast('Kopieren fehlgeschlagen', 'error'));
+    }
+
+    function twoFaSetupDone() {
+        document.getElementById('twoFaSetup').style.display = 'none';
+        showToast('2FA erfolgreich aktiviert!', 'success');
+    }
+
+    async function twoFaDisableConfirm() {
+        const pw  = document.getElementById('twoFaDisablePw').value;
+        const msg = document.getElementById('twoFaDisableMsg');
+        if (!pw) { msg.style.color = '#ef4444'; msg.textContent = 'Bitte Passwort eingeben.'; return; }
+        msg.style.color = 'var(--text-3)'; msg.textContent = 'Verifiziere…';
+        try {
+            const res  = await fetch('/users/2fa/disable', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pw })
+            });
+            const data = await res.json();
+            if (!res.ok) { msg.style.color = '#ef4444'; msg.textContent = data.message; return; }
+            _twoFaEnabled = false;
+            render2FaStatus();
+            document.getElementById('twoFaDisable').style.display = 'none';
+            showToast('2FA deaktiviert.', 'success');
+        } catch { msg.style.color = '#ef4444'; msg.textContent = 'Fehler beim Deaktivieren.'; }
+    }
+
+    function twoFaCancelDisable() {
+        document.getElementById('twoFaDisable').style.display = 'none';
+    }
+
+    document.addEventListener('DOMContentLoaded', () => { loadSettings(); load2FaStatus(); });
     </script>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="/navheader.js"></script>
 </body>
 </html>

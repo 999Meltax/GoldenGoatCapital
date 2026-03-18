@@ -134,7 +134,164 @@ function toggleSidebarSection(sectionId, btn) {
     });
     localStorage.setItem('sidebar_open_sections', JSON.stringify(openSections));
 }
-// ── Globale UI-Helfer ──────────────────────────────────────────
+// ── Globale Suche ──────────────────────────────────────────────
+let _ggcSearchTimer  = null;
+let _ggcSearchActive = -1; // aktiv markierter Ergebnis-Index
+
+// Strg+K öffnet, Escape schließt
+document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        openGgcSearch();
+    }
+    if (e.key === 'Escape') closeGgcSearch();
+});
+
+function openGgcSearch() {
+    const overlay = document.getElementById('ggcSearchOverlay');
+    if (!overlay) return;
+    overlay.classList.add('active');
+    _ggcSearchActive = -1;
+    setTimeout(() => {
+        const input = document.getElementById('ggcSearchInput');
+        if (input) { input.focus(); input.select(); }
+    }, 60);
+}
+
+function closeGgcSearch(e) {
+    if (e && e.target !== document.getElementById('ggcSearchOverlay')) return;
+    const overlay = document.getElementById('ggcSearchOverlay');
+    if (overlay) overlay.classList.remove('active');
+    if (!e) {
+        // direkt geschlossen (Esc / Klick auf Schließen)
+    }
+}
+
+function onGgcSearchInput(val) {
+    clearTimeout(_ggcSearchTimer);
+    _ggcSearchActive = -1;
+    if (val.trim().length < 2) {
+        renderGgcResults(null, val);
+        return;
+    }
+    _ggcSearchTimer = setTimeout(() => runGgcSearch(val.trim()), 220);
+}
+
+async function runGgcSearch(q) {
+    renderGgcResults('loading');
+    try {
+        const res = await fetch('/users/search?q=' + encodeURIComponent(q));
+        const { results } = await res.json();
+        renderGgcResults(results, q);
+    } catch {
+        renderGgcResults([], q);
+    }
+}
+
+const GGC_TYPE_LABELS = {
+    transaktion:  'Transaktionen',
+    sparziel:     'Sparziele',
+    dokument:     'Dokumente',
+    versicherung: 'Versicherungen',
+    notiz:        'Notizen',
+    schuld:       'Schulden',
+    todo:         'Todos',
+};
+
+function renderGgcResults(results, q) {
+    const el = document.getElementById('ggcSearchResults');
+    if (!el) return;
+
+    if (results === 'loading') {
+        el.innerHTML = '<div class="ggc-search-hint"><i class="ri-loader-4-line" style="animation:ggcSpin 0.8s linear infinite;display:inline-block;"></i> Suche läuft…</div>';
+        return;
+    }
+
+    if (results === null || (q && q.length < 2)) {
+        el.innerHTML = '<div class="ggc-search-hint"><i class="ri-command-line"></i> Strg+K zum Öffnen · Pfeiltasten zum Navigieren · Enter zum Öffnen</div>';
+        return;
+    }
+
+    if (results.length === 0) {
+        el.innerHTML = '<div class="ggc-search-hint"><i class="ri-search-line"></i> Keine Ergebnisse für <b>"' + escGgc(q) + '"</b></div>';
+        return;
+    }
+
+    // Gruppiere nach type
+    const groups = {};
+    results.forEach((r, i) => {
+        if (!groups[r.type]) groups[r.type] = [];
+        groups[r.type].push({ ...r, _idx: i });
+    });
+
+    let html = '';
+    Object.entries(groups).forEach(([type, items]) => {
+        html += `<div class="ggc-search-group-label">${GGC_TYPE_LABELS[type] || type}</div>`;
+        items.forEach(item => {
+            const qLower = q.toLowerCase();
+            const titleHl = highlightGgc(item.title || '', qLower);
+            const subHl   = highlightGgc(item.sub   || '', qLower);
+            html += `<div class="ggc-search-result" data-idx="${item._idx}" data-url="${escGgc(item.url)}" onclick="goGgcResult('${escGgc(item.url)}')" onmouseenter="setGgcActive(${item._idx})">
+                <div class="ggc-result-icon" style="color:${item.color};background:${item.color}18;">
+                    <i class="${item.icon}"></i>
+                </div>
+                <div class="ggc-result-body">
+                    <div class="ggc-result-title">${titleHl}</div>
+                    ${subHl ? `<div class="ggc-result-sub">${subHl}</div>` : ''}
+                </div>
+                ${item.date ? `<div class="ggc-result-date">${item.date}</div>` : ''}
+            </div>`;
+        });
+    });
+
+    el.innerHTML = html;
+    _ggcSearchActive = -1;
+}
+
+function setGgcActive(idx) {
+    _ggcSearchActive = idx;
+    document.querySelectorAll('.ggc-search-result').forEach(el => {
+        el.classList.toggle('active', parseInt(el.dataset.idx) === idx);
+    });
+}
+
+function onGgcSearchKey(e) {
+    const items = document.querySelectorAll('.ggc-search-result');
+    if (!items.length) return;
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = Math.min(_ggcSearchActive + 1, items.length - 1);
+        setGgcActive(parseInt(items[next]?.dataset.idx ?? next));
+        items[next]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = Math.max(_ggcSearchActive - 1, 0);
+        setGgcActive(parseInt(items[prev]?.dataset.idx ?? prev));
+        items[prev]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+        const active = document.querySelector('.ggc-search-result.active');
+        if (active) goGgcResult(active.dataset.url);
+    }
+}
+
+function goGgcResult(url) {
+    const overlay = document.getElementById('ggcSearchOverlay');
+    if (overlay) overlay.classList.remove('active');
+    window.location.href = url;
+}
+
+function escGgc(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function highlightGgc(text, q) {
+    if (!q) return escGgc(text);
+    const escaped = escGgc(text);
+    const escapedQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return escaped.replace(new RegExp('(' + escapedQ + ')', 'gi'), '<mark class="ggc-hl">$1</mark>');
+}
+
 // Toast-Benachrichtigung (ersetzt alert() für Feedback-Meldungen)
 function ggcToast(msg, isError = false) {
     let el = document.getElementById('ggcToastEl');

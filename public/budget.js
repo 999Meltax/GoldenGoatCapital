@@ -7,6 +7,7 @@ let budgetMonat = new Date().toISOString().slice(0, 7); // YYYY-MM
 let allTransactions = [];
 let allBudgets = [];
 let allSparziele = [];
+let allAccounts = [];
 let donutChart = null;
 
 // ═══════════════════════════════════════════════════════════
@@ -29,22 +30,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadAll() {
     try {
-        const [txRes, budgetRes, szRes] = await Promise.all([
+        const [txRes, budgetRes, szRes, accRes] = await Promise.all([
             fetch('/users/getTransactions'),
             fetch('/users/budgets'),
-            fetch('/users/sparziele')
+            fetch('/users/sparziele'),
+            fetch('/users/accounts')
         ]);
         allTransactions = txRes.ok ? await txRes.json() : [];
         allBudgets      = budgetRes.ok ? await budgetRes.json() : [];
         allSparziele    = szRes.ok ? await szRes.json() : [];
+        allAccounts     = accRes.ok ? await accRes.json() : [];
     } catch (e) {
         console.error('Fehler beim Laden:', e);
         allTransactions = [];
         allBudgets = [];
         allSparziele = [];
+        allAccounts = [];
     }
+    populateAccountDropdown();
     renderBudget();
     renderSparziele();
+    renderKontoAufteilung();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -241,6 +247,117 @@ function selectColor(el) {
     document.getElementById('szColor').value = el.dataset.color;
 }
 
+// ═══════════════════════════════════════════════════════════
+// KONTO-DROPDOWN BEFÜLLEN
+// ═══════════════════════════════════════════════════════════
+function populateAccountDropdown() {
+    const sel = document.getElementById('szAccount');
+    if (!sel) return;
+    const currentVal = sel.value;
+    sel.innerHTML = '<option value="">— Kein Konto zuweisen —</option>';
+    allAccounts.forEach(acc => {
+        const opt = document.createElement('option');
+        opt.value = acc.id;
+        opt.textContent = acc.name + ' (' + fmt.format(acc.currentBalance ?? acc.balance) + ')';
+        sel.appendChild(opt);
+    });
+    if (currentVal) sel.value = currentVal;
+}
+
+// ═══════════════════════════════════════════════════════════
+// KONTO-AUFTEILUNG RENDERN
+// ═══════════════════════════════════════════════════════════
+function renderKontoAufteilung() {
+    const section = document.getElementById('kontoAufteilungSection');
+    const listEl  = document.getElementById('kontoAufteilungList');
+    if (!section || !listEl) return;
+
+    // Nur Konten mit zugewiesenen Sparzielen anzeigen
+    const sparzieleWithKonto = allSparziele.filter(sz => sz.account_id);
+    if (sparzieleWithKonto.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+
+    // Gruppiere Sparziele nach Konto
+    const kontoMap = {};
+    sparzieleWithKonto.forEach(sz => {
+        if (!kontoMap[sz.account_id]) {
+            const acc = allAccounts.find(a => a.id === sz.account_id);
+            if (!acc) return;
+            kontoMap[sz.account_id] = {
+                acc,
+                sparziele: []
+            };
+        }
+        kontoMap[sz.account_id].sparziele.push(sz);
+    });
+
+    const cards = Object.values(kontoMap).map(({ acc, sparziele }) => {
+        const balance     = acc.currentBalance ?? acc.balance ?? 0;
+        const reserviert  = sparziele.reduce((s, sz) => s + (sz.gespart || 0), 0);
+        const frei        = Math.max(balance - reserviert, 0);
+        const freePct     = balance > 0 ? (frei / balance * 100) : 0;
+
+        // Segmente für die Balkengrafik
+        let segmentsHtml = '';
+        let legendHtml   = '';
+
+        // Freier Anteil zuerst (grau)
+        if (freePct > 1) {
+            const label = freePct >= 10 ? freePct.toFixed(0) + '%' : '';
+            segmentsHtml += `<div class="konto-aufteilung-bar-segment" style="width:${freePct.toFixed(2)}%;background:var(--surface-3,#2a2a3a);">${label}</div>`;
+        }
+        legendHtml += `<div class="konto-aufteilung-legend-item"><div class="konto-legend-dot" style="background:var(--surface-3,#2a2a3a);border:1px solid var(--border);"></div><span>Frei: <b>${fmt.format(frei)}</b> (${freePct.toFixed(1)}%)</span></div>`;
+
+        // Sparziel-Segmente
+        sparziele.forEach(sz => {
+            const pct = balance > 0 ? (sz.gespart / balance * 100) : 0;
+            if (pct < 0.1) return;
+            const label = pct >= 8 ? pct.toFixed(0) + '%' : '';
+            segmentsHtml += `<div class="konto-aufteilung-bar-segment" style="width:${pct.toFixed(2)}%;background:${sz.farbe};" title="${escHtml(sz.name)}: ${fmt.format(sz.gespart)}">${label}</div>`;
+            legendHtml   += `<div class="konto-aufteilung-legend-item"><div class="konto-legend-dot" style="background:${sz.farbe};"></div><span>${escHtml(sz.name)}: <b>${fmt.format(sz.gespart)}</b> (${pct.toFixed(1)}%)</span></div>`;
+        });
+
+        // Falls reserviert > balance: Warnung
+        const overWarning = reserviert > balance
+            ? `<div style="font-size:0.76rem;color:#f59e0b;margin-top:8px;display:flex;align-items:center;gap:5px;"><i class="ri-alert-line"></i> Sparziele übersteigen den Kontostand um ${fmt.format(reserviert - balance)}</div>`
+            : '';
+
+        const iconColor = acc.color || '#6358e6';
+        const iconClass = acc.icon  || 'ri-bank-line';
+
+        return `<div class="konto-aufteilung-card">
+            <div class="konto-aufteilung-header">
+                <div class="konto-aufteilung-name">
+                    <div class="konto-icon-badge" style="background:${iconColor}22;color:${iconColor};">
+                        <i class="${iconClass}"></i>
+                    </div>
+                    ${escHtml(acc.name)}
+                </div>
+                <div class="konto-balance-info">
+                    <div style="font-size:1rem;font-weight:800;color:var(--text-1);">${fmt.format(balance)}</div>
+                    <div>${fmt.format(reserviert)} reserviert · ${fmt.format(frei)} frei</div>
+                </div>
+            </div>
+            <div class="konto-aufteilung-bar-wrap">${segmentsHtml}</div>
+            <div class="konto-aufteilung-legend">${legendHtml}</div>
+            ${overWarning}
+        </div>`;
+    });
+
+    if (cards.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+    listEl.innerHTML = cards.join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// SPARZIELE RENDERN
+// ═══════════════════════════════════════════════════════════
 function renderSparziele() {
     const el = document.getElementById('sparzieleList');
     if (allSparziele.length === 0) {
@@ -248,7 +365,7 @@ function renderSparziele() {
         return;
     }
     el.innerHTML = allSparziele.map(sz => {
-        const pct = Math.min(sz.gespart / sz.zielbetrag * 100, 100);
+        const pct = Math.min((sz.gespart / sz.zielbetrag) * 100, 100);
         const verbleibend = Math.max(sz.zielbetrag - sz.gespart, 0);
         const done = sz.gespart >= sz.zielbetrag;
 
@@ -260,15 +377,27 @@ function renderSparziele() {
             datumInfo = tage > 0 ? tage + ' Tage verbleibend' : (tage === 0 ? 'Heute!' : 'Abgelaufen');
         }
 
+        // Konto-Badge
+        let kontoBadge = '';
+        if (sz.account_id && sz.account_name) {
+            const iconColor = sz.account_color || '#6358e6';
+            const iconClass = sz.account_icon  || 'ri-bank-line';
+            kontoBadge = `<div style="display:flex;align-items:center;gap:6px;font-size:0.75rem;color:var(--text-3);margin-top:6px;">
+                <i class="${iconClass}" style="color:${iconColor};"></i>
+                <span>${escHtml(sz.account_name)}</span>
+            </div>`;
+        }
+
         return '<div class="sparziel-card">' +
             '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;">' +
-                '<div style="display:flex;align-items:center;gap:12px;">' +
+                '<div style="display:flex;align-items:flex-start;gap:12px;">' +
                     '<div style="width:42px;height:42px;border-radius:12px;background:' + sz.farbe + '22;color:' + sz.farbe + ';display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;">' +
                         '<i class="ri-flag-fill"></i>' +
                     '</div>' +
                     '<div>' +
                         '<div style="font-weight:700;font-size:1rem;">' + escHtml(sz.name) + '</div>' +
                         (datumInfo ? '<div style="font-size:0.75rem;color:var(--text-3);">' + datumInfo + '</div>' : '') +
+                        kontoBadge +
                     '</div>' +
                 '</div>' +
                 '<div style="display:flex;gap:6px;align-items:center;">' +
@@ -290,12 +419,13 @@ function renderSparziele() {
 }
 
 async function saveSparziel() {
-    const name    = document.getElementById('szName').value.trim();
-    const ziel    = parseFloat(document.getElementById('szZiel').value);
-    const gespart = parseFloat(document.getElementById('szGespart').value) || 0;
-    const datum   = document.getElementById('szDatum').value;
-    const farbe   = document.getElementById('szColor').value;
-    const editId  = document.getElementById('szEditId').value;
+    const name      = document.getElementById('szName').value.trim();
+    const ziel      = parseFloat(document.getElementById('szZiel').value);
+    const gespart   = parseFloat(document.getElementById('szGespart').value) || 0;
+    const datum     = document.getElementById('szDatum').value;
+    const farbe     = document.getElementById('szColor').value;
+    const editId    = document.getElementById('szEditId').value;
+    const accountId = document.getElementById('szAccount').value || null;
 
     if (!name || isNaN(ziel)) { showMsg('szMsg', 'Bitte Name und Zielbetrag ausfüllen.', true); return; }
 
@@ -305,13 +435,13 @@ async function saveSparziel() {
             res = await fetch('/users/sparziele/' + editId, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, zielbetrag: ziel, gespart, datum: datum || null, farbe })
+                body: JSON.stringify({ name, zielbetrag: ziel, gespart, datum: datum || null, farbe, account_id: accountId })
             });
         } else {
             res = await fetch('/users/sparziele/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, zielbetrag: ziel, gespart, datum: datum || null, farbe })
+                body: JSON.stringify({ name, zielbetrag: ziel, gespart, datum: datum || null, farbe, account_id: accountId })
             });
         }
         if (!res.ok) throw new Error();
@@ -320,6 +450,7 @@ async function saveSparziel() {
         const szRes = await fetch('/users/sparziele');
         allSparziele = szRes.ok ? await szRes.json() : [];
         renderSparziele();
+        renderKontoAufteilung();
     } catch { showMsg('szMsg', 'Fehler beim Speichern.', true); }
 }
 
@@ -332,7 +463,10 @@ function editSparziel(id) {
     document.getElementById('szDatum').value   = sz.datum || '';
     document.getElementById('szColor').value   = sz.farbe;
     document.getElementById('szEditId').value  = sz.id;
+    document.getElementById('szAccount').value = sz.account_id || '';
     document.getElementById('szCancelBtn').style.display = '';
+    const titleEl = document.getElementById('szFormTitle');
+    if (titleEl) titleEl.textContent = 'Sparziel bearbeiten';
     document.querySelectorAll('.sz-color-dot').forEach(d => {
         d.classList.toggle('active', d.dataset.color === sz.farbe);
     });
@@ -378,6 +512,7 @@ async function confirmEinzahlen() {
         const szRes = await fetch('/users/sparziele');
         allSparziele = szRes.ok ? await szRes.json() : [];
         renderSparziele();
+        renderKontoAufteilung();
     } catch { alert('Fehler beim Hinzufügen.'); }
 }
 
@@ -388,6 +523,7 @@ async function deleteSparziel(id) {
         const szRes = await fetch('/users/sparziele');
         allSparziele = szRes.ok ? await szRes.json() : [];
         renderSparziele();
+        renderKontoAufteilung();
     } catch { alert('Fehler beim Löschen.'); }
 }
 
@@ -398,7 +534,10 @@ function resetSparForm() {
     document.getElementById('szDatum').value   = '';
     document.getElementById('szColor').value   = '#6358e6';
     document.getElementById('szEditId').value  = '';
+    document.getElementById('szAccount').value = '';
     document.getElementById('szCancelBtn').style.display = 'none';
+    const titleEl = document.getElementById('szFormTitle');
+    if (titleEl) titleEl.textContent = 'Neues Sparziel';
     document.querySelectorAll('.sz-color-dot').forEach((d, i) => d.classList.toggle('active', i === 0));
 }
 

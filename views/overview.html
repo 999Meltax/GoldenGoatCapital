@@ -132,6 +132,97 @@
         </div>
     </div>
 
+    <!-- ── Mittlere Zeile: Chart + Konten ───────────────────── -->
+    <div class="ov-mid-row" id="widget-vermoegensverlauf">
+        <div class="card ov-chart-card">
+            <div class="card-header">
+                <h3>Vermögensverlauf</h3>
+                <span style="font-size:0.78rem;color:var(--text-3);">Letzte 6 Monate</span>
+            </div>
+            <div style="flex:1;position:relative;min-height:0;">
+                <canvas id="ovWealthChart"></canvas>
+            </div>
+        </div>
+        <div class="card ov-accounts-card">
+            <div class="card-header">
+                <h3>Konten</h3>
+                <a href="/users/meine-finanzen" style="font-size:0.82rem;color:var(--text-3);">Alle <i class="ri-arrow-right-line"></i></a>
+            </div>
+            <div id="ovAccountsList" style="display:flex;flex-direction:column;overflow-y:auto;flex:1;padding-right:2px;"></div>
+        </div>
+    </div>
+
+    <!-- ── Cashflow-Prognose ─────────────────────────────── -->
+    <div id="widget-prognose" style="margin-bottom:20px;">
+        <div class="card" style="padding:24px;">
+            <div class="card-header" style="margin-bottom:20px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:34px;height:34px;border-radius:10px;background:rgba(34,197,94,0.12);color:#22c55e;display:flex;align-items:center;justify-content:center;font-size:1rem;">
+                        <i class="ri-funds-line"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin:0;font-size:1rem;">Cashflow-Prognose</h3>
+                        <div style="font-size:0.75rem;color:var(--text-3);margin-top:1px;">Voraussichtliche Kontostandsentwicklung</div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="display:flex;gap:4px;background:var(--surface-2);border-radius:8px;padding:3px;">
+                        <button id="progBtn3" onclick="setPrognoseHorizont(3)" class="prog-horizon-btn prog-horizon-btn--active">3 Monate</button>
+                        <button id="progBtn12" onclick="setPrognoseHorizont(12)" class="prog-horizon-btn">12 Monate</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="prog-layout">
+                <!-- Chart -->
+                <div class="prog-chart-wrap">
+                    <canvas id="prognoseChart"></canvas>
+                </div>
+
+                <!-- Aufschlüsselung -->
+                <div class="prog-breakdown">
+                    <div class="prog-breakdown-title">Monatliche Basis</div>
+
+                    <div class="prog-breakdown-section">
+                        <div class="prog-breakdown-label">Einnahmen (Ø letzte 3 Monate)</div>
+                        <div class="prog-breakdown-rows" id="progIncomeRows"></div>
+                    </div>
+
+                    <div class="prog-breakdown-section">
+                        <div class="prog-breakdown-label">Fixkosten</div>
+                        <div class="prog-breakdown-rows" id="progFixRows"></div>
+                    </div>
+
+                    <div class="prog-breakdown-section">
+                        <div class="prog-breakdown-label">Schuldenraten</div>
+                        <div class="prog-breakdown-rows" id="progSchuldenRows"></div>
+                    </div>
+
+                    <div class="prog-result" id="progResult"></div>
+
+                    <!-- Ampel -->
+                    <div class="prog-ampel" id="progAmpel"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Financial Insights ─────────────────────────────── -->
+    <div id="widget-insights" style="margin-bottom:20px;">
+        <div id="ovInsightsWrap" style="display:none;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="width:28px;height:28px;border-radius:8px;background:rgba(99,88,230,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:0.85rem;">
+                        <i class="ri-lightbulb-flash-line"></i>
+                    </div>
+                    <span style="font-weight:700;font-size:0.88rem;color:var(--text-1);">Financial Insights</span>
+                </div>
+                <span id="ovInsightsCount" style="font-size:0.72rem;color:var(--text-3);"></span>
+            </div>
+            <div id="ovInsightsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;"></div>
+        </div>
+    </div>
+
     <!-- ── Phase-5-Zeile: Score + Cashflow + Monatsvergleich ── -->
     <div class="ov-phase5-row" id="widget-phase5">
 
@@ -180,26 +271,6 @@
             <div id="ovMonthCompare" style="display:flex;flex-direction:column;gap:10px;padding-top:4px;overflow-y:auto;flex:1;"></div>
         </div>
 
-    </div>
-
-    <!-- ── Mittlere Zeile: Chart + Konten ───────────────────── -->
-    <div class="ov-mid-row" id="widget-vermoegensverlauf">
-        <div class="card ov-chart-card">
-            <div class="card-header">
-                <h3>Vermögensverlauf</h3>
-                <span style="font-size:0.78rem;color:var(--text-3);">Letzte 6 Monate</span>
-            </div>
-            <div style="flex:1;position:relative;min-height:0;">
-                <canvas id="ovWealthChart"></canvas>
-            </div>
-        </div>
-        <div class="card ov-accounts-card">
-            <div class="card-header">
-                <h3>Konten</h3>
-                <a href="/users/meine-finanzen" style="font-size:0.82rem;color:var(--text-3);">Alle <i class="ri-arrow-right-line"></i></a>
-            </div>
-            <div id="ovAccountsList" style="display:flex;flex-direction:column;overflow-y:auto;flex:1;padding-right:2px;"></div>
-        </div>
     </div>
 
     <!-- ── Untere Zeile: 3 Spalten ──────────────────────────── -->
@@ -293,6 +364,108 @@
     <%- include('footer.html') %>
 
     <style>
+    /* ── Cashflow-Prognose Widget ───────────────────────────── */
+    .prog-layout {
+        display: grid;
+        grid-template-columns: 1fr 280px;
+        gap: 24px;
+        align-items: start;
+    }
+    .prog-chart-wrap {
+        position: relative;
+        height: 220px;
+    }
+    .prog-horizon-btn {
+        padding: 5px 12px;
+        border-radius: 6px;
+        border: none;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        background: transparent;
+        color: var(--text-3);
+        transition: var(--transition);
+    }
+    .prog-horizon-btn--active {
+        background: var(--accent);
+        color: #fff;
+    }
+    .prog-breakdown {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .prog-breakdown-title {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-3);
+        margin-bottom: -4px;
+    }
+    .prog-breakdown-section {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .prog-breakdown-label {
+        font-size: 0.7rem;
+        color: var(--text-3);
+        font-weight: 600;
+        margin-bottom: 2px;
+    }
+    .prog-breakdown-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        padding: 5px 8px;
+        border-radius: 7px;
+        background: var(--surface-2);
+        gap: 8px;
+    }
+    .prog-breakdown-row-name {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--text-2);
+    }
+    .prog-breakdown-row-val {
+        font-weight: 700;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    .prog-result {
+        padding: 10px 12px;
+        border-radius: 9px;
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin-top: 4px;
+    }
+    .prog-ampel {
+        padding: 10px 12px;
+        border-radius: 9px;
+        font-size: 0.78rem;
+        line-height: 1.5;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .prog-ampel i { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+    @media (max-width: 900px) {
+        .prog-layout { grid-template-columns: 1fr; }
+        .prog-breakdown { flex-direction: row; flex-wrap: wrap; }
+        .prog-breakdown-section { flex: 1; min-width: 180px; }
+        .prog-result, .prog-ampel { flex: 1 1 100%; }
+    }
+
     /* ── Phase 5 Row ──────────────────────────────────────── */
     .ov-phase5-row {
         display: grid;
@@ -520,6 +693,37 @@
     @media (max-width: 480px) {
         .ov-stats { grid-template-columns: 1fr; }
     }
+    /* ── Financial Insights ──────────────────────────────── */
+    .ov-insight-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 16px 18px;
+        border-radius: var(--radius-lg);
+        transition: var(--transition);
+        min-height: 72px;
+    }
+    .ov-insight-card:hover { filter: brightness(1.06); }
+    .ov-insight-icon {
+        width: 40px; height: 40px;
+        border-radius: 11px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.1rem; flex-shrink: 0;
+        margin-top: 1px;
+    }
+    .ov-insight-body { flex: 1; min-width: 0; }
+    .ov-insight-title {
+        font-size: 0.9rem; font-weight: 700;
+        color: var(--text-1);
+        line-height: 1.35;
+        white-space: normal;
+        word-break: break-word;
+    }
+    .ov-insight-sub {
+        font-size: 0.78rem; color: var(--text-3);
+        margin-top: 4px; line-height: 1.45;
+    }
+
     /* ── Widget-Icon-Button ─────────────────────────────────── */
     .ov-widget-btn {
         width: 40px; height: 40px;

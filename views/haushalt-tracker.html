@@ -110,6 +110,15 @@
                 </div>
             </div>
 
+            <!-- Konto-Karten -->
+            <div id="accountCardsWrap" style="display:none;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                    <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-3);">Konten</span>
+                    <a href="/users/haushalt/konto" style="font-size:0.72rem;color:var(--haus-accent);text-decoration:none;font-weight:600;">Verwalten →</a>
+                </div>
+                <div id="accountCardsList" style="display:flex;flex-direction:column;gap:8px;"></div>
+            </div>
+
             <!-- Transaktion hinzufügen -->
             <div class="card">
                 <div class="card-header">
@@ -204,7 +213,7 @@
                         <i class="ri-close-line"></i> Filter zurücksetzen
                     </button>
                 </div>
-                <button class="tracker-export-btn" onclick="openExportModal()">
+                <button class="tracker-export-btn" onclick="window.location.href='/users/export'">
                     <i class="ri-download-2-line"></i> Exportieren
                 </button>
                 <button class="tracker-import-btn" onclick="openImportModal()">
@@ -417,105 +426,6 @@
     });
     </script>
 
-    <!-- ── Export Modal ── -->
-    <div id="exportModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1003; align-items:center; justify-content:center;">
-        <div class="export-modal-content">
-            <div class="export-modal-header">
-                <h3><i class="ri-download-2-line"></i> Exportieren</h3>
-                <button class="export-modal-close" onclick="closeExportModal()"><i class="ri-close-line"></i></button>
-            </div>
-
-            <!-- Format-Wahl -->
-            <div class="export-section">
-                <label class="export-section-label">Format</label>
-                <div class="export-format-tabs">
-                    <button class="export-format-tab active" data-fmt="pdf" onclick="setExportFormat('pdf')">
-                        <i class="ri-file-pdf-line"></i> PDF
-                    </button>
-                    <button class="export-format-tab" data-fmt="csv" onclick="setExportFormat('csv')">
-                        <i class="ri-file-excel-2-line"></i> CSV
-                    </button>
-                    <button class="export-format-tab" data-fmt="monat" onclick="setExportFormat('monat')">
-                        <i class="ri-bar-chart-grouped-line"></i> Monatsanalyse
-                    </button>
-                </div>
-            </div>
-
-            <!-- PDF-Optionen -->
-            <div id="exportPdfOptions">
-                <div class="export-section">
-                    <label class="export-section-label">Diagramme <span style="font-size:0.7rem;font-weight:400;color:var(--text-3);">(mehrere wählbar)</span></label>
-                    <div class="export-chip-row">
-                        <label class="export-chip"><input type="checkbox" name="exportChartType" value="bar" checked> <i class="ri-bar-chart-2-line"></i> Säulen</label>
-                        <label class="export-chip"><input type="checkbox" name="exportChartType" value="line"> <i class="ri-line-chart-line"></i> Linie</label>
-                        <label class="export-chip"><input type="checkbox" name="exportChartType" value="doughnut"> <i class="ri-pie-chart-2-line"></i> Donut</label>
-                    </div>
-                </div>
-                <div class="export-section">
-                    <label class="export-section-label">Transaktionen gruppieren nach</label>
-                    <div class="export-chip-row">
-                        <label class="export-chip"><input type="radio" name="exportGroupBy" value="month" checked> Monat</label>
-                        <label class="export-chip"><input type="radio" name="exportGroupBy" value="week"> Woche</label>
-                        <label class="export-chip"><input type="radio" name="exportGroupBy" value="day"> Tag</label>
-                    </div>
-                </div>
-            </div>
-
-            <!-- CSV-Optionen -->
-            <div id="exportCsvOptions" style="display:none;">
-                <div class="export-section">
-                    <label class="export-section-label">Export-Modus</label>
-                    <div class="export-chip-row">
-                        <label class="export-chip"><input type="radio" name="csvMode" value="reimport" checked> <i class="ri-refresh-line"></i> Reimport-kompatibel</label>
-                        <label class="export-chip"><input type="radio" name="csvMode" value="readable"> <i class="ri-table-line"></i> Lesbar / Excel</label>
-                    </div>
-                    <div style="margin-top:8px; font-size:0.78rem; color:var(--text-3); line-height:1.5;">
-                        <span id="csvModeHint">Enthält alle Felder im gleichen Format wie der CSV-Import — kann 1:1 wieder eingelesen werden.</span>
-                    </div>
-                </div>
-                <div class="export-section">
-                    <label class="export-section-label">Trennzeichen</label>
-                    <div class="export-chip-row">
-                        <label class="export-chip"><input type="radio" name="exportDelimiter" value=";" checked> Semikolon (;)</label>
-                        <label class="export-chip"><input type="radio" name="exportDelimiter" value=","> Komma (,)</label>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Monatsanalyse-Optionen -->
-            <div id="exportMonatOptions" style="display:none;">
-                <div class="export-section">
-                    <label class="export-section-label">Monat auswählen</label>
-                    <select id="exportMonatSelect" style="width:100%; padding:8px 10px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-1); font-size:0.85rem;">
-                    </select>
-                </div>
-                <div class="export-section">
-                    <label class="export-section-label">Diagrammtyp</label>
-                    <div class="export-chip-row">
-                        <label class="export-chip"><input type="radio" name="monatChartType" value="bar" checked> <i class="ri-bar-chart-2-line"></i> Säulen</label>
-                        <label class="export-chip"><input type="radio" name="monatChartType" value="line"> <i class="ri-line-chart-line"></i> Linie</label>
-                        <label class="export-chip"><input type="radio" name="monatChartType" value="doughnut"> <i class="ri-pie-chart-2-line"></i> Donut</label>
-                    </div>
-                </div>
-                <div class="export-info">
-                    Erstellt eine vollständige Monatsübersicht als PDF: Zusammenfassung, Kategorienaufschlüsselung, Diagramm und alle Transaktionen des gewählten Monats.
-                </div>
-            </div>
-
-            <!-- Info -->
-            <div class="export-info" id="exportInfo"></div>
-
-            <div style="display:flex; gap:8px; margin-top:20px;">
-                <button class="btn-primary" onclick="runExport()" style="flex:1; justify-content:center;">
-                    <i class="ri-download-2-line"></i> <span id="exportBtnLabel">PDF erstellen</span>
-                </button>
-                <button onclick="closeExportModal()" style="padding:9px 18px; border-radius:var(--radius-md); background:var(--surface-2); color:var(--text-2); border:1px solid var(--border); cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif;">
-                    Abbrechen
-                </button>
-            </div>
-        </div>
-    </div>
-
     <style>
     /* ── Filter Bar ── */
     .tracker-filter-bar {
@@ -566,9 +476,36 @@
         cursor: pointer; transition: all 0.15s;
         font-family: 'Plus Jakarta Sans', sans-serif;
     }
-    .tracker-import-btn:hover { border-color: var(--accent, #6358e6); color: var(--accent, #6358e6); }
+    .tracker-import-btn:hover { border-color: var(--haus-accent); color: var(--haus-accent); }
 
-    /* ── Filter Panel ── */
+    /* ── Konto-Karten in Sidebar ── */
+    .acc-card {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 11px 13px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: var(--transition);
+    }
+    .acc-card:hover { border-color: var(--haus-accent); }
+    .acc-card-icon {
+        width: 32px; height: 32px;
+        border-radius: 9px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.95rem; flex-shrink: 0;
+    }
+    .acc-card-body { flex: 1; min-width: 0; }
+    .acc-card-name {
+        font-weight: 700; font-size: 0.82rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .acc-card-type { font-size: 0.7rem; color: var(--text-3); margin-top: 1px; }
+    .acc-card-balance {
+        font-size: 0.9rem; font-weight: 800;
+        white-space: nowrap; flex-shrink: 0;
+    }
     .filter-panel {
         background: var(--surface-2); border: 1px solid var(--border);
         border-radius: 12px; padding: 16px; margin: 10px 0 4px;

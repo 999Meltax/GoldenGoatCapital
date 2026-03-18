@@ -7,6 +7,83 @@ import { sendMail, greetingHtml, ctaButtonHtml, dividerHtml, sectionTitleHtml } 
 
 const router = express.Router();
 
+// ── TOTP Hilfsfunktionen (RFC 6238, kein externes Paket) ──────
+
+// Korrekte Base32-Kodierung (RFC 4648)
+function base32Encode(buf) {
+    const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let bits = 0, value = 0, output = '';
+    for (const byte of buf) {
+        value = (value << 8) | byte;
+        bits += 8;
+        while (bits >= 5) {
+            bits -= 5;
+            output += alpha[(value >> bits) & 0x1f];
+        }
+    }
+    if (bits > 0) output += alpha[(value << (5 - bits)) & 0x1f];
+    return output;
+}
+
+// Generiert ein sauberes 32-Zeichen Base32-Secret (20 Bytes = 160 Bit)
+function totpGenerateSecret() {
+    return base32Encode(crypto.randomBytes(20)); // ergibt exakt 32 Base32-Zeichen
+}
+
+function base32Decode(s) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let bits = 0, value = 0;
+    const output = [];
+    for (const c of s.toUpperCase().replace(/=| /g, '')) {
+        const idx = alphabet.indexOf(c);
+        if (idx === -1) continue;
+        value = (value << 5) | idx;
+        bits += 5;
+        if (bits >= 8) { bits -= 8; output.push((value >> bits) & 0xff); }
+    }
+    return Buffer.from(output);
+}
+
+function totpVerify(secret, token, window = 1) {
+    const key    = base32Decode(secret);
+    const epoch  = Math.floor(Date.now() / 1000);
+    const step   = 30;
+    const digits = 6;
+    const tokenStr = String(token).replace(/\s/g, '').trim();
+    for (let w = -window; w <= window; w++) {
+        const counter = Math.floor(epoch / step) + w;
+        const buf = Buffer.alloc(8);
+        buf.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
+        buf.writeUInt32BE(counter >>> 0, 4);
+        const hmac   = crypto.createHmac('sha1', key).update(buf).digest();
+        const offset = hmac[hmac.length - 1] & 0x0f;
+        // Multiplication statt Bitshift vermeidet signed 32-bit Overflow
+        const code   = (
+            (hmac[offset]   & 0x7f) * 0x1000000 +
+             hmac[offset+1]         * 0x10000   +
+             hmac[offset+2]         * 0x100     +
+             hmac[offset+3]
+        ) % (10 ** digits);
+        if (String(code).padStart(digits, '0') === tokenStr) return true;
+    }
+    return false;
+}
+
+function totpOtpAuthUrl(secret, email, issuer = 'Golden Goat Capital') {
+    const label = encodeURIComponent(`${issuer}:${email}`);
+    const params = `secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+    return `otpauth://totp/${label}?${params}`;
+}
+
+function generateBackupCodes(count = 8) {
+    const codes = [];
+    for (let i = 0; i < count; i++) {
+        const raw = crypto.randomBytes(4).toString('hex').toUpperCase();
+        codes.push(`${raw.slice(0,4)}-${raw.slice(4)}`);
+    }
+    return codes;
+}
+
 // Stelle sicher, dass JSON und URL-encoded Daten geparsed werden
 router.use(express.json({ limit: "15mb" }));
 router.use(express.urlencoded({ extended: true, limit: "15mb" }));
@@ -43,7 +120,7 @@ router.get('/login', (req, res) => {
     if (req.session.username) {
         return res.redirect('/users/overview');
     }
-    res.render('login_tpl', { isLoggedIn: false, error: null });
+    res.render('login_tpl', { isLoggedIn: false, error: null, twoFactor: false });
 });
 
 // Route für Login
@@ -54,23 +131,71 @@ router.post('/check_login', async (req, res) => {
         const db = await Database.getInstance();
         const isValid = await db.validateUser(username, password);
         if (isValid) {
-            // E-Mail-Bestätigung prüfen
             const user = await db.getUserByEmail(username);
             if (!user || !user.email_verified) {
-                return res.render('login_tpl', { isLoggedIn: false, error: 'Bitte bestätige zuerst deine E-Mail-Adresse. Schau in dein Postfach.' });
+                return res.render('login_tpl', { isLoggedIn: false, error: 'Bitte bestätige zuerst deine E-Mail-Adresse. Schau in dein Postfach.', twoFactor: false });
+            }
+            // 2FA prüfen
+            const settings = await db.getUserSettings(user.id);
+            if (settings && settings.two_factor && settings.totp_secret) {
+                // Passwort korrekt, aber 2FA nötig → in Session merken, noch nicht einloggen
+                req.session.pending2faUserId   = user.id;
+                req.session.pending2faUsername = username;
+                req.session.pending2faNewUser  = !!user.is_new_user;
+                return res.render('login_tpl', { isLoggedIn: false, error: null, twoFactor: true });
             }
             req.session.username = username;
             req.session.userId = user.id;
-            if (user.is_new_user) {
-                return res.redirect('/users/onboarding');
-            }
+            if (user.is_new_user) return res.redirect('/users/onboarding');
             res.redirect('/users/overview');
         } else {
-            res.render('login_tpl', { isLoggedIn: false, error: 'Benutzer existiert nicht oder Passwort ist ungültig' });
+            res.render('login_tpl', { isLoggedIn: false, error: 'Benutzer existiert nicht oder Passwort ist ungültig', twoFactor: false });
         }
     } catch (error) {
         console.error(error);
         res.status(500).send('Interner Serverfehler');
+    }
+});
+
+// 2FA-Code beim Login verifizieren
+router.post('/verify-2fa', async (req, res) => {
+    const { code } = req.body;
+    const userId   = req.session.pending2faUserId;
+    const username = req.session.pending2faUsername;
+    if (!userId || !username) {
+        return res.render('login_tpl', { isLoggedIn: false, error: 'Sitzung abgelaufen. Bitte erneut anmelden.', twoFactor: false });
+    }
+    try {
+        const db       = await Database.getInstance();
+        const settings = await db.getTotpSecret(userId);
+        if (!settings?.totp_secret) {
+            return res.render('login_tpl', { isLoggedIn: false, error: 'Fehler bei der 2FA-Verifizierung.', twoFactor: false });
+        }
+        // TOTP prüfen
+        const valid = totpVerify(settings.totp_secret, code);
+        if (valid) {
+            req.session.pending2faUserId   = null;
+            req.session.pending2faUsername = null;
+            req.session.username = username;
+            req.session.userId   = userId;
+            const isNewUser = req.session.pending2faNewUser;
+            req.session.pending2faNewUser = null;
+            if (isNewUser) return res.redirect('/users/onboarding');
+            return res.redirect('/users/overview');
+        }
+        // Backup-Code prüfen
+        const usedBackup = await db.consumeBackupCode(userId, code.replace(/\s/g, ''));
+        if (usedBackup) {
+            req.session.pending2faUserId   = null;
+            req.session.pending2faUsername = null;
+            req.session.username = username;
+            req.session.userId   = userId;
+            return res.redirect('/users/overview');
+        }
+        res.render('login_tpl', { isLoggedIn: false, error: 'Ungültiger Code. Bitte versuche es erneut.', twoFactor: true });
+    } catch (err) {
+        console.error(err);
+        res.render('login_tpl', { isLoggedIn: false, error: 'Fehler bei der Verifizierung.', twoFactor: true });
     }
 });
 
@@ -590,6 +715,36 @@ const requireLogin = (req, res, next) => {
     next();
 };
 
+// ── Umbuchung zwischen Konten ─────────────────────────────────
+router.post('/transfer', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const { from_account_id, from_source, to_account_id, to_source,
+                to_haushalt_id, amount, date, name, notiz } = req.body;
+        const txId = await db.addTransfer(req.session.userId, {
+            from_account_id, from_source: from_source || 'privat',
+            to_account_id,   to_source:   to_source   || 'privat',
+            to_haushalt_id:  to_haushalt_id || null,
+            amount, date, name, notiz,
+        });
+        res.json({ ok: true, txId });
+    } catch (err) {
+        console.error('Transfer-Fehler:', err);
+        res.status(500).json({ message: err.message || 'Fehler beim Transfer' });
+    }
+});
+
+router.delete('/transfer/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.deleteTransfer(req.session.userId, req.params.id);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('Transfer-Löschen-Fehler:', err);
+        res.status(500).json({ message: 'Fehler beim Löschen' });
+    }
+});
+
 // ── Plan-Helper ───────────────────────────────────────────────
 
 async function getUserPlan(userId) {
@@ -853,6 +1008,30 @@ router.get('/accounts', requireLogin, async (req, res) => {
     } catch (err) { res.status(500).json({ message: 'Fehler beim Laden' }); }
 });
 
+// Kombinierte Konten: privat + Haushalt — für Transfer-Dropdowns
+router.get('/accounts/all', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const privat = await db.getAccountsWithBalance(req.session.userId);
+        const privatMapped = privat.map(a => ({ ...a, _source: 'privat', _haushalt_id: null }));
+
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        let hausMapped = [];
+        if (haushalt) {
+            const hausKonten = await db.getHaushaltKonten(haushalt.id);
+            hausMapped = hausKonten.map(k => ({
+                ...k,
+                _source:      'haushalt',
+                _haushalt_id: haushalt.id,
+                // Felder angleichen damit Frontend einheitlich arbeiten kann
+                color:  k.color || '#10b981',
+                type:   'haushaltskonto',
+            }));
+        }
+        res.json([...privatMapped, ...hausMapped]);
+    } catch (err) { res.status(500).json({ message: 'Fehler beim Laden' }); }
+});
+
 router.post('/accounts/add', requireLogin, async (req, res) => {
     const { name, type, balance, color, icon } = req.body;
     if (!name || !type) return res.status(400).json({ message: 'Name und Typ erforderlich' });
@@ -894,6 +1073,45 @@ router.get('/accounts/:id/transactions', requireLogin, async (req, res) => {
         const txs = await db.getTransactionsForAccount(req.session.userId, req.params.id);
         res.json(txs.map(t => ({ ...t, type: (t.type==='outbound'||t.type==='Ausgaben') ? 'Ausgaben' : 'Einnahmen' })));
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
+});
+
+// ── Kontostand-Abgleich ──────────────────────────────────────────
+router.post('/accounts/:id/abgleich', requireLogin, async (req, res) => {
+    const accountId = parseInt(req.params.id);
+    const { echter_stand } = req.body;
+    if (echter_stand === undefined || echter_stand === null || isNaN(parseFloat(echter_stand))) {
+        return res.status(400).json({ message: 'Echter Kontostand erforderlich' });
+    }
+    try {
+        const db     = await Database.getInstance();
+        const userId = req.session.userId;
+
+        const accounts = await db.getAccountsWithBalance(userId);
+        const account  = accounts.find(a => a.id === accountId);
+        if (!account) return res.status(404).json({ message: 'Konto nicht gefunden' });
+
+        const berechnet = account.currentBalance;
+        const echt      = parseFloat(parseFloat(echter_stand).toFixed(2));
+        const differenz = parseFloat((echt - berechnet).toFixed(2));
+
+        if (differenz === 0) {
+            return res.json({ message: 'Kontostand ist bereits korrekt', differenz: 0, transactionId: null });
+        }
+
+        const typ   = differenz > 0 ? 'Einnahmen' : 'Ausgaben';
+        const heute = new Date().toISOString().substring(0, 10);
+        const name  = `Kontostandskorrektur: ${account.name}`;
+
+        const txId = await db.saveTransaction(
+            userId, name, 'Kontostandskorrektur', heute,
+            Math.abs(differenz), typ, accountId
+        );
+
+        res.json({ message: 'Korrekturbuchung angelegt', differenz, transactionId: txId, typ });
+    } catch (err) {
+        console.error('Abgleich-Fehler:', err);
+        res.status(500).json({ message: 'Fehler beim Abgleich' });
+    }
 });
 
 // ── Analysen ───────────────────────────────────────────────────
@@ -976,7 +1194,98 @@ router.get('/einstellungen', requireLogin, (req, res) => {
     res.render('einstellungen', { isLoggedIn: true });
 });
 
-// API: Einstellungen laden
+// ── Datenexport ──────────────────────────────────────────────────
+router.get('/export', requireLogin, (req, res) => {
+    res.render('export', { isLoggedIn: true });
+});
+
+router.get('/export/data', requireLogin, async (req, res) => {
+    try {
+        const db     = await Database.getInstance();
+        const userId = req.session.userId;
+
+        const [
+            transaktionen,
+            konten,
+            sparziele,
+            fixkosten,
+            schulden,
+            dokumente,
+            versicherungen,
+            todos,
+            notizen,
+            kategorien,
+            budgets,
+        ] = await Promise.all([
+            db.getTransactionsForUser(userId),
+            db.getAccountsWithBalance(userId),
+            db.getSparziele(userId),
+            db.getFixkosten(userId),
+            db.getSchulden(userId),
+            db.getDokumente(userId),       // ohne file_data (Binärdaten)
+            db.getVersicherungen(userId),
+            db.getTodosForUser(userId),
+            db.getNotizen(userId),
+            db.getCategories(userId),
+            db.getBudgets(userId),
+        ]);
+
+        res.json({
+            exportiert_am: new Date().toISOString(),
+            version: '1.0',
+            transaktionen,
+            konten,
+            sparziele,
+            fixkosten,
+            schulden,
+            dokumente,   // Metadaten — kein Base64
+            versicherungen,
+            todos,
+            notizen,
+            kategorien,
+            budgets,
+        });
+    } catch (err) {
+        console.error('Export-Fehler:', err);
+        res.status(500).json({ message: 'Fehler beim Exportieren' });
+    }
+});
+
+router.get('/export/haushalt-data', requireLogin, async (req, res) => {
+    try {
+        const db       = await Database.getInstance();
+        const userId   = req.session.userId;
+        const haushalt = await db.getHaushaltForUser(userId);
+        if (!haushalt) return res.json({
+            exportiert_am: new Date().toISOString(),
+            version: '1.0',
+            haushalt_name: null,
+            transaktionen: [], konten: [], fixkosten: [], todos: [], dokumente: [],
+        });
+
+        const [transaktionen, konten, fixkosten, todos, dokumente] = await Promise.all([
+            db.getHaushaltTransaktionen(haushalt.id),
+            db.getHaushaltKonten(haushalt.id),
+            db.getHaushaltFixkosten(haushalt.id).catch(() => []),
+            db.getHaushaltTodos(haushalt.id).catch(() => []),
+            db.getHaushaltDokumente(haushalt.id).catch(() => []),
+        ]);
+
+        res.json({
+            exportiert_am: new Date().toISOString(),
+            version: '1.0',
+            haushalt_name: haushalt.name,
+            transaktionen,
+            konten,
+            fixkosten,
+            todos,
+            dokumente,
+        });
+    } catch (err) {
+        console.error('Haushalt-Export-Fehler:', err);
+        res.status(500).json({ message: 'Fehler beim Laden der Haushalt-Exportdaten' });
+    }
+});
 router.get('/einstellungen/data', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
@@ -997,6 +1306,71 @@ router.put('/einstellungen/update', requireLogin, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Fehler beim Speichern' });
+    }
+});
+
+// ── 2FA / TOTP ────────────────────────────────────────────────
+
+// Schritt 1: Secret generieren + QR-Code-URL zurückgeben
+router.post('/2fa/setup', requireLogin, async (req, res) => {
+    try {
+        const db      = await Database.getInstance();
+        const userId  = req.session.userId;
+        const email   = await db.getUserEmail(userId);
+        const secret  = totpGenerateSecret();
+        const codes   = generateBackupCodes(8);
+        // Secret temporär in Session speichern bis bestätigt
+        req.session.pending2faSecret = secret;
+        req.session.pending2faCodes  = codes;
+        const otpauthUrl = totpOtpAuthUrl(secret, email);
+        res.json({ secret, otpauthUrl, backupCodes: codes });
+    } catch (err) {
+        console.error(err); res.status(500).json({ message: 'Fehler beim Setup' });
+    }
+});
+
+// Schritt 2: Code bestätigen → 2FA aktivieren
+router.post('/2fa/enable', requireLogin, async (req, res) => {
+    const { code } = req.body;
+    const secret   = req.session.pending2faSecret;
+    const codes    = req.session.pending2faCodes;
+    if (!secret) return res.status(400).json({ message: 'Kein Setup-Prozess aktiv. Bitte neu starten.' });
+    if (!totpVerify(secret, code)) return res.status(400).json({ message: 'Ungültiger Code. Bitte versuche es erneut.' });
+    try {
+        const db = await Database.getInstance();
+        await db.setTotpSecret(req.session.userId, secret, codes);
+        await db.enableTotp(req.session.userId);
+        req.session.pending2faSecret = null;
+        req.session.pending2faCodes  = null;
+        res.json({ message: '2FA aktiviert', backupCodes: codes });
+    } catch (err) {
+        console.error(err); res.status(500).json({ message: 'Fehler beim Aktivieren' });
+    }
+});
+
+// 2FA deaktivieren (mit Passwort-Bestätigung)
+router.post('/2fa/disable', requireLogin, async (req, res) => {
+    const { password } = req.body;
+    try {
+        const db    = await Database.getInstance();
+        const email = await db.getUserEmail(req.session.userId);
+        const valid = await db.validateUser(email, password);
+        if (!valid) return res.status(401).json({ message: 'Passwort falsch' });
+        await db.disableTotp(req.session.userId);
+        res.json({ message: '2FA deaktiviert' });
+    } catch (err) {
+        console.error(err); res.status(500).json({ message: 'Fehler beim Deaktivieren' });
+    }
+});
+
+// Status abfragen
+router.get('/2fa/status', requireLogin, async (req, res) => {
+    try {
+        const db       = await Database.getInstance();
+        const settings = await db.getUserSettings(req.session.userId);
+        res.json({ enabled: !!(settings?.two_factor && settings?.totp_secret) });
+    } catch (err) {
+        res.json({ enabled: false });
     }
 });
 
@@ -1666,6 +2040,160 @@ router.get('/reminders/run', requireLogin, async (req, res) => {
         res.json({ ok: true, message: 'Reminder-Lauf abgeschlossen. Prüfe Server-Log.' });
     } catch (err) {
         res.status(500).json({ ok: false, message: err.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// ── GLOBALE SUCHE ─────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+router.get('/search', requireLogin, async (req, res) => {
+    const q = (req.query.q || '').trim().toLowerCase();
+    if (q.length < 2) return res.json({ results: [] });
+
+    try {
+        const db = await Database.getInstance();
+        const userId = req.session.userId;
+        const results = [];
+
+        // ── Transaktionen ──
+        const txAll = await db.getTransactionsForUser(userId);
+        txAll.forEach(t => {
+            if (
+                (t.name  && t.name.toLowerCase().includes(q)) ||
+                (t.category && t.category.toLowerCase().includes(q))
+            ) {
+                results.push({
+                    type: 'transaktion',
+                    icon: t.type === 'Einnahmen' ? 'ri-arrow-down-circle-line' : 'ri-arrow-up-circle-line',
+                    title: t.name,
+                    sub: `${t.category} · ${t.type === 'Einnahmen' ? '+' : '-'}${Number(t.amount).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}`,
+                    date: t.date ? t.date.substring(0, 10) : '',
+                    url: '/users/ausgabentracker',
+                    color: t.type === 'Einnahmen' ? '#22c55e' : '#ef4444'
+                });
+            }
+        });
+
+        // ── Sparziele ──
+        const sparziele = await db.getSparziele(userId);
+        sparziele.forEach(s => {
+            if (s.name && s.name.toLowerCase().includes(q)) {
+                results.push({
+                    type: 'sparziel',
+                    icon: 'ri-flag-fill',
+                    title: s.name,
+                    sub: `${Number(s.gespart).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} von ${Number(s.zielbetrag).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}`,
+                    date: s.datum ? s.datum.substring(0, 10) : '',
+                    url: '/users/budget#sparzieleTab',
+                    color: s.farbe || '#6358e6'
+                });
+            }
+        });
+
+        // ── Dokumente ──
+        const dokumente = await db.getDokumente(userId);
+        dokumente.forEach(d => {
+            if (
+                (d.name       && d.name.toLowerCase().includes(q)) ||
+                (d.aussteller && d.aussteller.toLowerCase().includes(q)) ||
+                (d.notiz      && d.notiz.toLowerCase().includes(q)) ||
+                (d.kategorie  && d.kategorie.toLowerCase().includes(q))
+            ) {
+                results.push({
+                    type: 'dokument',
+                    icon: 'ri-file-line',
+                    title: d.name,
+                    sub: `${d.typ || 'Dokument'}${d.aussteller ? ' · ' + d.aussteller : ''}`,
+                    date: d.datum ? d.datum.substring(0, 10) : '',
+                    url: '/users/dokumente',
+                    color: '#3b82f6'
+                });
+            }
+        });
+
+        // ── Versicherungen ──
+        const versicherungen = await db.getVersicherungen(userId);
+        versicherungen.forEach(v => {
+            if (
+                (v.name     && v.name.toLowerCase().includes(q)) ||
+                (v.anbieter && v.anbieter.toLowerCase().includes(q)) ||
+                (v.kategorie && v.kategorie.toLowerCase().includes(q))
+            ) {
+                results.push({
+                    type: 'versicherung',
+                    icon: 'ri-shield-check-line',
+                    title: v.name,
+                    sub: `${v.kategorie || 'Versicherung'}${v.anbieter ? ' · ' + v.anbieter : ''}`,
+                    date: '',
+                    url: '/users/versicherungen',
+                    color: '#f59e0b'
+                });
+            }
+        });
+
+        // ── Notizen ──
+        const notizen = await db.getNotizen(userId);
+        notizen.forEach(n => {
+            if (
+                (n.titel  && n.titel.toLowerCase().includes(q)) ||
+                (n.inhalt && n.inhalt.toLowerCase().includes(q))
+            ) {
+                results.push({
+                    type: 'notiz',
+                    icon: 'ri-sticky-note-line',
+                    title: n.titel || 'Notiz',
+                    sub: n.inhalt ? n.inhalt.substring(0, 60) + (n.inhalt.length > 60 ? '…' : '') : '',
+                    date: '',
+                    url: '/users/produktivitaet',
+                    color: '#a855f7'
+                });
+            }
+        });
+
+        // ── Schulden ──
+        const schulden = await db.getSchulden(userId);
+        schulden.forEach(s => {
+            if (
+                (s.name      && s.name.toLowerCase().includes(q)) ||
+                (s.glaeubiger && s.glaeubiger.toLowerCase().includes(q))
+            ) {
+                results.push({
+                    type: 'schuld',
+                    icon: 'ri-scales-line',
+                    title: s.name,
+                    sub: `${s.glaeubiger ? s.glaeubiger + ' · ' : ''}Restbetrag: ${Number(s.restbetrag).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}`,
+                    date: '',
+                    url: '/users/schulden',
+                    color: '#ef4444'
+                });
+            }
+        });
+
+        // ── Todos ──
+        const todos = await db.getTodosForUser(userId);
+        todos.forEach(t => {
+            if (
+                (t.task  && t.task.toLowerCase().includes(q)) ||
+                (t.label && t.label.toLowerCase().includes(q)) ||
+                (t.notes && t.notes.toLowerCase().includes(q))
+            ) {
+                results.push({
+                    type: 'todo',
+                    icon: t.completed ? 'ri-checkbox-circle-line' : 'ri-checkbox-blank-circle-line',
+                    title: t.task,
+                    sub: `${t.label ? t.label + ' · ' : ''}${t.completed ? 'Erledigt' : 'Offen'}`,
+                    date: t.due_date ? t.due_date.substring(0, 10) : '',
+                    url: '/users/todo',
+                    color: '#10b981'
+                });
+            }
+        });
+
+        // Auf max. 30 Ergebnisse begrenzen
+        res.json({ results: results.slice(0, 30) });
+    } catch (err) {
+        console.error('Suchfehler:', err);
+        res.status(500).json({ results: [] });
     }
 });
 
@@ -2381,7 +2909,7 @@ router.get('/verify-email', async (req, res) => {
         const db = await Database.getInstance();
         const user = await db.getUserByVerifyToken(token);
         if (!user) {
-            return res.render('login_tpl', { isLoggedIn: false, error: 'Der Bestätigungslink ist ungültig oder bereits verwendet.' });
+            return res.render('login_tpl', { isLoggedIn: false, error: 'Der Bestätigungslink ist ungültig oder bereits verwendet.', twoFactor: false });
         }
         await db.verifyEmail(token);
         // Auto-Login nach Bestätigung

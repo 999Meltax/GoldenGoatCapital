@@ -174,7 +174,7 @@
             if (!data.haushalt) {
                 renderSetup(root);
             } else {
-                renderDashboard(root, data.haushalt, data.mitglieder, data.konto || null);
+                renderDashboard(root, data.haushalt, data.mitglieder, data.konto || null, data.konten || [], data.gesamtBalance ?? 0);
             }
         } catch (err) {
             root.innerHTML = '<div class="card" style="text-align:center;padding:60px;color:#ef4444;">Fehler beim Laden.</div>';
@@ -277,7 +277,7 @@
     }
 
     // ── Dashboard ─────────────────────────────────────────────────
-    async function renderDashboard(root, haushalt, mitglieder, kontoData) {
+    async function renderDashboard(root, haushalt, mitglieder, kontoData, kontenData, gesamtBal) {
         const monatStr   = new Date().toISOString().substring(0,7);
         const monatLabel = new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
 
@@ -336,9 +336,11 @@
         const offeneRechnungenSumme = offeneRechnungen.reduce((s, d) => s + (d.betrag || 0), 0);
         const offeneTodos           = todoRes.filter(t => !t.completed).length;
 
-        const kontostand  = kontoData ? kontoData.currentBalance : null;
-        const kontoName   = kontoData ? kontoData.name : 'Haushaltskonto';
-        const kontoColor  = kontoData ? (kontoData.color || '#10b981') : '#10b981';
+        const gesamtBalance = gesamtBal;
+        const gesamtColor   = gesamtBalance < 0 ? '#ef4444' : 'var(--text-1)';
+        const kontenLabel   = kontenData.length === 0 ? 'Kein Konto' :
+                              kontenData.length === 1 ? escHtml(kontenData[0].name) :
+                              kontenData.length + ' Konten';
 
         const name1 = user1.anzeigename || user1.display_name || 'Person 1';
         const name2 = user2 ? (user2.anzeigename || user2.display_name || 'Person 2') : null;
@@ -375,10 +377,10 @@
             // Stat-Cards
             '<div class="haus-stats">' +
                 '<div class="haus-stat-card" style="cursor:pointer;" onclick="window.location.href=\'/users/haushalt/konto\'">' +
-                    '<div class="haus-stat-icon" style="background:' + kontoColor + '22;color:' + kontoColor + ';"><i class="ri-bank-card-line"></i></div>' +
+                    '<div class="haus-stat-icon" style="background:rgba(16,185,129,0.12);color:#10b981;"><i class="ri-bank-card-line"></i></div>' +
                     '<div class="haus-stat-body">' +
-                        '<div class="haus-stat-label">' + escHtml(kontoName) + '</div>' +
-                        '<div class="haus-stat-value" style="color:' + (kontostand !== null && kontostand < 0 ? '#ef4444' : 'var(--text-1)') + ';">' + (kontostand !== null ? fmt.format(kontostand) : '—') + '</div>' +
+                        '<div class="haus-stat-label">' + kontenLabel + '</div>' +
+                        '<div class="haus-stat-value" style="color:' + gesamtColor + ';">' + fmt.format(gesamtBalance) + '</div>' +
                     '</div>' +
                 '</div>' +
                 '<div class="haus-stat-card">' +

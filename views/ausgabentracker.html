@@ -78,6 +78,14 @@
                 </div>
             </div>
 
+            <!-- Konto-Karten -->
+            <div id="accountCardsWrap" style="display:none;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                    <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-3);">Konten</span>
+                </div>
+                <div id="accountCardsList" style="display:flex;flex-direction:column;gap:8px;"></div>
+            </div>
+
             <!-- Transaktion hinzufügen -->
             <div class="card">
                 <div class="card-header">
@@ -136,6 +144,11 @@
                 <i class="ri-loop-right-line"></i> Wiederkehrende Transaktionen
             </button>
 
+            <!-- Umbuchung zwischen Konten -->
+            <button class="btn-ghost" style="width:100%; margin-top:-4px;" onclick="openTransferModal()">
+                <i class="ri-arrow-left-right-line"></i> Umbuchung / Überweisung
+            </button>
+
             <!-- Kategorie hinzufügen -->
             <div class="card">
                 <div class="card-header">
@@ -172,7 +185,7 @@
                         <i class="ri-close-line"></i> Filter zurücksetzen
                     </button>
                 </div>
-                <button class="tracker-export-btn" onclick="openExportModal()">
+                <button class="tracker-export-btn" onclick="window.location.href='/users/export'">
                     <i class="ri-download-2-line"></i> Exportieren
                 </button>
                 <button class="tracker-import-btn" onclick="openImportModal()">
@@ -366,6 +379,111 @@
         </div>
     </div>
 
+    <!-- ── Modal: Kontostand abgleichen ── -->
+    <div id="abgleichModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:1010;align-items:center;justify-content:center;backdrop-filter:blur(4px);" onclick="closeAbgleichModal(event)">
+        <div class="card" style="width:min(420px,92vw);padding:28px;" onclick="event.stopPropagation()">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <h3 style="margin:0;display:flex;align-items:center;gap:8px;">
+                    <i class="ri-scales-3-line" style="color:var(--accent);"></i> Kontostand abgleichen
+                </h3>
+                <button onclick="closeAbgleichModal()" style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:1.2rem;"><i class="ri-close-line"></i></button>
+            </div>
+            <p id="abgleichKontoName" style="margin:0 0 20px;color:var(--text-3);font-size:0.85rem;"></p>
+
+            <!-- Aktueller berechneter Stand -->
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:18px;">
+                <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-3);margin-bottom:6px;">Berechneter Kontostand</div>
+                <div id="abgleichBerechnet" style="font-size:1.4rem;font-weight:800;color:var(--text-1);">–</div>
+                <div style="font-size:0.75rem;color:var(--text-3);margin-top:4px;">Startguthaben + alle Transaktionen</div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:16px;">
+                <label class="form-label">Echter Kontostand laut Bank (€)</label>
+                <input type="number" id="abgleichEchterStand" step="0.01" placeholder="z.B. 1234.56"
+                    style="font-size:1.1rem;"
+                    oninput="updateAbgleichDiff()"
+                    onkeydown="if(event.key==='Enter') confirmAbgleich()">
+            </div>
+
+            <!-- Differenz-Vorschau -->
+            <div id="abgleichDiffBox" style="display:none;border-radius:var(--radius-md);padding:12px 16px;margin-bottom:18px;font-size:0.88rem;line-height:1.5;">
+                <div id="abgleichDiffText"></div>
+            </div>
+
+            <div style="display:flex;gap:8px;">
+                <button class="btn-primary" style="flex:1;justify-content:center;" onclick="confirmAbgleich()">
+                    <i class="ri-check-line"></i> Korrekturbuchung anlegen
+                </button>
+                <button onclick="closeAbgleichModal()" style="padding:10px 18px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
+                    Abbrechen
+                </button>
+            </div>
+            <div id="abgleichMsg" style="font-size:0.82rem;text-align:center;margin-top:10px;"></div>
+        </div>
+    </div>
+
+    <!-- ── Transfer-Modal ───────────────────────────────────────── -->
+    <div id="transferModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:1010;align-items:center;justify-content:center;backdrop-filter:blur(4px);" onclick="closeTransferModal(event)">
+        <div class="card" style="width:min(480px,92vw);padding:28px;" onclick="event.stopPropagation()">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+                <h3 style="margin:0;display:flex;align-items:center;gap:8px;">
+                    <i class="ri-arrow-left-right-line" style="color:var(--accent);"></i> Umbuchung
+                </h3>
+                <button onclick="closeTransferModal()" style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:1.2rem;"><i class="ri-close-line"></i></button>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:14px;">
+                <div class="form-group">
+                    <label class="form-label">Von Konto</label>
+                    <select id="transferFrom" class="form-input" onchange="updateTransferPreview()">
+                        <option value="">Wird geladen…</option>
+                    </select>
+                </div>
+
+                <div style="display:flex;align-items:center;justify-content:center;">
+                    <div style="width:36px;height:36px;border-radius:50%;background:rgba(99,88,230,0.12);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1.1rem;">
+                        <i class="ri-arrow-down-line"></i>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Auf Konto</label>
+                    <select id="transferTo" class="form-input" onchange="updateTransferPreview()">
+                        <option value="">Wird geladen…</option>
+                    </select>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label">Betrag (€)</label>
+                        <input type="number" id="transferAmount" class="form-input" placeholder="0,00" min="0.01" step="0.01" oninput="updateTransferPreview()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Datum</label>
+                        <input type="date" id="transferDate" class="form-input">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Bezeichnung</label>
+                    <input type="text" id="transferName" class="form-input" placeholder="z.B. Sparrate, Haushaltsgeld …">
+                </div>
+
+                <div id="transferPreview" style="display:none;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 16px;font-size:0.83rem;line-height:1.7;"></div>
+                <div id="transferMsg" style="font-size:0.82rem;color:#ef4444;display:none;"></div>
+
+                <div style="display:flex;gap:8px;">
+                    <button class="btn-primary" style="flex:1;justify-content:center;" onclick="confirmTransfer()">
+                        <i class="ri-arrow-left-right-line"></i> Jetzt umbuchen
+                    </button>
+                    <button onclick="closeTransferModal()" style="padding:10px 18px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
+                        Abbrechen
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <%- include('footer.html') %>
 
     <script>
@@ -384,116 +502,6 @@
         if (b) new MutationObserver(() => fitBalanceText(b)).observe(b, { childList: true, subtree: true, characterData: true });
     });
     </script>
-
-    <!-- ── Export Modal ── -->
-    <div id="exportModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1003; align-items:center; justify-content:center;">
-        <div class="export-modal-content">
-            <div class="export-modal-header">
-                <h3><i class="ri-download-2-line"></i> Exportieren</h3>
-                <button class="export-modal-close" onclick="closeExportModal()"><i class="ri-close-line"></i></button>
-            </div>
-
-            <!-- Format-Wahl -->
-            <div class="export-section">
-                <label class="export-section-label">Format</label>
-                <div class="export-format-tabs">
-                    <button class="export-format-tab active" data-fmt="pdf" onclick="setExportFormat('pdf')">
-                        <i class="ri-file-pdf-line"></i> PDF
-                    </button>
-                    <button class="export-format-tab" data-fmt="csv" onclick="setExportFormat('csv')">
-                        <i class="ri-file-excel-2-line"></i> CSV
-                    </button>
-                    <button class="export-format-tab" data-fmt="monat" onclick="setExportFormat('monat')">
-                        <i class="ri-bar-chart-grouped-line"></i> Monatsanalyse
-                    </button>
-                </div>
-            </div>
-
-            <!-- PDF-Optionen -->
-            <div id="exportPdfOptions">
-                <div class="export-section">
-                    <label class="export-section-label">Konten exportieren</label>
-                    <div id="exportAccountList" style="display:flex;flex-direction:column;gap:5px;"></div>
-                </div>
-                <div class="export-section">
-                    <label class="export-section-label">Diagramme <span style="font-size:0.7rem;font-weight:400;color:var(--text-3);">(mehrere wählbar)</span></label>
-                    <div class="export-chip-row">
-                        <label class="export-chip"><input type="checkbox" name="exportChartType" value="bar" checked> <i class="ri-bar-chart-2-line"></i> Säulen</label>
-                        <label class="export-chip"><input type="checkbox" name="exportChartType" value="line"> <i class="ri-line-chart-line"></i> Linie</label>
-                        <label class="export-chip"><input type="checkbox" name="exportChartType" value="doughnut"> <i class="ri-pie-chart-2-line"></i> Donut</label>
-                    </div>
-                </div>
-                <div class="export-section">
-                    <label class="export-section-label">Transaktionen gruppieren nach</label>
-                    <div class="export-chip-row">
-                        <label class="export-chip"><input type="radio" name="exportGroupBy" value="month" checked> Monat</label>
-                        <label class="export-chip"><input type="radio" name="exportGroupBy" value="week"> Woche</label>
-                        <label class="export-chip"><input type="radio" name="exportGroupBy" value="day"> Tag</label>
-                    </div>
-                </div>
-                <div class="export-section" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                    <label class="export-section-label" style="margin-bottom:0;">Gesamtübersicht am Ende</label>
-                    <label class="export-toggle-switch">
-                        <input type="checkbox" id="exportShowGesamtToggle" checked>
-                        <span class="export-toggle-track"></span>
-                    </label>
-                </div>
-            </div>
-
-            <!-- CSV-Optionen -->
-            <div id="exportCsvOptions" style="display:none;">
-                <div class="export-section">
-                    <label class="export-section-label">Export-Modus</label>
-                    <div class="export-chip-row">
-                        <label class="export-chip"><input type="radio" name="csvMode" value="reimport" checked> <i class="ri-refresh-line"></i> Reimport-kompatibel</label>
-                        <label class="export-chip"><input type="radio" name="csvMode" value="readable"> <i class="ri-table-line"></i> Lesbar / Excel</label>
-                    </div>
-                    <div style="margin-top:8px; font-size:0.78rem; color:var(--text-3); line-height:1.5;">
-                        <span id="csvModeHint">Enthält alle Felder im gleichen Format wie der CSV-Import — kann 1:1 wieder eingelesen werden.</span>
-                    </div>
-                </div>
-                <div class="export-section">
-                    <label class="export-section-label">Trennzeichen</label>
-                    <div class="export-chip-row">
-                        <label class="export-chip"><input type="radio" name="exportDelimiter" value=";" checked> Semikolon (;)</label>
-                        <label class="export-chip"><input type="radio" name="exportDelimiter" value=","> Komma (,)</label>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Monatsanalyse-Optionen -->
-            <div id="exportMonatOptions" style="display:none;">
-                <div class="export-section">
-                    <label class="export-section-label">Monat auswählen</label>
-                    <select id="exportMonatSelect" style="width:100%; padding:8px 10px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-1); font-size:0.85rem;">
-                    </select>
-                </div>
-                <div class="export-section">
-                    <label class="export-section-label">Diagrammtyp</label>
-                    <div class="export-chip-row">
-                        <label class="export-chip"><input type="radio" name="monatChartType" value="bar" checked> <i class="ri-bar-chart-2-line"></i> Säulen</label>
-                        <label class="export-chip"><input type="radio" name="monatChartType" value="line"> <i class="ri-line-chart-line"></i> Linie</label>
-                        <label class="export-chip"><input type="radio" name="monatChartType" value="doughnut"> <i class="ri-pie-chart-2-line"></i> Donut</label>
-                    </div>
-                </div>
-                <div class="export-info">
-                    Erstellt eine vollständige Monatsübersicht als PDF: Zusammenfassung, Kategorienaufschlüsselung, Diagramm und alle Transaktionen des gewählten Monats.
-                </div>
-            </div>
-
-            <!-- Info -->
-            <div class="export-info" id="exportInfo"></div>
-
-            <div style="display:flex; gap:8px; margin-top:20px;">
-                <button class="btn-primary" onclick="runExport()" style="flex:1; justify-content:center;">
-                    <i class="ri-download-2-line"></i> <span id="exportBtnLabel">PDF erstellen</span>
-                </button>
-                <button onclick="closeExportModal()" style="padding:9px 18px; border-radius:var(--radius-md); background:var(--surface-2); color:var(--text-2); border:1px solid var(--border); cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif;">
-                    Abbrechen
-                </button>
-            </div>
-        </div>
-    </div>
 
     <style>
     /* ── Filter Bar ── */
@@ -891,6 +899,74 @@
     .recur-icon-btn:hover { color: var(--text-1); border-color: var(--border-accent); }
     .recur-icon-btn.book { background: rgba(99,88,230,0.1); color: var(--accent); border-color: rgba(99,88,230,0.25); }
     .recur-icon-btn.book:hover { background: var(--accent); color: #fff; }
+
+    /* ── Konto-Karten ── */
+    .acc-card {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 11px 13px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: var(--transition);
+    }
+    .acc-card:hover { border-color: var(--border-accent); }
+    .acc-card-icon {
+        width: 32px; height: 32px;
+        border-radius: 9px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.95rem; flex-shrink: 0;
+    }
+    .acc-card-body { flex: 1; min-width: 0; }
+    .acc-card-name {
+        font-weight: 700; font-size: 0.82rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .acc-card-type { font-size: 0.7rem; color: var(--text-3); margin-top: 1px; }
+    .acc-card-balance {
+        font-size: 0.9rem; font-weight: 800;
+        white-space: nowrap; flex-shrink: 0;
+    }
+    .acc-card-abgleich-btn {
+        width: 28px; height: 28px;
+        border-radius: 7px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text-3);
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: 0.85rem; flex-shrink: 0;
+        transition: var(--transition);
+    }
+    .acc-card-abgleich-btn:hover {
+        color: var(--accent);
+        border-color: var(--border-accent);
+        background: rgba(99,88,230,0.08);
+    }
+
+    /* ── Korrekturbuchung-Badge in Transaktionsliste ── */
+    .tx-korrektur-badge {
+        display: inline-flex; align-items: center; gap: 3px;
+        font-size: 0.65rem; font-weight: 700;
+        background: rgba(245,158,11,0.12);
+        color: #f59e0b;
+        border: 1px solid rgba(245,158,11,0.25);
+        border-radius: 5px;
+        padding: 1px 5px;
+        vertical-align: middle;
+        margin-left: 5px;
+    }
+    .tx-transfer-badge {
+        display: inline-flex; align-items: center; gap: 3px;
+        font-size: 0.65rem; font-weight: 700;
+        background: rgba(99,88,230,0.1);
+        color: var(--accent);
+        border: 1px solid rgba(99,88,230,0.25);
+        border-radius: 5px;
+        padding: 1px 5px;
+        vertical-align: middle;
+        margin-left: 5px;
+    }
     </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>

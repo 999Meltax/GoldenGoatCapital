@@ -96,6 +96,14 @@
     <!-- ═══════════════════════════════════════════════════ -->
     <div id="sparzieleTab" class="budget-tab-content">
 
+        <!-- Konto-Aufteilung Banner (wird nur gerendert wenn Sparziele mit Konto verknüpft sind) -->
+        <div id="kontoAufteilungSection" style="display:none;margin-bottom:24px;">
+            <h3 style="margin:0 0 14px;font-size:0.95rem;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:0.05em;">
+                <i class="ri-pie-chart-2-line" style="color:var(--accent);"></i> Sparkonto-Aufteilung
+            </h3>
+            <div id="kontoAufteilungList" style="display:flex;flex-direction:column;gap:14px;"></div>
+        </div>
+
         <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;" class="budget-main-grid">
 
             <!-- Ziele-Liste -->
@@ -110,7 +118,7 @@
 
             <!-- Sparziel-Formular -->
             <div class="card" style="position:sticky;top:90px;">
-                <h3 style="margin:0 0 20px;">Neues Sparziel</h3>
+                <h3 style="margin:0 0 20px;" id="szFormTitle">Neues Sparziel</h3>
                 <div style="display:flex;flex-direction:column;gap:14px;">
                     <div class="form-group">
                         <label class="form-label">Bezeichnung</label>
@@ -127,6 +135,15 @@
                     <div class="form-group">
                         <label class="form-label">Zieldatum (optional)</label>
                         <input type="date" id="szDatum">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Sparkonto (optional)</label>
+                        <select id="szAccount" style="width:100%;">
+                            <option value="">— Kein Konto zuweisen —</option>
+                        </select>
+                        <div style="font-size:0.74rem;color:var(--text-3);margin-top:5px;">
+                            <i class="ri-information-line"></i> Zeigt, wie viel des Kontos für dieses Ziel reserviert ist.
+                        </div>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Farbe</label>
@@ -334,6 +351,89 @@
         margin: 10px 0 6px;
     }
     .sz-bar { height: 100%; border-radius: 6px; transition: width 0.5s ease; }
+
+    /* ── Konto-Aufteilung ── */
+    .konto-aufteilung-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px 24px;
+        transition: var(--transition);
+    }
+    .konto-aufteilung-card:hover {
+        border-color: var(--border-accent);
+    }
+    .konto-aufteilung-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        gap: 12px;
+    }
+    .konto-aufteilung-name {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        font-size: 1rem;
+    }
+    .konto-icon-badge {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+    .konto-balance-info {
+        text-align: right;
+        font-size: 0.82rem;
+        color: var(--text-3);
+        line-height: 1.5;
+    }
+    .konto-aufteilung-bar-wrap {
+        height: 22px;
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--surface-2);
+        display: flex;
+        margin-bottom: 12px;
+        position: relative;
+    }
+    .konto-aufteilung-bar-segment {
+        height: 100%;
+        transition: width 0.6s ease;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        min-width: 0;
+    }
+    .konto-aufteilung-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        font-size: 0.78rem;
+    }
+    .konto-aufteilung-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-2);
+    }
+    .konto-legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        flex-shrink: 0;
+    }
 
     @media (max-width: 900px) {
         .budget-stat-row { grid-template-columns: repeat(2, 1fr); }

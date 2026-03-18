@@ -341,6 +341,7 @@ async function loadData() {
         ];
 
         buildTrackerFilterUI();
+        renderAccountCards();
         populateMonthFilter();
         populateCategoryFilter();
         populateCategorySelect();
@@ -749,6 +750,149 @@ document.addEventListener('click', e => {
     }
 });
 
+// ─── Konto-Karten ─────────────────────────────────────────────
+
+const ACCOUNT_TYPE_LABELS_CARDS = {
+    girokonto: 'Girokonto', sparkonto: 'Sparkonto',
+    haushaltskonto: 'Haushaltskonto', bargeld: 'Bargeld',
+    depot: 'Depot', sonstiges: 'Sonstiges'
+};
+
+function renderAccountCards() {
+    const wrap = document.getElementById('accountCardsWrap');
+    const list = document.getElementById('accountCardsList');
+    if (!wrap || !list) return;
+
+    if (!allAccounts.length) {
+        wrap.style.display = 'none';
+        return;
+    }
+    wrap.style.display = '';
+
+    const fmtLocal = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+
+    list.innerHTML = allAccounts.map(acc => {
+        const bal       = acc.currentBalance ?? acc.balance ?? 0;
+        const balColor  = bal >= 0 ? '#22c55e' : '#ef4444';
+        const typeLabel = ACCOUNT_TYPE_LABELS_CARDS[acc.type] || acc.type;
+        const iconColor = acc.color || '#6358e6';
+        const iconClass = acc.icon  || 'ri-bank-line';
+        return `<div class="acc-card">
+            <div class="acc-card-icon" style="background:${iconColor}20;color:${iconColor};">
+                <i class="${iconClass}"></i>
+            </div>
+            <div class="acc-card-body">
+                <div class="acc-card-name">${acc.name}</div>
+                <div class="acc-card-type">${typeLabel}</div>
+            </div>
+            <div class="acc-card-balance" style="color:${balColor};">${fmtLocal.format(bal)}</div>
+            <button class="acc-card-abgleich-btn" onclick="openAbgleichModal(${acc.id})" title="Kontostand abgleichen">
+                <i class="ri-scales-3-line"></i>
+            </button>
+        </div>`;
+    }).join('');
+}
+
+// ─── Kontostand-Abgleich ──────────────────────────────────────
+
+let _abgleichAccountId = null;
+
+function openAbgleichModal(accountId) {
+    const acc = allAccounts.find(a => a.id === accountId);
+    if (!acc) return;
+    _abgleichAccountId = accountId;
+
+    const fmtLocal = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const bal      = acc.currentBalance ?? acc.balance ?? 0;
+
+    document.getElementById('abgleichKontoName').textContent = acc.name + ' · ' + (ACCOUNT_TYPE_LABELS_CARDS[acc.type] || acc.type);
+    document.getElementById('abgleichBerechnet').textContent = fmtLocal.format(bal);
+    document.getElementById('abgleichBerechnet').style.color = bal >= 0 ? '#22c55e' : '#ef4444';
+    document.getElementById('abgleichEchterStand').value     = '';
+    document.getElementById('abgleichDiffBox').style.display = 'none';
+    document.getElementById('abgleichMsg').textContent       = '';
+
+    document.getElementById('abgleichModalOverlay').style.display = 'flex';
+    setTimeout(() => document.getElementById('abgleichEchterStand')?.focus(), 60);
+}
+
+function closeAbgleichModal(e) {
+    if (e && e.target !== document.getElementById('abgleichModalOverlay')) return;
+    document.getElementById('abgleichModalOverlay').style.display = 'none';
+    _abgleichAccountId = null;
+}
+
+function updateAbgleichDiff() {
+    const acc = allAccounts.find(a => a.id === _abgleichAccountId);
+    if (!acc) return;
+    const echt = parseFloat(document.getElementById('abgleichEchterStand').value);
+    const diffBox = document.getElementById('abgleichDiffBox');
+    const diffText = document.getElementById('abgleichDiffText');
+    if (isNaN(echt)) {
+        diffBox.style.display = 'none';
+        return;
+    }
+    const fmtLocal = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const berechnet = acc.currentBalance ?? acc.balance ?? 0;
+    const diff = parseFloat((echt - berechnet).toFixed(2));
+
+    diffBox.style.display = '';
+    if (diff === 0) {
+        diffBox.style.background = 'rgba(34,197,94,0.08)';
+        diffBox.style.border     = '1px solid rgba(34,197,94,0.2)';
+        diffText.innerHTML = '<i class="ri-check-line" style="color:#22c55e;"></i> Kontostand stimmt überein — keine Korrekturbuchung nötig.';
+    } else if (diff > 0) {
+        diffBox.style.background = 'rgba(34,197,94,0.08)';
+        diffBox.style.border     = '1px solid rgba(34,197,94,0.2)';
+        diffText.innerHTML = `<i class="ri-arrow-up-line" style="color:#22c55e;"></i> Differenz: <b style="color:#22c55e;">+${fmtLocal.format(diff)}</b><br>
+            <span style="color:var(--text-3);font-size:0.8rem;">Es wird eine Einnahmen-Korrekturbuchung über ${fmtLocal.format(diff)} angelegt.</span>`;
+    } else {
+        diffBox.style.background = 'rgba(239,68,68,0.08)';
+        diffBox.style.border     = '1px solid rgba(239,68,68,0.2)';
+        diffText.innerHTML = `<i class="ri-arrow-down-line" style="color:#ef4444;"></i> Differenz: <b style="color:#ef4444;">${fmtLocal.format(diff)}</b><br>
+            <span style="color:var(--text-3);font-size:0.8rem;">Es wird eine Ausgaben-Korrekturbuchung über ${fmtLocal.format(Math.abs(diff))} angelegt.</span>`;
+    }
+}
+
+async function confirmAbgleich() {
+    const echt = parseFloat(document.getElementById('abgleichEchterStand').value);
+    if (!_abgleichAccountId || isNaN(echt)) return;
+
+    const msgEl = document.getElementById('abgleichMsg');
+    msgEl.textContent = '';
+
+    try {
+        const res  = await fetch(`/users/accounts/${_abgleichAccountId}/abgleich`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ echter_stand: echt })
+        });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.message || 'Fehler');
+
+        if (data.differenz === 0) {
+            msgEl.style.color = 'var(--green)';
+            msgEl.textContent = 'Kontostand ist bereits korrekt — keine Buchung nötig.';
+            setTimeout(() => {
+                document.getElementById('abgleichModalOverlay').style.display = 'none';
+                _abgleichAccountId = null;
+            }, 1800);
+        } else {
+            document.getElementById('abgleichModalOverlay').style.display = 'none';
+            _abgleichAccountId = null;
+            // Daten neu laden damit Korrekturbuchung sofort sichtbar ist
+            await loadData();
+            if (typeof ggcToast === 'function') {
+                ggcToast('Korrekturbuchung angelegt ✓');
+            }
+        }
+    } catch (err) {
+        msgEl.style.color   = 'var(--red)';
+        msgEl.textContent   = err.message || 'Fehler beim Abgleich.';
+    }
+}
+
 // ─── Liste rendern ────────────────────────────────────────────
 
 function getFiltered() {
@@ -926,14 +1070,27 @@ function renderList() {
         </li>`;
     } else {
         page.forEach(t => {
-            const isIncome   = t.type === "Einnahmen";
-            const sign       = isIncome ? 1 : -1;
-            const isFixkost  = t.recurring_id != null;
-            const li         = document.createElement("li");
-            li.className     = "transaction";
+            const isIncome    = t.type === "Einnahmen";
+            const sign        = isIncome ? 1 : -1;
+            const isFixkost   = t.recurring_id != null;
+            const isKorrektur = t.category === 'Kontostandskorrektur';
+            const isTransfer  = t.category === 'Umbuchung';
+            const li          = document.createElement("li");
+            li.className      = "transaction";
+
+            // Ziel-/Quell-Konto für Umbuchungs-Badge
+            let transferInfo = '';
+            if (isTransfer && t.transfer_to_account_id) {
+                const partner = allAccounts.find(x => String(x.id) === String(t.transfer_to_account_id));
+                if (partner) transferInfo = isIncome ? ` ← ${partner.name}` : ` → ${partner.name}`;
+            }
+            const transferBadge = isTransfer
+                ? ` <span class="tx-transfer-badge"><i class="ri-arrow-left-right-line"></i> Umbuchung${transferInfo}</span>`
+                : '';
+
             li.innerHTML = `
                 <div class="name">
-                    <h4>${t.name}${isFixkost ? ' <span class="fixkost-badge"><i class="ri-repeat-line"></i> Fixkosten</span>' : ''}</h4>
+                    <h4>${t.name}${isFixkost ? ' <span class="fixkost-badge"><i class="ri-repeat-line"></i> Fixkosten</span>' : ''}${isKorrektur ? ' <span class="tx-korrektur-badge"><i class="ri-scales-3-line"></i> Korrektur</span>' : ''}${transferBadge}</h4>
                     <p>${new Date(t.date).toLocaleDateString('de-DE')}${t.account_id ? ' · ' + (allAccounts.find(x => String(x.id) === String(t.account_id))?.name || '') : ''}</p>
                 </div>
                 <div class="category"><h4>${t.category}</h4></div>
@@ -943,11 +1100,11 @@ function renderList() {
                 <div class="transaction-actions">
                     ${isFixkost ? `<span class="fixkost-lock-icon" title="Automatisch eingetragene Fixkosten können nicht bearbeitet werden"><i class="ri-lock-line"></i></span>` : `
                     <button class="edit-transaction-btn"
-                        onclick="openEditById(${t.id})"
-                        title="Bearbeiten">
+                        onclick="${isTransfer ? '' : `openEditById(${t.id})`}"
+                        ${isTransfer ? 'disabled title="Umbuchungen können nicht bearbeitet werden" style="opacity:0.35;cursor:not-allowed;"' : 'title="Bearbeiten"'}>
                         <i class="ri-pencil-line"></i>
                     </button>`}
-                    <button class="delete-transaction-btn" onclick="deleteTransaction(${t.id})" title="Löschen">
+                    <button class="delete-transaction-btn" onclick="${isTransfer ? `deleteTransfer(${t.id})` : `deleteTransaction(${t.id})`}" title="Löschen">
                         <i class="ri-delete-bin-line"></i>
                     </button>
                 </div>
@@ -1140,1148 +1297,6 @@ function fitBalanceText(el) {
         el.style.fontSize = fs + 'px';
     }
 }
-// ─── Export Modal ──────────────────────────────────────────────
-
-let exportFormat = 'pdf';
-
-function openExportModal() {
-    const filtered = getFiltered();
-    const info     = document.getElementById('exportInfo');
-    if (info) {
-        info.innerHTML = '<div>· ' + filtered.length + ' Transaktion(en) im aktuellen Filter</div>';
-    }
-
-    // Kontoliste für PDF-Export befüllen
-    const listEl = document.getElementById('exportAccountList');
-    if (listEl) {
-        const fmtLocal = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-        const activeIds = getTrackerActiveIds();
-        const visible   = allAccounts.filter(a => activeIds === null || activeIds.has(String(a.id)));
-        const hasUnassigned = filtered.some(t => !t.account_id);
-
-        let html = visible.map(acc => {
-            const bal = acc.currentBalance ?? acc.balance ?? 0;
-            const balColor = bal >= 0 ? '#22c55e' : '#ef4444';
-            return `<label class="export-acc-item">
-                <input type="checkbox" name="exportAccId" value="${acc.id}" checked>
-                <span class="export-acc-dot" style="background:${acc.color || '#6358e6'};"></span>
-                <span class="export-acc-name">${acc.name}</span>
-                <span class="export-acc-bal" style="color:${balColor};">${fmtLocal.format(bal)}</span>
-            </label>`;
-        }).join('');
-
-        if (hasUnassigned) {
-            const unassignedCount = filtered.filter(t => !t.account_id).length;
-            html += `<label class="export-acc-item">
-                <input type="checkbox" name="exportAccId" value="__unassigned__" checked>
-                <span class="export-acc-dot" style="background:#94a3b8;"></span>
-                <span class="export-acc-name">Sonstige (ohne Konto)</span>
-                <span class="export-acc-bal" style="color:var(--text-3);">${unassignedCount} Tx</span>
-            </label>`;
-        }
-
-        listEl.innerHTML = html || '<div style="font-size:0.82rem;color:var(--text-3);">Keine aktiven Konten.</div>';
-    }
-
-    document.getElementById('exportModal').style.display = 'flex';
-}
-
-function closeExportModal() {
-    document.getElementById('exportModal').style.display = 'none';
-}
-
-function setExportFormat(fmt) {
-    exportFormat = fmt;
-    document.querySelectorAll('.export-format-tab').forEach(b => b.classList.toggle('active', b.dataset.fmt === fmt));
-    document.getElementById('exportPdfOptions').style.display   = fmt === 'pdf'   ? '' : 'none';
-    document.getElementById('exportCsvOptions').style.display   = fmt === 'csv'   ? '' : 'none';
-    document.getElementById('exportMonatOptions').style.display = fmt === 'monat' ? '' : 'none';
-    const labels = { pdf: 'PDF erstellen', csv: 'CSV herunterladen', monat: 'Monatsanalyse erstellen' };
-    document.getElementById('exportBtnLabel').textContent = labels[fmt] || 'Exportieren';
-
-    // Monatsliste befüllen
-    if (fmt === 'monat') {
-        const sel = document.getElementById('exportMonatSelect');
-        const months = [...new Set(transactions.map(t => (t.date || '').substring(0, 7)).filter(Boolean))].sort().reverse();
-        sel.innerHTML = months.map(m => {
-            const label = new Date(m + '-01').toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
-            return '<option value="' + m + '">' + label + '</option>';
-        }).join('');
-    }
-}
-
-// csvMode-Hint aktualisieren
-document.addEventListener('change', e => {
-    if (e.target.name === 'csvMode') {
-        const hint = document.getElementById('csvModeHint');
-        if (!hint) return;
-        if (e.target.value === 'reimport') {
-            hint.textContent = 'Enthält alle Felder im gleichen Format wie der CSV-Import — kann 1:1 wieder eingelesen werden.';
-        } else {
-            hint.textContent = 'Lesbare Spaltenbezeichnungen mit negativen Beträgen für Ausgaben — gut für Excel/Steuerberater.';
-        }
-    }
-});
-
-async function runExport() {
-    if (exportFormat === 'csv') {
-        exportCSV();
-        return;
-    }
-    // PDF-Export ist Pro-Feature
-    try {
-        const r = await fetch('/users/me/plan');
-        const { plan } = await r.json();
-        if (plan !== 'pro') {
-            if (typeof showUpgradeModal === 'function') {
-                showUpgradeModal('PDF-Export ist ein Pro-Feature', 'Im Free-Tarif ist der PDF-Export nicht verfügbar. Upgrade auf Pro um Monatsanalysen und PDF-Berichte zu exportieren.');
-            } else {
-                window.location.href = '/users/tarife';
-            }
-            return;
-        }
-    } catch { /* Netzwerkfehler – im Zweifel erlauben */ }
-
-    if (exportFormat === 'monat') exportMonatsanalyse();
-    else exportPDF();
-}
-
-// ── CSV Export ────────────────────────────────────────────────
-
-function exportCSV() {
-    const delim    = document.querySelector('input[name="exportDelimiter"]:checked')?.value || ';';
-    const mode     = document.querySelector('input[name="csvMode"]:checked')?.value || 'reimport';
-    const filtered = getFiltered();
-
-    let header, rows;
-
-    if (mode === 'reimport') {
-        // 1:1 reimportierbar — Spaltenbezeichnungen identisch zum Import-Mapping
-        header = ['Datum', 'Name', 'Kategorie', 'Typ', 'Betrag', 'Konto'].join(delim);
-        rows = filtered.map(t => {
-            const accName = t.account_id ? (allAccounts.find(a => String(a.id) === String(t.account_id))?.name || '') : '';
-            return [
-                t.date?.substring(0, 10) || '',
-                '"' + (t.name     || '').replace(/"/g, '""') + '"',
-                '"' + (t.category || '').replace(/"/g, '""') + '"',
-                t.type || 'Ausgaben',
-                // Betrag immer positiv — Typ-Spalte gibt Richtung vor (wie Import erwartet)
-                Math.abs(t.amount).toFixed(2).replace('.', ','),
-                '"' + accName.replace(/"/g, '""') + '"'
-            ].join(delim);
-        });
-    } else {
-        // Lesbare Version — negative Beträge für Ausgaben, menschenlesbare Spalten
-        header = ['Datum', 'Bezeichnung', 'Kategorie', 'Art', 'Betrag (€)', 'Konto'].join(delim);
-        rows = filtered.map(t => {
-            const accName = t.account_id ? (allAccounts.find(a => String(a.id) === String(t.account_id))?.name || '') : '';
-            const signed  = t.type === 'Ausgaben' ? -Math.abs(t.amount) : Math.abs(t.amount);
-            return [
-                t.date?.substring(0, 10) || '',
-                '"' + (t.name     || '').replace(/"/g, '""') + '"',
-                '"' + (t.category || '').replace(/"/g, '""') + '"',
-                t.type || '',
-                signed.toFixed(2).replace('.', ','),
-                '"' + accName.replace(/"/g, '""') + '"'
-            ].join(delim);
-        });
-    }
-
-    const suffix   = mode === 'reimport' ? '_reimport' : '_lesbar';
-    const blob     = new Blob(['\uFEFF' + [header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url      = URL.createObjectURL(blob);
-    const a        = document.createElement('a');
-    a.href         = url;
-    a.download     = 'transaktionen' + suffix + '_' + new Date().toISOString().substring(0, 10) + '.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-    closeExportModal();
-}
-
-// ── Monatsanalyse PDF ─────────────────────────────────────────
-
-async function exportMonatsanalyse() {
-    const { jsPDF } = window.jspdf;
-    if (!jsPDF) { alert('PDF-Bibliothek wird geladen, bitte kurz warten.'); return; }
-
-    const monat      = document.getElementById('exportMonatSelect')?.value;
-    const chartType  = document.querySelector('input[name="monatChartType"]:checked')?.value || 'bar';
-    if (!monat) { alert('Bitte einen Monat auswählen.'); return; }
-
-    const monatLabel = new Date(monat + '-01').toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
-    const monatTxs   = transactions.filter(t => (t.date || '').startsWith(monat));
-
-    if (monatTxs.length === 0) {
-        alert('Keine Transaktionen für ' + monatLabel + ' gefunden.');
-        return;
-    }
-
-    // Farben
-    const W = 210, H = 297, M = 16;
-    const navy      = [15,  30,  70];
-    const accentBlue= [37,  99, 235];
-    const white     = [255, 255, 255];
-    const lineGrey  = [226, 232, 240];
-    const rowAlt    = [248, 250, 252];
-    const inkDark   = [30,  41,  59];
-    const inkMid    = [71,  85, 105];
-    const greenInk  = [22, 163,  74];
-    const redInk    = [220,  38,  38];
-    const greenBg   = [220, 252, 231];
-    const redBg     = [254, 226, 226];
-    const amberBg   = [254, 243, 199];
-
-    const fmtEur  = v => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
-    const fmtDate = s => s ? new Date(s).toLocaleDateString('de-DE') : '';
-
-    const totalInc = monatTxs.filter(t => t.type === 'Einnahmen').reduce((s, t) => s + t.amount, 0);
-    const totalExp = monatTxs.filter(t => t.type === 'Ausgaben').reduce((s, t) => s + t.amount, 0);
-    const net      = totalInc - totalExp;
-
-    // Kategorien
-    const byKat = {};
-    monatTxs.filter(t => t.type === 'Ausgaben').forEach(t => {
-        const k = t.category || 'Sonstiges';
-        byKat[k] = (byKat[k] || 0) + t.amount;
-    });
-    const topKats = Object.entries(byKat).sort((a, b) => b[1] - a[1]);
-
-    // Nach Tag gruppieren für Chart
-    const byDay = {};
-    monatTxs.forEach(t => {
-        const d = (t.date || '').substring(0, 10);
-        if (!byDay[d]) byDay[d] = { inc: 0, exp: 0 };
-        if (t.type === 'Einnahmen') byDay[d].inc += t.amount;
-        else byDay[d].exp += t.amount;
-    });
-    const dayKeys   = Object.keys(byDay).sort();
-    const dayLabels = dayKeys.map(d => new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: 'short' }));
-
-    // Chart offscreen rendern
-    async function renderMonatChart() {
-        return new Promise(resolve => {
-            const canvas     = document.createElement('canvas');
-            canvas.width     = 900;
-            canvas.height    = 320;
-            canvas.style.position = 'absolute';
-            canvas.style.left = '-9999px';
-            document.body.appendChild(canvas);
-
-            const isDoughnut = chartType === 'doughnut';
-            const isLine     = chartType === 'line';
-            const colors     = ['#6358e6','#ef4444','#f59e0b','#22c55e','#3b82f6','#ec4899','#14b8a6','#a855f7'];
-
-            let datasets, labels;
-            if (isDoughnut) {
-                labels   = topKats.map(([k]) => k);
-                datasets = [{ label: 'Ausgaben', data: topKats.map(([, v]) => v),
-                    backgroundColor: labels.map((_, i) => colors[i % colors.length]),
-                    borderWidth: 2, borderColor: '#fff' }];
-            } else {
-                labels   = dayLabels;
-                datasets = [
-                    { label: 'Einnahmen', data: dayKeys.map(k => byDay[k].inc),
-                      backgroundColor: isLine ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.75)',
-                      borderColor: '#16a34a', borderWidth: 2, fill: isLine, tension: 0.35,
-                      pointRadius: isLine ? 3 : 0, borderRadius: 4 },
-                    { label: 'Ausgaben', data: dayKeys.map(k => byDay[k].exp),
-                      backgroundColor: isLine ? 'rgba(220,38,38,0.12)' : 'rgba(220,38,38,0.75)',
-                      borderColor: '#dc2626', borderWidth: 2, fill: isLine, tension: 0.35,
-                      pointRadius: isLine ? 3 : 0, borderRadius: 4 }
-                ];
-            }
-
-            const bgPlugin = { id: 'bg', beforeDraw(ch) { const c = ch.ctx; c.save(); c.fillStyle = '#ffffff'; c.fillRect(0,0,ch.width,ch.height); c.restore(); } };
-            const ch = new Chart(canvas.getContext('2d'), {
-                type: isDoughnut ? 'doughnut' : chartType,
-                data: { labels, datasets },
-                options: {
-                    responsive: false, animation: false,
-                    plugins: { legend: { labels: { color: '#475569', font: { size: 12, family: 'helvetica' } } } },
-                    scales: isDoughnut ? {} : {
-                        y: { ticks: { color: '#64748b', callback: v => v + ' €', font: { size: 10 } }, grid: { color: 'rgba(0,0,0,0.06)' } },
-                        x: { ticks: { color: '#64748b', font: { size: 10 }, maxRotation: 45 }, grid: { color: 'rgba(0,0,0,0.04)' } }
-                    }
-                },
-                plugins: [bgPlugin]
-            });
-
-            setTimeout(() => {
-                const img = canvas.toDataURL('image/png');
-                ch.destroy();
-                document.body.removeChild(canvas);
-                resolve(img);
-            }, 300);
-        });
-    }
-
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-    // ── Seiten-Hintergrund ──
-    doc.setFillColor(252, 252, 254);
-    doc.rect(0, 0, W, H, 'F');
-
-    // ── Header-Banner ──
-    doc.setFillColor(...accentBlue);
-    doc.rect(0, 0, W, 38, 'F');
-
-    doc.setTextColor(...white);
-    doc.setFontSize(18); doc.setFont('helvetica', 'bold');
-    doc.text('Monatsanalyse', M, 16);
-    doc.setFontSize(11); doc.setFont('helvetica', 'normal');
-    doc.text(monatLabel, M, 25);
-    doc.setFontSize(8);
-    doc.text('Golden Goat Capital  ·  Erstellt am ' + new Date().toLocaleDateString('de-DE'), M, 33);
-
-    // ── Zusammenfassung Kacheln ──
-    let y = 46;
-    const tileW = (W - M * 2 - 10) / 3;
-
-    // Einnahmen
-    doc.setFillColor(...greenBg);
-    doc.roundedRect(M, y, tileW, 22, 2, 2, 'F');
-    doc.setTextColor(...greenInk);
-    doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-    doc.text('EINNAHMEN', M + 4, y + 6);
-    doc.setFontSize(13); doc.setFont('helvetica', 'bold');
-    doc.text(fmtEur(totalInc), M + 4, y + 16);
-
-    // Ausgaben
-    const tile2X = M + tileW + 5;
-    doc.setFillColor(...redBg);
-    doc.roundedRect(tile2X, y, tileW, 22, 2, 2, 'F');
-    doc.setTextColor(...redInk);
-    doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-    doc.text('AUSGABEN', tile2X + 4, y + 6);
-    doc.setFontSize(13); doc.setFont('helvetica', 'bold');
-    doc.text(fmtEur(totalExp), tile2X + 4, y + 16);
-
-    // Saldo
-    const tile3X = M + (tileW + 5) * 2;
-    doc.setFillColor(...(net >= 0 ? greenBg : redBg));
-    doc.roundedRect(tile3X, y, tileW, 22, 2, 2, 'F');
-    doc.setTextColor(...(net >= 0 ? greenInk : redInk));
-    doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-    doc.text('SALDO', tile3X + 4, y + 6);
-    doc.setFontSize(13); doc.setFont('helvetica', 'bold');
-    doc.text((net >= 0 ? '+' : '') + fmtEur(net), tile3X + 4, y + 16);
-
-    y += 28;
-
-    // ── Diagramm ──
-    doc.setFillColor(...white);
-    doc.setDrawColor(...lineGrey); doc.setLineWidth(0.3);
-    doc.roundedRect(M, y, W - M*2, 62, 2, 2, 'FD');
-
-    doc.setTextColor(...navy);
-    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-    doc.text('Einnahmen & Ausgaben im ' + monatLabel, M + 4, y + 6);
-
-    const chartImg = await renderMonatChart();
-    if (chartImg) doc.addImage(chartImg, 'PNG', M + 1, y + 8, W - M*2 - 2, 52);
-    y += 68;
-
-    // ── Kategorien-Aufschlüsselung ──
-    if (topKats.length > 0) {
-        doc.setTextColor(...navy);
-        doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-        doc.text('Ausgaben nach Kategorie', M, y + 1); y += 6;
-
-        const barW  = W - M*2 - 60;
-        const colors = ['#6358e6','#ef4444','#f59e0b','#22c55e','#3b82f6','#ec4899'];
-
-        topKats.slice(0, 8).forEach(([kat, val], i) => {
-            if (y > H - 30) return;
-            const pct    = totalExp > 0 ? val / totalExp : 0;
-            const filled = barW * pct;
-
-            doc.setTextColor(...inkDark);
-            doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
-            doc.text(kat.length > 22 ? kat.substring(0, 20) + '…' : kat, M, y + 4);
-
-            // Balken Hintergrund
-            doc.setFillColor(...lineGrey);
-            doc.roundedRect(M + 52, y, barW, 5, 1, 1, 'F');
-            // Balken Füllung
-            const hex  = colors[i % colors.length];
-            const r    = parseInt(hex.slice(1,3), 16);
-            const g    = parseInt(hex.slice(3,5), 16);
-            const b    = parseInt(hex.slice(5,7), 16);
-            doc.setFillColor(r, g, b);
-            if (filled > 0) doc.roundedRect(M + 52, y, filled, 5, 1, 1, 'F');
-
-            // Betrag + Prozent
-            doc.setTextColor(...inkMid);
-            doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-            doc.text(fmtEur(val) + ' (' + (pct * 100).toFixed(1) + '%)', W - M, y + 4, { align: 'right' });
-            y += 9;
-        });
-        y += 4;
-    }
-
-    // ── Transaktionsliste ──
-    if (y > H - 60) { doc.addPage(); y = 20; }
-
-    doc.setDrawColor(...lineGrey); doc.setLineWidth(0.3);
-    doc.line(M, y, W - M, y); y += 5;
-    doc.setTextColor(...navy);
-    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-    doc.text('Alle Transaktionen (' + monatTxs.length + ')', M, y); y += 5;
-
-    // Tabellen-Header
-    doc.setFillColor(...accentBlue);
-    doc.rect(M, y, W - M*2, 7, 'F');
-    doc.setTextColor(...white);
-    doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
-    const colX = { date: M + 2, name: M + 24, cat: M + 88, amt: W - M - 2 };
-    doc.text('DATUM',        colX.date, y + 4.5);
-    doc.text('BEZEICHNUNG',  colX.name, y + 4.5);
-    doc.text('KATEGORIE',    colX.cat,  y + 4.5);
-    doc.text('BETRAG',       colX.amt,  y + 4.5, { align: 'right' });
-    y += 8;
-
-    const sorted = monatTxs.slice().sort((a, b) => (a.date || '') < (b.date || '') ? -1 : 1);
-    sorted.forEach((t, ri) => {
-        if (y > H - 15) {
-            doc.addPage();
-            doc.setFillColor(252, 252, 254);
-            doc.rect(0, 0, W, H, 'F');
-            y = 16;
-            // Mini-Header auf Folgeseiten
-            doc.setFillColor(...accentBlue);
-            doc.rect(M, y, W - M*2, 7, 'F');
-            doc.setTextColor(...white);
-            doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
-            doc.text('DATUM', colX.date, y + 4.5);
-            doc.text('BEZEICHNUNG', colX.name, y + 4.5);
-            doc.text('KATEGORIE', colX.cat, y + 4.5);
-            doc.text('BETRAG', colX.amt, y + 4.5, { align: 'right' });
-            y += 8;
-        }
-
-        const isInc = t.type === 'Einnahmen';
-        const rowH  = 6.5;
-        if (ri % 2 === 1) { doc.setFillColor(...rowAlt); doc.rect(M, y - 0.5, W - M*2, rowH, 'F'); }
-
-        doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...inkDark);
-        doc.text(fmtDate(t.date?.substring(0, 10)), colX.date, y + 4);
-
-        const nm = (t.name || '').length > 34 ? t.name.substring(0, 32) + '…' : (t.name || '');
-        doc.text(nm, colX.name, y + 4);
-
-        doc.setTextColor(...inkMid);
-        const cat = (t.category || '').length > 16 ? t.category.substring(0, 14) + '…' : (t.category || '');
-        doc.text(cat, colX.cat, y + 4);
-
-        doc.setTextColor(...(isInc ? greenInk : redInk));
-        doc.setFont('helvetica', 'bold');
-        doc.text((isInc ? '+' : '−') + fmtEur(t.amount), colX.amt, y + 4, { align: 'right' });
-        y += rowH;
-    });
-
-    // ── Footer ──
-    const pageCount = doc.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setDrawColor(...lineGrey); doc.setLineWidth(0.3);
-        doc.line(M, H - 12, W - M, H - 12);
-        doc.setTextColor(180, 180, 180);
-        doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-        doc.text('Golden Goat Capital · Monatsanalyse ' + monatLabel, M, H - 7);
-        doc.text('Seite ' + i + ' / ' + pageCount, W - M, H - 7, { align: 'right' });
-    }
-
-    doc.save('monatsanalyse_' + monat + '.pdf');
-    closeExportModal();
-}
-
-// ── PDF Export ────────────────────────────────────────────────
-
-async function exportPDF() {
-    const { jsPDF } = window.jspdf;
-    if (!jsPDF) { alert('PDF-Bibliothek wird geladen, bitte kurz warten.'); return; }
-
-    const chartTypes = [...document.querySelectorAll('input[name="exportChartType"]:checked')].map(el => el.value);
-    if (chartTypes.length === 0) chartTypes.push('bar');
-    const groupBy    = document.querySelector('input[name="exportGroupBy"]:checked')?.value   || 'month';
-    const showGesamt = document.getElementById('exportShowGesamtToggle')?.checked ?? true;
-
-    // Ausgewählte Konten lesen
-    const checkedAccIds = [...document.querySelectorAll('input[name="exportAccId"]:checked')].map(el => el.value);
-    const includeUnassigned = checkedAccIds.includes('__unassigned__');
-    const selectedAccIds    = new Set(checkedAccIds.filter(v => v !== '__unassigned__'));
-
-    const filtered   = getFiltered();
-
-    // Nur Transaktionen der ausgewählten Konten
-    const selectedTx = filtered.filter(t =>
-        t.account_id ? selectedAccIds.has(String(t.account_id)) : includeUnassigned
-    );
-
-    if (selectedTx.length === 0) {
-        alert('Keine Transaktionen für die Auswahl.');
-        return;
-    }
-
-    const accountsToExport = allAccounts.filter(a => selectedAccIds.has(String(a.id)));
-    const unassignedTx     = includeUnassigned ? filtered.filter(t => !t.account_id) : [];
-
-    // ─── Designkonstanten ───────────────────────────────────────
-    const fmtEur  = v => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
-    const fmtDate = s => s ? new Date(s).toLocaleDateString('de-DE') : '';
-
-    const W = 210, H = 297, M = 16;
-    const white      = [255, 255, 255];
-    const pagesBg    = [250, 251, 253];
-    const navy       = [17,  24,  39];
-    const accentBlue = [37,  99, 235];
-    const slate      = [107, 114, 128];
-    const lineGrey   = [229, 231, 235];
-    const rowAlt     = [249, 250, 251];
-    const inkDark    = [17,  24,  39];
-    const inkMid     = [75,  85, 99];
-    const greenInk   = [21, 128,  61];
-    const redInk     = [185,  28,  28];
-    const greenBg    = [240, 253, 244];
-    const redBg      = [254, 242, 242];
-
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-    let filterDesc = 'Alle Transaktionen';
-    if (filterMode === 'months' && selectedMonths.size > 0) {
-        filterDesc = [...selectedMonths].sort().map(m => new Date(m+'-01').toLocaleDateString('de-DE',{month:'long',year:'numeric'})).join(', ');
-    } else if (filterMode === 'range' && (rangeFrom || rangeTo)) {
-        filterDesc = (rangeFrom ? fmtDate(rangeFrom) : '?') + ' \u2013 ' + (rangeTo ? fmtDate(rangeTo) : 'heute');
-    } else if (filterMode === 'weeks' && selectedWeeks.size > 0) {
-        filterDesc = 'KW ' + [...selectedWeeks].sort().map(w => parseInt(w.split('-W')[1])).join(', ');
-    }
-
-    // ─── Seitenhintergrund ──────────────────────────────────────
-    function paintBg() {
-        doc.setFillColor(...pagesBg);
-        doc.rect(0, 0, W, H, 'F');
-    }
-
-    // ─── Header ─────────────────────────────────────────────────
-    // type: 'account' | 'gesamt' | 'sonstige'
-    function drawHeader(opts) {
-        // opts: { type, account?, localPage, label? }
-        paintBg();
-
-        // Oberer Headerbereich weiss
-        doc.setFillColor(...white);
-        doc.rect(0, 0, W, 44, 'F');
-
-        // Akzentlinie unten am Header
-        doc.setFillColor(...accentBlue);
-        doc.rect(0, 43, W, 1, 'F');
-
-        // Linker Block: Firmenname + Meta
-        doc.setTextColor(...navy);
-        doc.setFontSize(13); doc.setFont('helvetica', 'bold');
-        doc.text('Golden Goat Capital', M, 13);
-
-        doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...slate);
-        doc.text('Finanzbericht \u00b7 ' + filterDesc, M, 20);
-        doc.text('Erstellt am ' + new Date().toLocaleDateString('de-DE'), M, 26);
-
-        // Rechter Block: Konto / Gesamt
-        if (opts.type === 'account' && opts.account) {
-            const acc = opts.account;
-            const ATYPES = { girokonto:'Girokonto', sparkonto:'Sparkonto', haushaltskonto:'Haushaltskonto', bargeld:'Bargeld', depot:'Depot', sonstiges:'Sonstiges' };
-            const bal = acc.currentBalance ?? acc.balance ?? 0;
-
-            // Farbiger Punkt neben dem Kontonamen
-            doc.setFillColor(...(acc.color ? hexToRgb(acc.color) : accentBlue));
-            doc.circle(W - M - 2, 11, 2, 'F');
-
-            doc.setTextColor(...navy);
-            doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-            doc.text(acc.name, W - M - 6, 13, { align: 'right' });
-
-            doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
-            doc.setTextColor(...slate);
-            doc.text(ATYPES[acc.type] || acc.type, W - M, 20, { align: 'right' });
-
-            doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-            doc.setTextColor(...(bal >= 0 ? greenInk : redInk));
-            doc.text(fmtEur(bal), W - M, 29, { align: 'right' });
-
-            doc.setFontSize(6.5); doc.setFont('helvetica', 'normal');
-            doc.setTextColor(...slate);
-            doc.text('Aktueller Kontostand', W - M, 35, { align: 'right' });
-
-        } else if (opts.type === 'gesamt') {
-            doc.setTextColor(...navy);
-            doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-            doc.text('Gesamtübersicht', W - M, 13, { align: 'right' });
-            doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
-            doc.setTextColor(...slate);
-            doc.text(accountsToExport.length + ' Konto' + (accountsToExport.length !== 1 ? 'en' : ''), W - M, 20, { align: 'right' });
-
-        } else if (opts.type === 'sonstige') {
-            doc.setTextColor(...navy);
-            doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-            doc.text('Sonstige Transaktionen', W - M, 13, { align: 'right' });
-            doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
-            doc.setTextColor(...slate);
-            doc.text('Ohne Kontozuordnung', W - M, 20, { align: 'right' });
-        }
-
-        // Seitenzahl
-        doc.setTextColor(...slate);
-        doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-        doc.text('Seite ' + opts.localPage, W - M, 39, { align: 'right' });
-    }
-
-    // ─── Footer ─────────────────────────────────────────────────
-    function drawFooter() {
-        doc.setFillColor(...white);
-        doc.rect(0, H - 14, W, 14, 'F');
-        doc.setFillColor(...accentBlue);
-        doc.rect(0, H - 14, W, 0.7, 'F');
-        doc.setTextColor(...slate);
-        doc.setFontSize(6.5); doc.setFont('helvetica', 'normal');
-        doc.text('Golden Goat Capital \u00b7 Vertraulich', M, H - 5);
-        doc.text(new Date().toLocaleDateString('de-DE'), W - M, H - 5, { align: 'right' });
-    }
-
-    // ─── Folgeseite: Transaktionen ──────────────────────────────
-    function addTxPage(headerOpts) {
-        doc.addPage();
-        drawHeader(headerOpts);
-        drawFooter();
-        // Schmaler Hinweisstreifen
-        doc.setFillColor(239, 246, 255);
-        doc.rect(0, 44, W, 7, 'F');
-        doc.setTextColor(...accentBlue);
-        doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
-        const lbl = headerOpts.account ? headerOpts.account.name : (headerOpts.type === 'gesamt' ? 'Gesamtübersicht' : 'Sonstige Transaktionen');
-        doc.text('TRANSAKTIONEN \u00b7 ' + lbl.toUpperCase() + ' \u00b7 Seite ' + headerOpts.localPage, W / 2, 49, { align: 'center' });
-        return 54;
-    }
-
-    // ─── Hex → RGB ──────────────────────────────────────────────
-    function hexToRgb(hex) {
-        const r = parseInt(hex.slice(1,3), 16);
-        const g = parseInt(hex.slice(3,5), 16);
-        const b = parseInt(hex.slice(5,7), 16);
-        return [r, g, b];
-    }
-
-    // ─── Summary-Kacheln (3 Stück) ──────────────────────────────
-    function drawSummaryKacheln(txList, y) {
-        const inc = txList.filter(t => t.type === 'Einnahmen').reduce((s,t) => s+t.amount, 0);
-        const exp = txList.filter(t => t.type === 'Ausgaben').reduce((s,t)  => s+t.amount, 0);
-        const net = inc - exp;
-        const tiles = [
-            { label:'Einnahmen',        val: fmtEur(inc), col: greenInk, bg: greenBg },
-            { label:'Ausgaben',         val: fmtEur(exp), col: redInk,   bg: redBg   },
-            { label:'Gewinn / Verlust', val: (net>=0?'+':'') + fmtEur(net), col: net>=0 ? greenInk : redInk, bg: net>=0 ? greenBg : redBg },
-        ];
-        const tW = (W - M*2 - 8) / 3;
-        tiles.forEach((t, i) => {
-            const x = M + i * (tW + 4);
-            doc.setFillColor(...t.bg);
-            doc.roundedRect(x, y, tW, 19, 1.5, 1.5, 'F');
-            doc.setDrawColor(...lineGrey); doc.setLineWidth(0.25);
-            doc.roundedRect(x, y, tW, 19, 1.5, 1.5, 'S');
-            // Oberer Farbstreifen
-            doc.setFillColor(...t.col);
-            doc.roundedRect(x, y, tW, 2, 1, 1, 'F');
-            // Wert
-            doc.setTextColor(...t.col);
-            doc.setFontSize(9.5); doc.setFont('helvetica', 'bold');
-            doc.text(t.val, x + tW/2, y + 11.5, { align:'center' });
-            // Label
-            doc.setTextColor(...inkMid);
-            doc.setFontSize(6); doc.setFont('helvetica', 'normal');
-            doc.text(t.label, x + tW/2, y + 16.5, { align:'center' });
-        });
-        return y + 23;
-    }
-
-    // ─── Diagramm (offscreen, hohe Qualität) ────────────────────
-    // Fester großer Canvas → Schriftgrößen proportional → jsPDF skaliert auf mm-Größe.
-    async function renderChart(txList, cType, mmW, mmH) {
-        return new Promise(resolve => {
-            if (!txList.length) { resolve(null); return; }
-
-            const CW = 1200;
-            const CH = Math.round(CW * (mmH / mmW));
-
-            const canvas = document.createElement('canvas');
-            canvas.width  = CW;
-            canvas.height = CH;
-            canvas.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
-            document.body.appendChild(canvas);
-            const ctx = canvas.getContext('2d');
-
-            const kfn = groupBy==='day'  ? t=>t.date?.substring(0,10)
-                      : groupBy==='week' ? t=>getWeekKey(new Date(t.date?.substring(0,10)))
-                      : t=>t.date?.substring(0,7);
-            const lfn = groupBy==='day'  ? k=>new Date(k).toLocaleDateString('de-DE',{day:'2-digit',month:'short'})
-                      : groupBy==='week' ? k=>'KW '+parseInt(k.split('-W')[1])
-                      : k=>new Date(k+'-01').toLocaleDateString('de-DE',{month:'short',year:'numeric'});
-
-            const isDoughnut = cType === 'doughnut';
-            let labels, datasets;
-
-            if (isDoughnut) {
-                const catMap = {};
-                txList.filter(t=>t.type==='Ausgaben').forEach(t => {
-                    catMap[t.category] = (catMap[t.category]||0) + t.amount;
-                });
-                const totalExp = Object.values(catMap).reduce((s,v)=>s+v, 0);
-                const ck   = Object.keys(catMap).sort((a,b)=>catMap[b]-catMap[a]);
-                const cols = ['#1d4ed8','#dc2626','#d97706','#16a34a','#7c3aed','#0891b2','#db2777','#ea580c','#65a30d','#0369a1'];
-                labels   = ck.map(c => c + '  ' + (totalExp>0 ? (catMap[c]/totalExp*100).toFixed(1) : '0.0') + '%');
-                datasets = [{
-                    data: ck.map(c=>catMap[c]),
-                    backgroundColor: ck.map((_,i)=>cols[i%cols.length]),
-                    borderWidth: 3, borderColor: '#ffffff'
-                }];
-            } else {
-                const g = {};
-                txList.forEach(t => {
-                    const k = kfn(t); if (!g[k]) g[k]={income:0,expense:0};
-                    if (t.type==='Einnahmen') g[k].income+=t.amount; else g[k].expense+=t.amount;
-                });
-                const sk = Object.keys(g).sort();
-                labels = sk.map(lfn);
-                const isLine = cType === 'line';
-                datasets = [
-                    { label:'Einnahmen', data:sk.map(k=>g[k].income),
-                      backgroundColor: isLine ? 'rgba(21,128,61,0.12)' : 'rgba(21,128,61,0.85)',
-                      borderColor:'#15803d', borderWidth:isLine?3:0,
-                      fill:isLine, tension:0.35,
-                      pointBackgroundColor:'#15803d', pointBorderColor:'#fff',
-                      pointBorderWidth:2, pointRadius:isLine?5:0,
-                      borderRadius:isLine?0:5, borderSkipped:false },
-                    { label:'Ausgaben',  data:sk.map(k=>g[k].expense),
-                      backgroundColor: isLine ? 'rgba(185,28,28,0.12)' : 'rgba(185,28,28,0.85)',
-                      borderColor:'#b91c1c', borderWidth:isLine?3:0,
-                      fill:isLine, tension:0.35,
-                      pointBackgroundColor:'#b91c1c', pointBorderColor:'#fff',
-                      pointBorderWidth:2, pointRadius:isLine?5:0,
-                      borderRadius:isLine?0:5, borderSkipped:false }
-                ];
-            }
-
-            // Schriftgrößen relativ zur Canvas-Breite → im PDF immer gut lesbar
-            const FS_TICK   = Math.round(CW * 0.022); // ~26px
-            const FS_LEGEND = Math.round(CW * 0.025); // ~30px
-            const FS_DLEG   = Math.round(CW * 0.019); // ~23px (Donut hat mehr Einträge)
-
-            const fmtShort = v => {
-                if (v >= 1000000) return (v/1000000).toFixed(1).replace('.',',')+' Mio€';
-                if (v >= 1000)    return (v/1000).toFixed(v%1000===0?0:1).replace('.',',')+' k€';
-                return v.toLocaleString('de-DE')+'€';
-            };
-
-            const bgPlugin = {
-                id:'whitebg',
-                beforeDraw(ch) {
-                    const c=ch.ctx; c.save();
-                    c.fillStyle='#f9fafb';
-                    c.fillRect(0,0,CW,CH);
-                    c.fillStyle='#ffffff';
-                    c.beginPath();
-                    c.roundRect(10,10,CW-20,CH-20,14);
-                    c.fill();
-                    c.restore();
-                }
-            };
-
-            const ch = new Chart(ctx, {
-                type: isDoughnut ? 'doughnut' : cType,
-                data: { labels, datasets },
-                options: {
-                    responsive: false, animation: false,
-                    layout: { padding: { top:28, right:28, bottom:20, left:20 } },
-                    plugins: {
-                        legend: {
-                            position: isDoughnut ? 'right' : 'bottom',
-                            labels: {
-                                color:'#1f2937',
-                                font:{ size:isDoughnut ? FS_DLEG : FS_LEGEND, family:'Arial, sans-serif', weight:'500' },
-                                boxWidth:  isDoughnut ? 20 : 22,
-                                boxHeight: isDoughnut ? 20 : 16,
-                                padding:   isDoughnut ? 16 : 26,
-                                usePointStyle: !isDoughnut,
-                                pointStyleWidth: 22
-                            }
-                        },
-                        tooltip: { enabled: false }
-                    },
-                    scales: isDoughnut ? {} : {
-                        y: {
-                            beginAtZero: true,
-                            grid: { color:'rgba(0,0,0,0.06)', lineWidth:1.5 },
-                            border: { display:false },
-                            ticks: {
-                                color:'#4b5563',
-                                font:{ size:FS_TICK, family:'Arial, sans-serif' },
-                                callback: v => fmtShort(v),
-                                maxTicksLimit: 6,
-                                padding: 10
-                            }
-                        },
-                        x: {
-                            grid: { display:false },
-                            border: { display:false },
-                            ticks: {
-                                color:'#4b5563',
-                                font:{ size:FS_TICK, family:'Arial, sans-serif' },
-                                maxRotation: 0,
-                                maxTicksLimit: 12,
-                                padding: 8
-                            }
-                        }
-                    }
-                },
-                plugins: [bgPlugin]
-            });
-
-            setTimeout(() => {
-                const img = canvas.toDataURL('image/png', 1.0);
-                ch.destroy(); document.body.removeChild(canvas);
-                resolve(img);
-            }, 400);
-        });
-    }
-    // ─── Übersichtsseite (Seite 1 jedes Kontos) ─────────────────
-    async function drawOverviewPage(txList, headerOpts) {
-        drawHeader(headerOpts);
-        drawFooter();
-        let y = 49;
-
-        // Abschnittstitel
-        doc.setTextColor(...slate);
-        doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
-        doc.text('ZUSAMMENFASSUNG', M, y); y += 5;
-
-        // Kacheln
-        y = drawSummaryKacheln(txList, y);
-        y += 5;
-
-        // Trennlinie
-        doc.setDrawColor(...lineGrey); doc.setLineWidth(0.3);
-        doc.line(M, y, W-M, y); y += 5;
-
-        // Diagramm-Abschnittstitel
-        doc.setTextColor(...slate);
-        doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
-        doc.text('AUSWERTUNG', M, y); y += 4;
-
-        // Feste Höhe pro Diagramm: so kalkuliert dass 3 Stück + Abstände auf die Seite passen
-        // Verfügbarer Platz von y bis Footer: H - 18 - y ≈ 155mm bei y≈122
-        // 3 Charts à 47mm + 2×4mm Abstand = 149mm → passt komfortabel
-        const CHART_H = 47; // mm, fest
-        const CHART_GAP = 4; // mm zwischen Charts
-        const cW = W - M*2;
-
-        if (txList.length > 0) {
-            for (const cType of chartTypes) {
-                const img = await renderChart(txList, cType, cW, CHART_H);
-                if (img) {
-                    doc.setFillColor(...white);
-                    doc.setDrawColor(...lineGrey); doc.setLineWidth(0.25);
-                    doc.roundedRect(M, y, cW, CHART_H, 2, 2, 'FD');
-                    doc.addImage(img, 'PNG', M + 1, y + 1, cW - 2, CHART_H - 2);
-                    y += CHART_H + CHART_GAP;
-                }
-            }
-        } else {
-            doc.setTextColor(...slate);
-            doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-            doc.text('Keine Daten f\u00fcr diesen Zeitraum.', W/2, y + 20, { align:'center' });
-        }
-    }
-
-    // ─── Transaktionsseiten ──────────────────────────────────────
-    function groupTx(txList) {
-        const g = {};
-        txList.forEach(t => {
-            let k = groupBy==='day'  ? (t.date?.substring(0,10)||'?')
-                  : groupBy==='week' ? getWeekKey(new Date(t.date?.substring(0,10)))
-                  : (t.date?.substring(0,7)||'?');
-            if (!g[k]) g[k]=[];
-            g[k].push(t);
-        });
-        return g;
-    }
-
-    async function drawTransactionPages(txList, headerOpts) {
-        let localPage  = headerOpts.localPage;
-        let y          = addTxPage({ ...headerOpts, localPage });
-        const grouped  = groupTx(txList);
-        const keys     = Object.keys(grouped).sort();
-
-        // Spalten je nach Kontext (Sonstige-Seite hat kein Konto-Spalte nötig aber schadet nicht)
-        const colX = { date:M+2, name:M+24, cat:M+91, konto:M+132, amt:W-M-2 };
-
-        for (const key of keys) {
-            if (y > H - 46) {
-                localPage++;
-                y = addTxPage({ ...headerOpts, localPage });
-            }
-
-            let grpLabel = key;
-            if (groupBy==='month')     grpLabel = new Date(key+'-01').toLocaleDateString('de-DE',{month:'long',year:'numeric'});
-            else if (groupBy==='week') grpLabel = 'KW ' + parseInt(key.split('-W')[1]) + ' \u00b7 ' + key.split('-W')[0];
-            else                       grpLabel = fmtDate(key);
-
-            const gInc = grouped[key].filter(t=>t.type==='Einnahmen').reduce((s,t)=>s+t.amount,0);
-            const gExp = grouped[key].filter(t=>t.type==='Ausgaben').reduce((s,t)=>s+t.amount,0);
-            const gNet = gInc - gExp;
-
-            // Gruppen-Header (hell, dezent) — 2 Zeilen: Titel + Zusammenfassung mit Beschriftung
-            const grpH = 13;
-            doc.setFillColor(239, 246, 255);
-            doc.rect(M, y, W-M*2, grpH, 'F');
-            doc.setDrawColor(196, 219, 255); doc.setLineWidth(0.25);
-            doc.rect(M, y, W-M*2, grpH, 'S');
-            // Linker blauer Akzentbalken
-            doc.setFillColor(...accentBlue);
-            doc.rect(M, y, 2.5, grpH, 'F');
-
-            // Erste Zeile: Gruppenbezeichnung
-            doc.setTextColor(...navy);
-            doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
-            doc.text(grpLabel, M + 5, y + 5);
-
-            // Zweite Zeile: Einnahmen / Ausgaben / Saldo mit Beschriftung
-            doc.setFontSize(6); doc.setFont('helvetica', 'normal');
-            const rX = W - M - 3;
-            // Saldo
-            const netColor = gNet >= 0 ? greenInk : redInk;
-            const netLabel = 'Saldo: ';
-            const netVal   = (gNet>=0?'+':'') + fmtEur(gNet);
-            doc.setTextColor(...netColor);
-            doc.text(netVal, rX, y + 10.5, { align:'right' });
-            const netValW = doc.getTextWidth(netVal);
-            doc.setTextColor(...inkMid);
-            doc.text(netLabel, rX - netValW, y + 10.5, { align:'right' });
-            const netTotalW = doc.getTextWidth(netLabel) + netValW + 8;
-            // Ausgaben
-            const expVal = fmtEur(gExp);
-            doc.setTextColor(...redInk);
-            doc.text(expVal, rX - netTotalW, y + 10.5, { align:'right' });
-            const expValW = doc.getTextWidth(expVal);
-            doc.setTextColor(...inkMid);
-            doc.text('Ausgaben: ', rX - netTotalW - expValW, y + 10.5, { align:'right' });
-            const expTotalW = doc.getTextWidth('Ausgaben: ') + expValW + 8;
-            // Einnahmen
-            const incVal = fmtEur(gInc);
-            doc.setTextColor(...greenInk);
-            doc.text(incVal, rX - netTotalW - expTotalW, y + 10.5, { align:'right' });
-            doc.setTextColor(...inkMid);
-            doc.text('Einnahmen: ', rX - netTotalW - expTotalW - doc.getTextWidth(incVal), y + 10.5, { align:'right' });
-            y += grpH + 1.5;
-
-            // Tabellen-Header
-            doc.setFillColor(243, 244, 246);
-            doc.rect(M, y, W-M*2, 5.5, 'F');
-            doc.setTextColor(...inkMid);
-            doc.setFontSize(5.5); doc.setFont('helvetica', 'bold');
-            doc.text('DATUM',        colX.date,  y + 3.8);
-            doc.text('BEZEICHNUNG',  colX.name,  y + 3.8);
-            doc.text('KATEGORIE',    colX.cat,   y + 3.8);
-            doc.text('KONTO',        colX.konto, y + 3.8);
-            doc.text('BETRAG',       colX.amt,   y + 3.8, { align:'right' });
-            y += 6.5;
-
-            for (let ri = 0; ri < grouped[key].length; ri++) {
-                if (y > H - 20) {
-                    localPage++;
-                    y = addTxPage({ ...headerOpts, localPage });
-                }
-                const t    = grouped[key][ri];
-                const isInc = t.type === 'Einnahmen';
-                const rowH  = 6;
-
-                if (ri % 2 === 0) {
-                    doc.setFillColor(...white);
-                    doc.rect(M, y, W-M*2, rowH, 'F');
-                } else {
-                    doc.setFillColor(...rowAlt);
-                    doc.rect(M, y, W-M*2, rowH, 'F');
-                }
-
-                doc.setFontSize(6.5); doc.setFont('helvetica', 'normal');
-                doc.setTextColor(...inkDark);
-                doc.text(fmtDate(t.date?.substring(0,10)), colX.date, y + 4);
-
-                const nm = (t.name||'').length > 34 ? t.name.substring(0,32)+'\u2026' : (t.name||'');
-                doc.text(nm, colX.name, y + 4);
-
-                doc.setTextColor(...inkMid);
-                const cat = (t.category||'').length > 18 ? t.category.substring(0,16)+'\u2026' : (t.category||'');
-                doc.text(cat, colX.cat, y + 4);
-
-                const accName = t.account_id
-                    ? (allAccounts.find(a=>String(a.id)===String(t.account_id))?.name || '\u2014')
-                    : 'Ohne Konto';
-                doc.text(accName.length>16 ? accName.substring(0,14)+'\u2026' : accName, colX.konto, y + 4);
-
-                doc.setTextColor(...(isInc ? greenInk : redInk));
-                doc.setFont('helvetica', 'bold');
-                doc.text((isInc ? '+' : '-') + fmtEur(t.amount), colX.amt, y + 4, { align:'right' });
-                y += rowH;
-            }
-
-            // Abschluss-Linie
-            doc.setDrawColor(...lineGrey); doc.setLineWidth(0.2);
-            doc.line(M, y + 0.5, W-M, y + 0.5);
-            y += 4;
-        }
-    }
-
-    // ─── Hauptlogik ─────────────────────────────────────────────
-    let isFirst = true;
-
-    // Pro Konto: Übersichtsseite + Transaktionsseiten
-    for (const acc of accountsToExport) {
-        const accTx = filtered.filter(t => String(t.account_id) === String(acc.id));
-        if (!accTx.length) continue;
-        if (!isFirst) doc.addPage();
-        isFirst = false;
-        const hOpts = { type:'account', account:acc, localPage:1 };
-        await drawOverviewPage(accTx, hOpts);
-        await drawTransactionPages(accTx, { ...hOpts, localPage:2 });
-    }
-
-    // Sonstige Transaktionen (ohne Konto) — keine Übersichtsseite, direkt Transaktionsliste
-    if (unassignedTx.length > 0) {
-        if (!isFirst) doc.addPage();
-        isFirst = false;
-        // Erste Seite manuell: Header + Kacheln + direkt die erste Transaktion-Gruppe
-        const hOpts = { type:'sonstige', localPage:1 };
-        drawHeader(hOpts);
-        drawFooter();
-        // Schmaler Hinweisstreifen (wie addTxPage)
-        doc.setFillColor(239, 246, 255);
-        doc.rect(0, 44, W, 7, 'F');
-        doc.setTextColor(...accentBlue);
-        doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
-        doc.text('TRANSAKTIONEN OHNE KONTOZUORDNUNG \u00b7 Seite 1', W / 2, 49, { align: 'center' });
-        // Direkt Transaktionen ab y=54 auf Seite 1 — dafür rufen wir drawTransactionPages
-        // mit einem Trick auf: wir überschreiben addTxPage nicht, stattdessen starten
-        // wir bei localPage=2 (Folgeseiten) und rendern Seite 1 oben manuell inline:
-        let y = 54;
-        const grouped  = groupTx(unassignedTx);
-        const keys     = Object.keys(grouped).sort();
-        const colX = { date:M+2, name:M+24, cat:M+91, konto:M+132, amt:W-M-2 };
-        let localPage  = 1;
-
-        for (const key of keys) {
-            if (y > H - 46) {
-                localPage++;
-                y = addTxPage({ type:'sonstige', localPage });
-            }
-            let grpLabel = key;
-            if (groupBy==='month')     grpLabel = new Date(key+'-01').toLocaleDateString('de-DE',{month:'long',year:'numeric'});
-            else if (groupBy==='week') grpLabel = 'KW ' + parseInt(key.split('-W')[1]) + ' \u00b7 ' + key.split('-W')[0];
-            else                       grpLabel = fmtDate(key);
-
-            const gInc = grouped[key].filter(t=>t.type==='Einnahmen').reduce((s,t)=>s+t.amount,0);
-            const gExp = grouped[key].filter(t=>t.type==='Ausgaben').reduce((s,t)=>s+t.amount,0);
-            const gNet = gInc - gExp;
-
-            const grpH = 13;
-            doc.setFillColor(239, 246, 255);
-            doc.rect(M, y, W-M*2, grpH, 'F');
-            doc.setDrawColor(196, 219, 255); doc.setLineWidth(0.25);
-            doc.rect(M, y, W-M*2, grpH, 'S');
-            doc.setFillColor(...accentBlue);
-            doc.rect(M, y, 2.5, grpH, 'F');
-            doc.setTextColor(...navy);
-            doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
-            doc.text(grpLabel, M + 5, y + 5);
-            doc.setFontSize(6); doc.setFont('helvetica', 'normal');
-            const rX = W - M - 3;
-            const netColor = gNet >= 0 ? greenInk : redInk;
-            const netVal   = (gNet>=0?'+':'') + fmtEur(gNet);
-            doc.setTextColor(...netColor);
-            doc.text(netVal, rX, y + 10.5, { align:'right' });
-            const netValW = doc.getTextWidth(netVal);
-            doc.setTextColor(...inkMid);
-            doc.text('Saldo: ', rX - netValW, y + 10.5, { align:'right' });
-            const netTotalW = doc.getTextWidth('Saldo: ') + netValW + 8;
-            const expVal = fmtEur(gExp);
-            doc.setTextColor(...redInk);
-            doc.text(expVal, rX - netTotalW, y + 10.5, { align:'right' });
-            const expValW = doc.getTextWidth(expVal);
-            doc.setTextColor(...inkMid);
-            doc.text('Ausgaben: ', rX - netTotalW - expValW, y + 10.5, { align:'right' });
-            const expTotalW = doc.getTextWidth('Ausgaben: ') + expValW + 8;
-            const incVal = fmtEur(gInc);
-            doc.setTextColor(...greenInk);
-            doc.text(incVal, rX - netTotalW - expTotalW, y + 10.5, { align:'right' });
-            doc.setTextColor(...inkMid);
-            doc.text('Einnahmen: ', rX - netTotalW - expTotalW - doc.getTextWidth(incVal), y + 10.5, { align:'right' });
-            y += grpH + 1.5;
-
-            doc.setFillColor(243, 244, 246);
-            doc.rect(M, y, W-M*2, 5.5, 'F');
-            doc.setTextColor(...inkMid);
-            doc.setFontSize(5.5); doc.setFont('helvetica', 'bold');
-            doc.text('DATUM',        colX.date,  y + 3.8);
-            doc.text('BEZEICHNUNG',  colX.name,  y + 3.8);
-            doc.text('KATEGORIE',    colX.cat,   y + 3.8);
-            doc.text('KONTO',        colX.konto, y + 3.8);
-            doc.text('BETRAG',       colX.amt,   y + 3.8, { align:'right' });
-            y += 6.5;
-
-            for (let ri = 0; ri < grouped[key].length; ri++) {
-                if (y > H - 20) {
-                    localPage++;
-                    y = addTxPage({ type:'sonstige', localPage });
-                }
-                const t    = grouped[key][ri];
-                const isInc = t.type === 'Einnahmen';
-                const rowH  = 6;
-                doc.setFillColor(...(ri % 2 === 0 ? white : rowAlt));
-                doc.rect(M, y, W-M*2, rowH, 'F');
-                doc.setFontSize(6.5); doc.setFont('helvetica', 'normal');
-                doc.setTextColor(...inkDark);
-                doc.text(fmtDate(t.date?.substring(0,10)), colX.date, y + 4);
-                const nm = (t.name||'').length > 34 ? t.name.substring(0,32)+'\u2026' : (t.name||'');
-                doc.text(nm, colX.name, y + 4);
-                doc.setTextColor(...inkMid);
-                const cat = (t.category||'').length > 18 ? t.category.substring(0,16)+'\u2026' : (t.category||'');
-                doc.text(cat, colX.cat, y + 4);
-                doc.text('Ohne Konto', colX.konto, y + 4);
-                doc.setTextColor(...(isInc ? greenInk : redInk));
-                doc.setFont('helvetica', 'bold');
-                doc.text((isInc ? '+' : '-') + fmtEur(t.amount), colX.amt, y + 4, { align:'right' });
-                y += rowH;
-            }
-            doc.setDrawColor(...lineGrey); doc.setLineWidth(0.2);
-            doc.line(M, y + 0.5, W-M, y + 0.5);
-            y += 4;
-        }
-    }
-
-    // Gesamtübersicht am Ende
-    if (showGesamt && accountsToExport.length > 0) {
-        if (!isFirst) doc.addPage();
-        isFirst = false;
-        const gesamtTx = filtered.filter(t =>
-            (t.account_id ? selectedAccIds.has(String(t.account_id)) : includeUnassigned)
-        );
-        const hOpts = { type:'gesamt', localPage:1 };
-        await drawOverviewPage(gesamtTx, hOpts);
-        await drawTransactionPages(gesamtTx, { ...hOpts, localPage:2 });
-    }
-
-    doc.save('ausgaben_export_' + new Date().toISOString().substring(0,10) + '.pdf');
-    closeExportModal();
-}
-
 // ── CSV Import ─────────────────────────────────────────────────
 
 let importParsedRows  = [];  // alle geparsten Zeilen (ohne Header)
@@ -2878,4 +1893,156 @@ function escRec(str) {
     return String(str || '')
         .replace(/&/g, '&amp;').replace(/</g, '&lt;')
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+// ══════════════════════════════════════════════════════════════
+//  UMBUCHUNGEN (Konto → Konto)
+// ══════════════════════════════════════════════════════════════
+
+let _allAccountsForTransfer = [];
+
+async function openTransferModal() {
+    // Alle Konten laden (privat + haushalt)
+    try {
+        const res = await fetch('/users/accounts/all');
+        _allAccountsForTransfer = res.ok ? await res.json() : [];
+    } catch { _allAccountsForTransfer = allAccounts || []; }
+
+    const privat   = _allAccountsForTransfer.filter(a => a._source !== 'haushalt');
+    const haushalt = _allAccountsForTransfer.filter(a => a._source === 'haushalt');
+
+    function buildGrouped(emptyLabel) {
+        let html = `<option value="">${emptyLabel}</option>`;
+        if (privat.length) {
+            html += `<optgroup label="── Privat">` +
+                privat.map(a => `<option value="${a.id}" data-source="privat">${escRec(a.name)}</option>`).join('') +
+                `</optgroup>`;
+        }
+        if (haushalt.length) {
+            html += `<optgroup label="── Haushalt">` +
+                haushalt.map(a => `<option value="${a.id}" data-source="haushalt" data-haushalt-id="${a._haushalt_id}">${escRec(a.name)}</option>`).join('') +
+                `</optgroup>`;
+        }
+        return html;
+    }
+
+    const fromSel = document.getElementById('transferFrom');
+    const toSel   = document.getElementById('transferTo');
+    if (!fromSel || !toSel) return;
+
+    fromSel.innerHTML = buildGrouped('Kein Quellkonto (freie Einlage)');
+    toSel.innerHTML   = buildGrouped('Kein Zielkonto');
+
+    document.getElementById('transferDate').value   = new Date().toISOString().split('T')[0];
+    document.getElementById('transferAmount').value = '';
+    document.getElementById('transferName').value   = '';
+    document.getElementById('transferPreview').style.display = 'none';
+    document.getElementById('transferMsg').style.display     = 'none';
+
+    document.getElementById('transferModalOverlay').style.display = 'flex';
+}
+
+function closeTransferModal(e) {
+    if (e && e.target !== document.getElementById('transferModalOverlay')) return;
+    document.getElementById('transferModalOverlay').style.display = 'none';
+}
+
+function _getTransferOptMeta(selId) {
+    const sel = document.getElementById(selId);
+    const opt = sel?.options[sel.selectedIndex];
+    return {
+        id:         sel?.value || null,
+        source:     opt?.dataset?.source     || 'privat',
+        haushaltId: opt?.dataset?.haushaltId || null,
+        name:       opt?.textContent?.trim() || '—',
+    };
+}
+
+function updateTransferPreview() {
+    const from   = _getTransferOptMeta('transferFrom');
+    const to     = _getTransferOptMeta('transferTo');
+    const amount = parseFloat(document.getElementById('transferAmount').value);
+    const preview = document.getElementById('transferPreview');
+
+    if ((!from.id && !to.id) || isNaN(amount) || amount <= 0) {
+        preview.style.display = 'none';
+        return;
+    }
+
+    const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fromLabel = from.id ? `<span style="font-weight:700;">${escRec(from.name)}</span>${from.source === 'haushalt' ? ' <span style="font-size:0.7rem;color:#10b981;">(Haushalt)</span>' : ''}` : '<span style="color:var(--text-3);">Extern</span>';
+    const toLabel   = to.id   ? `<span style="font-weight:700;">${escRec(to.name)}</span>${to.source === 'haushalt'   ? ' <span style="font-size:0.7rem;color:#10b981;">(Haushalt)</span>' : ''}` : '<span style="color:var(--text-3);">Extern</span>';
+
+    preview.style.display = '';
+    preview.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            ${fromLabel}
+            <span style="color:var(--accent);font-size:1.1rem;">→</span>
+            ${toLabel}
+        </div>
+        <div style="margin-top:6px;font-size:1.05rem;font-weight:800;color:#22c55e;">${fmt.format(amount)}</div>
+        <div style="font-size:0.75rem;color:var(--text-3);margin-top:4px;">
+            ${from.id ? `Auf <b>${escRec(from.name)}</b> wird eine Ausgabe gebucht.` : ''}
+            ${to.id   ? `Auf <b>${escRec(to.name)}</b> wird eine Einnahme gebucht.`  : ''}
+        </div>`;
+}
+
+async function confirmTransfer() {
+    const from   = _getTransferOptMeta('transferFrom');
+    const to     = _getTransferOptMeta('transferTo');
+    const amount = parseFloat(document.getElementById('transferAmount').value);
+    const date   = document.getElementById('transferDate').value;
+    const name   = document.getElementById('transferName').value.trim() || 'Umbuchung';
+    const msgEl  = document.getElementById('transferMsg');
+    msgEl.style.display = 'none';
+
+    if (!to.id && !from.id) {
+        msgEl.textContent = 'Bitte mindestens ein Konto auswählen.';
+        msgEl.style.display = ''; return;
+    }
+    if (from.id && to.id && from.id === to.id) {
+        msgEl.textContent = 'Quell- und Zielkonto dürfen nicht identisch sein.';
+        msgEl.style.display = ''; return;
+    }
+    if (isNaN(amount) || amount <= 0) {
+        msgEl.textContent = 'Bitte einen gültigen Betrag eingeben.';
+        msgEl.style.display = ''; return;
+    }
+    if (!date) {
+        msgEl.textContent = 'Bitte ein Datum auswählen.';
+        msgEl.style.display = ''; return;
+    }
+
+    try {
+        const res = await fetch('/users/transfer', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+                from_account_id: from.id,
+                from_source:     from.source,
+                to_account_id:   to.id,
+                to_source:       to.source,
+                to_haushalt_id:  to.haushaltId || null,
+                amount, date, name,
+            }),
+        });
+        if (!res.ok) throw new Error((await res.json()).message || 'Fehler');
+
+        document.getElementById('transferModalOverlay').style.display = 'none';
+        await loadData();
+        if (typeof ggcToast === 'function') ggcToast(`Umbuchung „${name}" erfolgreich gebucht ✓`);
+    } catch (err) {
+        msgEl.textContent = 'Fehler: ' + err.message;
+        msgEl.style.display = '';
+    }
+}
+
+async function deleteTransfer(txId) {
+    if (!confirm('Diese Umbuchung (beide Seiten) wirklich löschen?')) return;
+    try {
+        const res = await fetch('/users/transfer/' + txId, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+        await loadData();
+    } catch {
+        alert('Fehler beim Löschen der Umbuchung.');
+    }
 }

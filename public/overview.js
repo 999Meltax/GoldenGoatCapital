@@ -135,6 +135,8 @@ function renderAll() {
     renderFinanzScore();
     renderCashflow();
     renderMonthCompare();
+    renderInsights();
+    renderPrognose();
 }
 
 // ── Stat-Karten ──────────────────────────────────────────────
@@ -738,6 +740,188 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('Dashboard Fehler:', err);
     }
 });
+// ── Financial Insights ───────────────────────────────────────
+
+function renderInsights() {
+    const wrap    = document.getElementById('ovInsightsWrap');
+    const listEl  = document.getElementById('ovInsightsList');
+    const countEl = document.getElementById('ovInsightsCount');
+    if (!wrap || !listEl) return;
+
+    const insights = generateInsights();
+
+    if (!insights.length) {
+        wrap.style.display = 'none';
+        return;
+    }
+
+    wrap.style.display = '';
+    if (countEl) countEl.textContent = insights.length + ' Hinweis' + (insights.length !== 1 ? 'e' : '');
+
+    listEl.innerHTML = insights.map(ins => {
+        const colors = {
+            warning: { bg: 'rgba(245,158,11,0.09)', border: 'rgba(245,158,11,0.25)', icon: '#f59e0b', iconBg: 'rgba(245,158,11,0.15)' },
+            danger:  { bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.22)',  icon: '#ef4444', iconBg: 'rgba(239,68,68,0.12)' },
+            success: { bg: 'rgba(34,197,94,0.07)',  border: 'rgba(34,197,94,0.2)',   icon: '#22c55e', iconBg: 'rgba(34,197,94,0.12)' },
+            info:    { bg: 'rgba(99,88,230,0.08)',  border: 'rgba(99,88,230,0.2)',   icon: 'var(--accent)', iconBg: 'rgba(99,88,230,0.12)' },
+        };
+        const c = colors[ins.type] || colors.info;
+        const link = ins.url ? ` onclick="window.location.href='${ins.url}'" style="cursor:pointer;"` : '';
+        return `<div class="ov-insight-card" style="background:${c.bg};border:1px solid ${c.border};"${link}>
+            <div class="ov-insight-icon" style="background:${c.iconBg};color:${c.icon};">
+                <i class="${ins.icon}"></i>
+            </div>
+            <div class="ov-insight-body">
+                <div class="ov-insight-title">${escHtml(ins.title)}</div>
+                <div class="ov-insight-sub">${escHtml(ins.sub)}</div>
+            </div>
+            ${ins.url ? `<i class="ri-arrow-right-s-line" style="color:${c.icon};font-size:1rem;flex-shrink:0;opacity:0.7;"></i>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function generateInsights() {
+    const insights = [];
+    const thisMonth = new Date().toISOString().substring(0, 7);
+    const prevMonth = (() => {
+        const d = new Date(); d.setMonth(d.getMonth() - 1);
+        return d.toISOString().substring(0, 7);
+    })();
+
+    const thisTx = allTransactionsOv.filter(t => (t.date || '').startsWith(thisMonth));
+    const prevTx = allTransactionsOv.filter(t => (t.date || '').startsWith(prevMonth));
+
+    const thisInc  = thisTx.filter(t => t.type === 'Einnahmen').reduce((s, t) => s + t.amount, 0);
+    const thisExp  = thisTx.filter(t => t.type === 'Ausgaben').reduce((s, t) => s + t.amount, 0);
+    const prevInc  = prevTx.filter(t => t.type === 'Einnahmen').reduce((s, t) => s + t.amount, 0);
+    const prevExp  = prevTx.filter(t => t.type === 'Ausgaben').reduce((s, t) => s + t.amount, 0);
+
+    // ── 1. Sparquote gesunken / gestiegen ──
+    if (thisInc > 0 && prevInc > 0) {
+        const thisSpar = (thisInc - thisExp) / thisInc;
+        const prevSpar = (prevInc - prevExp) / prevInc;
+        const delta    = thisSpar - prevSpar;
+        if (thisSpar < 0) {
+            insights.push({
+                type: 'danger', icon: 'ri-arrow-down-line',
+                title: 'Ausgaben übersteigen Einnahmen',
+                sub: `Diesen Monat ${fmtEur.format(thisExp - thisInc)} mehr ausgegeben als eingenommen.`,
+                url: '/users/ausgabentracker'
+            });
+        } else if (delta < -0.10 && prevSpar > 0.05) {
+            insights.push({
+                type: 'warning', icon: 'ri-percent-line',
+                title: 'Sparquote gesunken',
+                sub: `Von ${Math.round(prevSpar * 100)}% auf ${Math.round(thisSpar * 100)}% diesen Monat.`,
+                url: '/users/budget'
+            });
+        } else if (thisSpar >= 0.20) {
+            insights.push({
+                type: 'success', icon: 'ri-trophy-line',
+                title: 'Starke Sparquote',
+                sub: `${Math.round(thisSpar * 100)}% Sparquote diesen Monat — sehr gut!`,
+                url: null
+            });
+        }
+    }
+
+    // ── 2. Kategorie deutlich mehr als Vormonat ──
+    const thisKat = {}, prevKat = {};
+    thisTx.filter(t => t.type === 'Ausgaben').forEach(t => { thisKat[t.category] = (thisKat[t.category] || 0) + t.amount; });
+    prevTx.filter(t => t.type === 'Ausgaben').forEach(t => { prevKat[t.category] = (prevKat[t.category] || 0) + t.amount; });
+
+    const katInsights = [];
+    Object.entries(thisKat).forEach(([kat, betrag]) => {
+        if (kat === 'Kontostandskorrektur') return;
+        const prev = prevKat[kat] || 0;
+        if (prev > 10 && betrag > prev * 1.30 && betrag > 20) {
+            const pct = Math.round((betrag / prev - 1) * 100);
+            katInsights.push({ pct, kat, betrag, prev });
+        }
+    });
+    // Nur den stärksten Anstieg zeigen
+    katInsights.sort((a, b) => b.pct - a.pct);
+    if (katInsights.length > 0) {
+        const k = katInsights[0];
+        insights.push({
+            type: 'warning', icon: 'ri-bar-chart-grouped-line',
+            title: `${k.pct}% mehr bei „${k.kat}"`,
+            sub: `${fmtEur.format(k.betrag)} diesen Monat vs. ${fmtEur.format(k.prev)} im Vormonat.`,
+            url: '/users/ausgabentracker'
+        });
+    }
+
+    // ── 3. Hohe Fixkosten/Abos ──
+    const aboKosten = allFixkostenOv
+        .filter(f => (f.subtyp === 'abo' || f.haeufigkeit === 'monatlich') && f.betrag > 0)
+        .reduce((s, f) => s + parseFloat(f.betrag), 0);
+    const aboAnzahl = allFixkostenOv.filter(f => f.subtyp === 'abo').length;
+    if (aboAnzahl >= 3 && aboKosten > 50) {
+        insights.push({
+            type: 'info', icon: 'ri-repeat-line',
+            title: `${aboAnzahl} Abos · ${fmtEur.format(aboKosten)}/Monat`,
+            sub: 'Lohnt sich ein Blick, ob alle noch aktiv genutzt werden.',
+            url: '/users/fixkosten'
+        });
+    }
+
+    // ── 4. Überfällige Rechnungen ──
+    const ueberfaellig = allDokumenteOv.filter(d =>
+        d.typ === 'rechnungen' &&
+        d.status !== 'bezahlt' &&
+        d.faellig_datum && new Date(d.faellig_datum) < new Date()
+    );
+    if (ueberfaellig.length > 0) {
+        insights.push({
+            type: 'danger', icon: 'ri-bill-line',
+            title: `${ueberfaellig.length} überfällige Rechnung${ueberfaellig.length > 1 ? 'en' : ''}`,
+            sub: 'Offene Rechnungen die bereits fällig waren.',
+            url: '/users/dokumente'
+        });
+    }
+
+    // ── 5. Schulden-Zinslast ──
+    const hochverzinst = allSchuldenOv.filter(s => parseFloat(s.zinssatz) > 8 && parseFloat(s.restbetrag) > 0);
+    if (hochverzinst.length > 0) {
+        const summe = hochverzinst.reduce((s, d) => s + parseFloat(d.restbetrag), 0);
+        insights.push({
+            type: 'warning', icon: 'ri-percent-line',
+            title: `Hochverzinste Schulden: ${fmtEur.format(summe)}`,
+            sub: `${hochverzinst.length} Schuld${hochverzinst.length > 1 ? 'en' : ''} mit über 8% Zinsen — Tilgung priorisieren.`,
+            url: '/users/schulden'
+        });
+    }
+
+    // ── 6. Kein Eingang diesen Monat ──
+    if (allTransactionsOv.length > 0 && thisInc === 0) {
+        const d = new Date();
+        if (d.getDate() > 10) {
+            insights.push({
+                type: 'info', icon: 'ri-question-line',
+                title: 'Noch keine Einnahmen diesen Monat',
+                sub: 'Wurde das Gehalt oder eine andere Einnahme bereits verbucht?',
+                url: '/users/ausgabentracker'
+            });
+        }
+    }
+
+    // ── 7. Sparziel fast erreicht ──
+    // (allSparziele nicht verfügbar im Overview — wäre ein separater Fetch nötig, daher weglassen)
+
+    // ── 8. Positiver Trend: Ausgaben gesunken ──
+    if (prevExp > 50 && thisExp > 0 && thisExp < prevExp * 0.85) {
+        const ersparnis = prevExp - thisExp;
+        insights.push({
+            type: 'success', icon: 'ri-arrow-down-circle-line',
+            title: `${fmtEur.format(ersparnis)} weniger Ausgaben als letzten Monat`,
+            sub: 'Super — du hast diesen Monat deutlich weniger ausgegeben.',
+            url: null
+        });
+    }
+
+    return insights.slice(0, 6); // max. 6 Insights
+}
+
 // ══════════════════════════════════════════════════════════════
 //  PHASE 5 — Finanz-Score
 // ══════════════════════════════════════════════════════════════
@@ -1058,15 +1242,299 @@ async function submitQuickAdd() {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  CASHFLOW-PROGNOSE
+// ══════════════════════════════════════════════════════════════
+
+let prognoseHorizont  = 3;   // 3 oder 12 Monate
+let prognoseChartInst = null;
+
+function setPrognoseHorizont(n) {
+    prognoseHorizont = n;
+    // Buttons aktualisieren
+    document.getElementById('progBtn3') ?.classList.toggle('prog-horizon-btn--active', n === 3);
+    document.getElementById('progBtn12')?.classList.toggle('prog-horizon-btn--active', n === 12);
+    renderPrognose();
+}
+
+function renderPrognose() {
+    const canvas = document.getElementById('prognoseChart');
+    if (!canvas) return;
+
+    // ── Aktueller Kontostand (alle aktiven Konten) ────────────
+    const active  = getActiveAccountsOv();
+    const startBalance = active.reduce((s, a) => s + (a.currentBalance ?? a.balance ?? 0), 0);
+
+    // ── Durchschnittliche monatliche Einnahmen (letzte 3 Monate) ─
+    const now = new Date();
+    const last3Months = [];
+    for (let i = 1; i <= 3; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        last3Months.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
+    }
+    let totalInc3 = 0;
+    last3Months.forEach(m => {
+        allTransactionsOv
+            .filter(t => (t.date || '').startsWith(m) && t.type === 'Einnahmen')
+            .forEach(t => { totalInc3 += t.amount; });
+    });
+    const avgMonthlyInc = totalInc3 / 3;
+
+    // ── Monatliche Fixkosten berechnen ────────────────────────
+    let totalFixMonthly = 0;
+    let totalFixIncMonthly = 0; // Fixe Einnahmen (z.B. Gehalt als Fixposten)
+    const fixDetails = [];
+    const fixIncDetails = [];
+    allFixkostenOv.forEach(f => {
+        const b = parseFloat(f.betrag) || 0;
+        if (!b) return;
+        let monthly = 0;
+        const hz = (f.haeufigkeit || '').toLowerCase();
+        if      (hz === 'monatlich')        monthly = b;
+        else if (hz === 'woechentlich')     monthly = b * 4.33;
+        else if (hz === 'jaehrlich')        monthly = b / 12;
+        else if (hz === 'vierteljaehrlich') monthly = b / 3;
+        else if (hz === 'halbjaehrlich')    monthly = b / 6;
+        else if (!hz)                       monthly = b; // Fallback
+        if (monthly <= 0) return;
+
+        const isEinnahme = (f.tx_type || '').toLowerCase() === 'einnahmen';
+        if (isEinnahme) {
+            totalFixIncMonthly += monthly;
+            fixIncDetails.push({ name: f.name, monthly });
+        } else {
+            totalFixMonthly += monthly;
+            fixDetails.push({ name: f.name, monthly });
+        }
+    });
+    // Auf Top 4 beschränken für die Anzeige
+    fixDetails.sort((a, b) => b.monthly - a.monthly);
+    fixIncDetails.sort((a, b) => b.monthly - a.monthly);
+
+    // ── Monatliche Schuldenraten ──────────────────────────────
+    let totalSchuldenMonthly = 0;
+    const schuldenDetails = [];
+    allSchuldenOv.forEach(s => {
+        const rate = parseFloat(s.monatsrate) || 0;
+        if (rate > 0) {
+            totalSchuldenMonthly += rate;
+            schuldenDetails.push({ name: s.name, monthly: rate });
+        }
+    });
+
+    // ── Netto pro Monat ───────────────────────────────────────
+    // Einnahmen = Ø historische Transaktionen + fixe Einnahmen (Gehalt etc.)
+    // Ausgaben  = Fixkosten-Ausgaben + Schuldenraten
+    const totalMonthlyInc = avgMonthlyInc + totalFixIncMonthly;
+    const netMonthly = totalMonthlyInc - totalFixMonthly - totalSchuldenMonthly;
+
+    // ── Prognose-Datenpunkte berechnen ────────────────────────
+    const horizont = prognoseHorizont;
+    const labels   = [];
+    const dataPoints = [startBalance]; // Startpunkt = aktueller Stand
+    const today = new Date();
+
+    for (let i = 1; i <= horizont; i++) {
+        const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+        labels.push(d.toLocaleDateString('de-DE', { month: 'short', year: horizont > 3 ? '2-digit' : undefined }));
+        dataPoints.push(parseFloat((startBalance + netMonthly * i).toFixed(2)));
+    }
+    labels.unshift(today.toLocaleDateString('de-DE', { month: 'short', year: horizont > 3 ? '2-digit' : undefined }));
+
+    // ── Kritischer Punkt: wann wird Kontostand < 0 ? ─────────
+    let kritischMonat = null;
+    if (netMonthly < 0) {
+        const monthsToZero = Math.floor(startBalance / Math.abs(netMonthly));
+        if (monthsToZero <= horizont) kritischMonat = monthsToZero;
+    }
+
+    // ── Chart rendern ─────────────────────────────────────────
+    if (prognoseChartInst) { prognoseChartInst.destroy(); prognoseChartInst = null; }
+
+    const ctx = canvas.getContext('2d');
+    const minVal = Math.min(...dataPoints);
+    const maxVal = Math.max(...dataPoints);
+
+    // Farbverlauf: grün → rot je nach Verlauf
+    const gradient = ctx.createLinearGradient(0, 0, 0, 220);
+    const isNegativeTrend = netMonthly < 0;
+    gradient.addColorStop(0, isNegativeTrend ? 'rgba(239,68,68,0.25)' : 'rgba(34,197,94,0.25)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+
+    const lineColor = isNegativeTrend ? '#ef4444' : '#22c55e';
+
+    // Nulllinie als Plugin nur wenn nötig
+    const zeroLinePlugin = {
+        id: 'zeroLine',
+        beforeDraw(chart) {
+            if (minVal >= 0) return;
+            const { ctx: c, scales: { y } } = chart;
+            const yZero = y.getPixelForValue(0);
+            c.save();
+            c.beginPath();
+            c.setLineDash([5, 4]);
+            c.moveTo(chart.chartArea.left, yZero);
+            c.lineTo(chart.chartArea.right, yZero);
+            c.strokeStyle = 'rgba(239,68,68,0.5)';
+            c.lineWidth = 1.5;
+            c.stroke();
+            c.restore();
+        }
+    };
+
+    prognoseChartInst = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Kontostand',
+                data: dataPoints,
+                borderColor: lineColor,
+                backgroundColor: gradient,
+                fill: true,
+                tension: 0.35,
+                pointRadius: (ctx) => ctx.dataIndex === 0 ? 5 : 3,
+                pointBackgroundColor: dataPoints.map(v => v >= 0 ? '#22c55e' : '#ef4444'),
+                pointBorderColor: 'var(--surface)',
+                pointBorderWidth: 2,
+                borderWidth: 2.5,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: c => ' ' + fmtEur.format(c.parsed.y),
+                        title: c => c[0].label
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    ticks: { color: '#aaa', callback: v => fmtEur.format(v), font: { size: 10 }, maxTicksLimit: 5 },
+                    grid:  { color: 'rgba(255,255,255,0.06)' }
+                },
+                x: {
+                    ticks: { color: '#aaa', font: { size: 10 } },
+                    grid:  { display: false }
+                }
+            }
+        },
+        plugins: [zeroLinePlugin]
+    });
+
+    // ── Aufschlüsselung rendern ───────────────────────────────
+    const incRow = document.getElementById('progIncomeRows');
+    if (incRow) {
+        let html = '';
+        if (avgMonthlyInc > 0) {
+            html += `<div class="prog-breakdown-row">
+                <span class="prog-breakdown-row-name">Ø Transaktionen</span>
+                <span class="prog-breakdown-row-val" style="color:#22c55e;">+${fmtEur.format(avgMonthlyInc)}</span>
+             </div>`;
+        }
+        fixIncDetails.forEach(f => {
+            html += `<div class="prog-breakdown-row">
+                <span class="prog-breakdown-row-name">${escHtml(f.name)}</span>
+                <span class="prog-breakdown-row-val" style="color:#22c55e;">+${fmtEur.format(f.monthly)}</span>
+            </div>`;
+        });
+        if (!html) html = `<div class="prog-breakdown-row"><span class="prog-breakdown-row-name" style="color:var(--text-3);">Keine Einnahmen erfasst</span></div>`;
+        incRow.innerHTML = html;
+    }
+
+    const fixRow = document.getElementById('progFixRows');
+    if (fixRow) {
+        if (!fixDetails.length) {
+            fixRow.innerHTML = `<div class="prog-breakdown-row"><span class="prog-breakdown-row-name" style="color:var(--text-3);">Keine Fixkosten</span></div>`;
+        } else {
+            fixRow.innerHTML = fixDetails.slice(0, 4).map(f =>
+                `<div class="prog-breakdown-row">
+                    <span class="prog-breakdown-row-name">${escHtml(f.name)}</span>
+                    <span class="prog-breakdown-row-val" style="color:#ef4444;">−${fmtEur.format(f.monthly)}</span>
+                </div>`
+            ).join('') + (fixDetails.length > 4
+                ? `<div class="prog-breakdown-row"><span class="prog-breakdown-row-name" style="color:var(--text-3);">+ ${fixDetails.length - 4} weitere</span><span class="prog-breakdown-row-val" style="color:#ef4444;">−${fmtEur.format(fixDetails.slice(4).reduce((s,f)=>s+f.monthly,0))}</span></div>`
+                : '');
+        }
+    }
+
+    const schulRow = document.getElementById('progSchuldenRows');
+    if (schulRow) {
+        if (!schuldenDetails.length) {
+            schulRow.innerHTML = `<div class="prog-breakdown-row"><span class="prog-breakdown-row-name" style="color:var(--text-3);">Keine Raten</span></div>`;
+        } else {
+            schulRow.innerHTML = schuldenDetails.slice(0, 3).map(s =>
+                `<div class="prog-breakdown-row">
+                    <span class="prog-breakdown-row-name">${escHtml(s.name)}</span>
+                    <span class="prog-breakdown-row-val" style="color:#a855f7;">−${fmtEur.format(s.monthly)}</span>
+                </div>`
+            ).join('') + (schuldenDetails.length > 3
+                ? `<div class="prog-breakdown-row"><span class="prog-breakdown-row-name" style="color:var(--text-3);">+ ${schuldenDetails.length - 3} weitere</span><span class="prog-breakdown-row-val" style="color:#a855f7;">−${fmtEur.format(schuldenDetails.slice(3).reduce((s,f)=>s+f.monthly,0))}</span></div>`
+                : '');
+        }
+    }
+
+    // ── Netto-Ergebnis ────────────────────────────────────────
+    const resultEl = document.getElementById('progResult');
+    if (resultEl) {
+        const netColor = netMonthly >= 0 ? '#22c55e' : '#ef4444';
+        const netSign  = netMonthly >= 0 ? '+' : '';
+        resultEl.style.background = netMonthly >= 0 ? 'rgba(34,197,94,0.07)' : 'rgba(239,68,68,0.07)';
+        resultEl.style.borderColor = netMonthly >= 0 ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)';
+        resultEl.innerHTML =
+            `<span style="color:var(--text-2);">Netto / Monat</span>
+             <span style="color:${netColor};font-size:1rem;">${netSign}${fmtEur.format(netMonthly)}</span>`;
+    }
+
+    // ── Ampel ─────────────────────────────────────────────────
+    const ampelEl = document.getElementById('progAmpel');
+    if (ampelEl) {
+        let ampelBg, ampelColor, ampelIcon, ampelText;
+        if (netMonthly >= 0) {
+            // Positiver Cashflow
+            const endeBalance = dataPoints[dataPoints.length - 1];
+            ampelBg    = 'rgba(34,197,94,0.08)';
+            ampelColor = '#22c55e';
+            ampelIcon  = 'ri-checkbox-circle-line';
+            ampelText  = `Guter Cashflow. In ${horizont} Monat${horizont > 1 ? 'en' : ''} voraussichtlich <strong style="color:#22c55e;">${fmtEur.format(endeBalance)}</strong>.`;
+        } else if (kritischMonat !== null && kritischMonat <= horizont) {
+            // Kontostand wird negativ
+            ampelBg    = 'rgba(239,68,68,0.08)';
+            ampelColor = '#ef4444';
+            ampelIcon  = 'ri-alarm-warning-line';
+            ampelText  = kritischMonat <= 1
+                ? `<strong>Kritisch:</strong> Der Kontostand könnte bereits nächsten Monat ins Minus rutschen.`
+                : `<strong>Warnung:</strong> Bei aktuellem Verlauf wird der Kontostand in ca. <strong>${kritischMonat} Monaten</strong> negativ.`;
+        } else {
+            // Negativer Cashflow aber noch nicht kritisch
+            ampelBg    = 'rgba(245,158,11,0.08)';
+            ampelColor = '#f59e0b';
+            ampelIcon  = 'ri-error-warning-line';
+            ampelText  = `Die monatlichen Ausgaben übersteigen die Einnahmen um <strong style="color:#ef4444;">${fmtEur.format(Math.abs(netMonthly))}</strong>. Langfristig nicht nachhaltig.`;
+        }
+        ampelEl.style.background   = ampelBg;
+        ampelEl.style.color        = 'var(--text-2)';
+        ampelEl.style.border       = `1px solid ${ampelColor}33`;
+        ampelEl.style.borderRadius = '9px';
+        ampelEl.innerHTML = `<i class="${ampelIcon}" style="color:${ampelColor};"></i><span>${ampelText}</span>`;
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
 //  WIDGET-KONFIGURATION
 // ══════════════════════════════════════════════════════════════
 
 const WIDGETS = [
-    { id: 'widget-stats',            label: 'Stat-Karten',           icon: 'ri-dashboard-line',       default: true },
-    { id: 'widget-phase5',           label: 'Finanz-Score & Cashflow', icon: 'ri-award-line',          default: true },
-    { id: 'widget-vermoegensverlauf',label: 'Vermögensverlauf',       icon: 'ri-line-chart-line',      default: true },
-    { id: 'widget-aufgaben',         label: 'Aufgaben & Termine',     icon: 'ri-checkbox-line',        default: true },
-    { id: 'widget-schulden',         label: 'Schuldenübersicht',      icon: 'ri-scales-line',          default: true },
+    { id: 'widget-stats',            label: 'Stat-Karten',             icon: 'ri-dashboard-line',       default: true },
+    { id: 'widget-prognose',         label: 'Cashflow-Prognose',        icon: 'ri-funds-line',           default: true },
+    { id: 'widget-phase5',           label: 'Finanz-Score & Cashflow', icon: 'ri-award-line',           default: true },
+    { id: 'widget-insights',         label: 'Financial Insights',      icon: 'ri-lightbulb-flash-line', default: true },
+    { id: 'widget-vermoegensverlauf',label: 'Vermögensverlauf',         icon: 'ri-line-chart-line',      default: true },
+    { id: 'widget-aufgaben',         label: 'Aufgaben & Termine',       icon: 'ri-checkbox-line',        default: true },
+    { id: 'widget-schulden',         label: 'Schuldenübersicht',        icon: 'ri-scales-line',          default: true },
 ];
 
 function getWidgetConfig() {

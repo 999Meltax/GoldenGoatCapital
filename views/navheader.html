@@ -149,6 +149,10 @@
                 <i class="ri-settings-3-line"></i>
                 Einstellungen
             </a>
+            <a href="/users/export" class="sidebar-link" style="margin-top: 4px;">
+                <i class="ri-download-2-line"></i>
+                Daten exportieren
+            </a>
             <a href="/users/logout" class="sidebar-link" style="margin-top: 4px;">
                 <i class="ri-logout-box-line"></i>
                 Logout
@@ -167,6 +171,40 @@
 </aside>
 
 <div class="page-wrapper" id="pageWrapper">
+
+    <!-- ── Globale Suchleiste (Topbar) ── -->
+    <div class="ggc-searchbar-wrap" id="ggcSearchbarWrap">
+        <button class="ggc-searchbar-trigger" id="ggcSearchTrigger" onclick="openGgcSearch()" title="Suchen (Strg+K)">
+            <i class="ri-search-line"></i>
+            <span>Suchen…</span>
+            <kbd>Strg K</kbd>
+        </button>
+    </div>
+
+    <!-- ── Globales Such-Modal ── -->
+    <div class="ggc-search-overlay" id="ggcSearchOverlay" onclick="closeGgcSearch(event)">
+        <div class="ggc-search-modal" id="ggcSearchModal">
+            <div class="ggc-search-input-wrap">
+                <i class="ri-search-line ggc-search-icon"></i>
+                <input
+                    type="text"
+                    id="ggcSearchInput"
+                    class="ggc-search-input"
+                    placeholder="Transaktionen, Dokumente, Notizen…"
+                    autocomplete="off"
+                    oninput="onGgcSearchInput(this.value)"
+                    onkeydown="onGgcSearchKey(event)"
+                >
+                <kbd class="ggc-search-esc" onclick="closeGgcSearch()">Esc</kbd>
+            </div>
+            <div class="ggc-search-results" id="ggcSearchResults">
+                <div class="ggc-search-hint">
+                    <i class="ri-command-line"></i> Strg+K zum Öffnen · Pfeiltasten zum Navigieren · Enter zum Öffnen
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="page-content">
 
 <style>

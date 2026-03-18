@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daten exportieren – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+<style>
+    /* ── Modus-Umschalter ── */
+    .exp-mode-btn {
+        padding: 8px 18px;
+        border-radius: var(--radius-md);
+        border: none;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.18s, color 0.18s;
+        background: transparent;
+        color: var(--text-3);
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .exp-mode-btn--active {
+        background: var(--accent);
+        color: #fff;
+    }
+    .exp-mode-btn--active-haus {
+        background: #10b981;
+        color: #fff;
+    }
+
+    /* ── Grid ── */
+    .export-page-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 20px;
+        align-items: start;
+    }
+
+    /* ── Cards ── */
+    .exp-card {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        position: relative;
+        min-width: 0;
+        /* overflow: hidden entfernt — würde den absolut positionierten Badge abschneiden */
+    }
+
+    /* Nur die Backup-Card braucht oben Platz für den Badge */
+    .exp-card-featured {
+        border-color: var(--border-accent);
+        box-shadow: 0 0 0 1px rgba(99,88,230,0.15), var(--shadow-accent);
+        margin-top: 12px; /* Platz für den Badge der -11px nach oben ragt */
+        overflow: visible;
+    }
+
+    .exp-featured-badge {
+        position: absolute;
+        top: -11px; left: 20px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 0.68rem; font-weight: 700;
+        padding: 3px 10px; border-radius: 20px;
+        display: flex; align-items: center; gap: 4px;
+        letter-spacing: 0.03em;
+    }
+
+    .exp-card-header {
+        display: flex; align-items: center; gap: 14px;
+        min-width: 0;
+    }
+
+    .exp-card-icon {
+        width: 44px; height: 44px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem; flex-shrink: 0;
+    }
+
+    .exp-card-title { font-weight: 700; font-size: 1rem; color: var(--text-1); }
+    .exp-card-sub   { font-size: 0.78rem; color: var(--text-3); margin-top: 2px; }
+
+    .exp-option-row {
+        display: flex; flex-direction: column; gap: 8px;
+        min-width: 0;
+    }
+
+    .exp-label {
+        font-size: 0.72rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.06em;
+        color: var(--text-3);
+    }
+
+    /* Chips wrappen immer */
+    .exp-format-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .exp-format-chip {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 6px 12px; /* reduziert von 7px 16px */
+        border-radius: 20px;
+        font-size: 0.8rem; font-weight: 600;
+        border: 1px solid var(--border);
+        background: var(--surface-2); color: var(--text-2);
+        cursor: pointer; transition: var(--transition);
+        white-space: nowrap;
+    }
+
+    .exp-format-chip input[type=radio],
+    .exp-format-chip input[type=checkbox] { display: none; }
+
+    .exp-format-chip:has(input:checked) {
+        background: var(--accent); border-color: var(--accent); color: #fff;
+        box-shadow: 0 0 12px var(--accent-glow, rgba(99,88,230,0.3));
+    }
+
+    .exp-count { font-size: 0.8rem; color: var(--text-3); min-height: 1.2em; }
+
+    .exp-btn { width: 100%; justify-content: center; }
+
+    /* ── Backup-Tags ── */
+    .exp-backup-includes { display: flex; flex-direction: column; gap: 8px; }
+    .exp-backup-label {
+        font-size: 0.72rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3);
+    }
+    .exp-backup-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .exp-tag {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 0.74rem; padding: 3px 9px; border-radius: 20px;
+        background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2);
+        white-space: nowrap;
+    }
+
+    /* ── Einzelne Bereiche ── */
+    .exp-single-row {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 9px 11px; border-radius: var(--radius-md);
+        background: var(--surface-2); border: 1px solid var(--border);
+        transition: var(--transition); gap: 8px; min-width: 0;
+    }
+    .exp-single-row:hover { border-color: var(--border-accent); }
+
+    .exp-single-left {
+        display: flex; align-items: center; gap: 9px;
+        flex: 1; min-width: 0; overflow: hidden;
+    }
+    .exp-single-icon {
+        width: 30px; height: 30px; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.9rem; flex-shrink: 0;
+    }
+    .exp-single-name {
+        font-size: 0.83rem; font-weight: 600; color: var(--text-1);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .exp-single-count { font-size: 0.71rem; color: var(--text-3); margin-top: 1px; }
+
+    .exp-single-btns { display: flex; gap: 4px; flex-shrink: 0; }
+
+    .exp-dl-btn {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 5px 9px; border-radius: 7px;
+        font-size: 0.73rem; font-weight: 600;
+        border: 1px solid var(--border); background: var(--surface);
+        color: var(--text-2); cursor: pointer; transition: var(--transition);
+        font-family: 'Plus Jakarta Sans', sans-serif; white-space: nowrap;
+    }
+    .exp-dl-btn:hover { border-color: var(--border-accent); color: var(--accent); }
+
+    /* ── Konto-Filter ── */
+    .exp-acc-filter-item {
+        display: flex; align-items: center; gap: 8px;
+        padding: 7px 10px; border-radius: var(--radius-md);
+        background: var(--surface-2); border: 1px solid var(--border);
+        cursor: pointer; font-size: 0.82rem; transition: border-color 0.15s;
+        min-width: 0; /* wichtig gegen overflow */
+    }
+    .exp-acc-filter-item:has(input:checked) { border-color: var(--border-accent); }
+    .exp-acc-filter-item input[type=checkbox] {
+        accent-color: var(--accent); width: 14px; height: 14px;
+        flex-shrink: 0; cursor: pointer;
+    }
+    .exp-acc-filter-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .exp-acc-filter-name {
+        flex: 1; font-weight: 600; color: var(--text-1);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        min-width: 0;
+    }
+    .exp-acc-filter-bal  { font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
+
+    /* ── Toggle Switch ── */
+    .exp-toggle-switch { position:relative; display:inline-block; width:38px; height:22px; flex-shrink:0; }
+    .exp-toggle-switch input { opacity:0; width:0; height:0; }
+    .exp-toggle-track {
+        position:absolute; inset:0; border-radius:11px; background:var(--border);
+        cursor:pointer; transition:background 0.2s;
+    }
+    .exp-toggle-track::before {
+        content:''; position:absolute; width:16px; height:16px; left:3px; top:3px;
+        border-radius:50%; background:#fff; transition:transform 0.2s;
+    }
+    .exp-toggle-switch input:checked + .exp-toggle-track { background:var(--accent,#6358e6); }
+    .exp-toggle-switch input:checked + .exp-toggle-track::before { transform:translateX(16px); }
+
+    @media (max-width: 1000px) { .export-page-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 640px)  { .export-page-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header">
+        <div>
+            <h1>Daten exportieren</h1>
+            <p>Lade deine Daten als CSV, JSON oder PDF herunter — jederzeit, ohne Lock-in</p>
+        </div>
+        <!-- Modus-Umschalter -->
+        <div style="display:flex;gap:4px;background:var(--surface-2);border-radius:var(--radius-md);padding:4px;">
+            <button id="expModeBtnPrivat" onclick="setExportMode('privat')" class="exp-mode-btn exp-mode-btn--active">
+                <i class="ri-user-line"></i> Privat
+            </button>
+            <button id="expModeBtnHaushalt" onclick="setExportMode('haushalt')" class="exp-mode-btn">
+                <i class="ri-home-heart-line"></i> Haushalt
+            </button>
+        </div>
+    </div>
+
+    <!-- Haushalt-Banner (sichtbar wenn Haushalt-Modus aktiv) -->
+    <div id="hausModeBanner" style="display:none;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:28px;display:none;align-items:flex-start;gap:12px;">
+        <i class="ri-home-heart-line" style="color:#10b981;font-size:1.2rem;margin-top:1px;flex-shrink:0;"></i>
+        <div style="font-size:0.84rem;color:var(--text-2);line-height:1.6;">
+            <strong id="hausModeName" style="color:var(--text-1);">Haushalt</strong> —
+            Du exportierst jetzt die gemeinsamen Haushaltsdaten: Transaktionen, Konten, Fixkosten, Todos und Dokumente.
+        </div>
+    </div>
+
+    <!-- Info-Banner -->
+    <div id="privatInfoBanner" style="background:rgba(99,88,230,0.08);border:1px solid rgba(99,88,230,0.2);border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:28px;display:flex;align-items:flex-start;gap:12px;">
+        <i class="ri-shield-check-line" style="color:var(--accent);font-size:1.2rem;margin-top:1px;flex-shrink:0;"></i>
+        <div style="font-size:0.84rem;color:var(--text-2);line-height:1.6;">
+            <strong style="color:var(--text-1);">Deine Daten gehören dir.</strong>
+            Alle Exporte werden direkt in deinem Browser erstellt — keine Daten werden an Dritte übertragen.
+            Dokument-Anhänge (Dateien) sind aus technischen Gründen nicht im Export enthalten, nur deren Metadaten.
+        </div>
+    </div>
+
+    <div class="export-page-grid">
+
+        <!-- ── PDF Export ── -->
+        <div class="card exp-card">
+            <div class="exp-card-header">
+                <div class="exp-card-icon" style="background:rgba(239,68,68,0.12);color:#ef4444;">
+                    <i class="ri-file-pdf-line"></i>
+                </div>
+                <div>
+                    <div class="exp-card-title">PDF-Bericht</div>
+                    <div class="exp-card-sub">Professioneller Finanzbericht mit Diagrammen</div>
+                </div>
+            </div>
+
+            <div class="exp-option-row">
+                <label class="exp-label">Konten</label>
+                <div id="pdfAccountFilter" style="display:flex;flex-direction:column;gap:6px;">
+                    <div style="font-size:0.8rem;color:var(--text-3);">Wird geladen…</div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:4px;">
+                    <button onclick="selectAllPdfAccounts()" style="font-size:0.72rem;padding:3px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);cursor:pointer;font-family:inherit;">Alle</button>
+                    <button onclick="selectNonePdfAccounts()" style="font-size:0.72rem;padding:3px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);cursor:pointer;font-family:inherit;">Keine</button>
+                </div>
+            </div>
+
+            <div class="exp-option-row">
+                <label class="exp-label">Diagramme</label>
+                <div class="exp-format-row" style="flex-wrap:wrap;">
+                    <label class="exp-format-chip">
+                        <input type="checkbox" name="pdfChartType" value="bar" checked>
+                        <i class="ri-bar-chart-2-line"></i> Säulen
+                    </label>
+                    <label class="exp-format-chip">
+                        <input type="checkbox" name="pdfChartType" value="line">
+                        <i class="ri-line-chart-line"></i> Linie
+                    </label>
+                    <label class="exp-format-chip">
+                        <input type="checkbox" name="pdfChartType" value="doughnut">
+                        <i class="ri-pie-chart-2-line"></i> Donut
+                    </label>
+                </div>
+            </div>
+
+            <div class="exp-option-row">
+                <label class="exp-label">Transaktionen gruppieren nach</label>
+                <div class="exp-format-row">
+                    <label class="exp-format-chip">
+                        <input type="radio" name="pdfGroupBy" value="month" checked> Monat
+                    </label>
+                    <label class="exp-format-chip">
+                        <input type="radio" name="pdfGroupBy" value="week"> Woche
+                    </label>
+                    <label class="exp-format-chip">
+                        <input type="radio" name="pdfGroupBy" value="day"> Tag
+                    </label>
+                </div>
+            </div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">
+                <span style="font-size:0.8rem;color:var(--text-2);font-weight:500;">Gesamtübersicht am Ende</span>
+                <label class="exp-toggle-switch">
+                    <input type="checkbox" id="pdfShowGesamt" checked>
+                    <span class="exp-toggle-track"></span>
+                </label>
+            </div>
+
+            <button class="btn-primary exp-btn" style="background:#ef4444;box-shadow:0 0 20px rgba(239,68,68,0.25);" onclick="exportPDF()">
+                <i class="ri-file-pdf-line"></i> PDF erstellen
+            </button>
+        </div>
+
+        
+
+        <!-- ── Transaktionen ── -->
+        <div class="card exp-card">
+            <div class="exp-card-header">
+                <div class="exp-card-icon" style="background:rgba(34,197,94,0.12);color:#22c55e;">
+                    <i class="ri-exchange-dollar-line"></i>
+                </div>
+                <div>
+                    <div class="exp-card-title">Transaktionen</div>
+                    <div class="exp-card-sub">Alle Einnahmen und Ausgaben</div>
+                </div>
+            </div>
+
+            <div class="exp-option-row">
+                <label class="exp-label">Konten</label>
+                <div id="txAccountFilter" style="display:flex;flex-direction:column;gap:6px;">
+                    <div style="font-size:0.8rem;color:var(--text-3);">Wird geladen…</div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:4px;">
+                    <button onclick="selectAllTxAccounts()" style="font-size:0.72rem;padding:3px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);cursor:pointer;font-family:inherit;">Alle</button>
+                    <button onclick="selectNoneTxAccounts()" style="font-size:0.72rem;padding:3px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);cursor:pointer;font-family:inherit;">Keine</button>
+                </div>
+            </div>
+
+            <div class="exp-option-row">
+                <label class="exp-label">Zeitraum</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <select id="txDateFrom" style="flex:1;min-width:120px;">
+                        <option value="">Von Anfang an</option>
+                    </select>
+                    <span style="display:flex;align-items:center;color:var(--text-3);font-size:0.85rem;">bis</span>
+                    <select id="txDateTo" style="flex:1;min-width:120px;">
+                        <option value="">Bis heute</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="exp-option-row">
+                <label class="exp-label">Format</label>
+                <div class="exp-format-row">
+                    <label class="exp-format-chip">
+                        <input type="radio" name="txFormat" value="csv" checked>
+                        <i class="ri-file-excel-2-line"></i> CSV
+                    </label>
+                    <label class="exp-format-chip">
+                        <input type="radio" name="txFormat" value="json">
+                        <i class="ri-braces-line"></i> JSON
+                    </label>
+                </div>
+            </div>
+
+            <div id="txCount" class="exp-count"></div>
+
+            <button class="btn-primary exp-btn" onclick="exportTransaktionen()">
+                <i class="ri-download-2-line"></i> Transaktionen exportieren
+            </button>
+        </div>
+
+        
+
+        <!-- ── Einzelne Datenbereiche ── -->
+        <div class="card exp-card">
+            <div class="exp-card-header">
+                <div class="exp-card-icon" style="background:rgba(59,130,246,0.12);color:#3b82f6;">
+                    <i class="ri-list-check-2"></i>
+                </div>
+                <div>
+                    <div class="exp-card-title">Einzelne Bereiche</div>
+                    <div class="exp-card-sub">Wähle gezielt was du exportieren möchtest</div>
+                </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:6px;" id="singleExportList"></div>
+            <div style="display:none;flex-direction:column;gap:6px;" id="singleExportListHaushalt"></div>
+        </div>
+
+
+        <!-- ── Monatsanalyse ── -->
+        <div class="card exp-card">
+            <div class="exp-card-header">
+                <div class="exp-card-icon" style="background:rgba(168,85,247,0.12);color:#a855f7;">
+                    <i class="ri-bar-chart-grouped-line"></i>
+                </div>
+                <div>
+                    <div class="exp-card-title">Monatsanalyse PDF</div>
+                    <div class="exp-card-sub">Detaillierter Bericht für einen einzelnen Monat</div>
+                </div>
+            </div>
+
+            <div class="exp-option-row">
+                <label class="exp-label">Monat auswählen</label>
+                <select id="monatSelect" style="width:100%;"></select>
+            </div>
+
+            <div class="exp-option-row">
+                <label class="exp-label">Diagrammtyp</label>
+                <div class="exp-format-row">
+                    <label class="exp-format-chip">
+                        <input type="radio" name="monatChartType" value="bar" checked>
+                        <i class="ri-bar-chart-2-line"></i> Säulen
+                    </label>
+                    <label class="exp-format-chip">
+                        <input type="radio" name="monatChartType" value="line">
+                        <i class="ri-line-chart-line"></i> Linie
+                    </label>
+                    <label class="exp-format-chip">
+                        <input type="radio" name="monatChartType" value="doughnut">
+                        <i class="ri-pie-chart-2-line"></i> Donut
+                    </label>
+                </div>
+            </div>
+
+            <div style="font-size:0.78rem;color:var(--text-3);line-height:1.5;padding:10px 12px;background:var(--surface-2);border-radius:var(--radius-md);border:1px solid var(--border);">
+                Zusammenfassung, Kategorienaufschlüsselung, Diagramm und alle Transaktionen des gewählten Monats.
+            </div>
+
+            <button class="btn-primary exp-btn" style="background:#a855f7;box-shadow:0 0 20px rgba(168,85,247,0.2);" onclick="exportMonatsanalyse()">
+                <i class="ri-bar-chart-grouped-line"></i> Monatsanalyse erstellen
+            </button>
+        </div>
+
+
+        <!-- ── Vollständiges Backup ── -->
+        <div class="card exp-card exp-card-featured">
+            <div class="exp-featured-badge"><i class="ri-star-fill"></i> Komplett-Export</div>
+            <div class="exp-card-header">
+                <div class="exp-card-icon" style="background:rgba(99,88,230,0.15);color:var(--accent);">
+                    <i class="ri-database-2-line"></i>
+                </div>
+                <div>
+                    <div class="exp-card-title">Vollständiges Backup</div>
+                    <div class="exp-card-sub">Alle Daten in einer JSON-Datei</div>
+                </div>
+            </div>
+
+            <div class="exp-backup-includes">
+                <div class="exp-backup-label">Enthält:</div>
+                <!-- Privat-Tags (default) -->
+                <div class="exp-backup-tags" id="backupTagsPrivat">
+                    <span class="exp-tag"><i class="ri-exchange-dollar-line"></i> Transaktionen</span>
+                    <span class="exp-tag"><i class="ri-bank-line"></i> Konten</span>
+                    <span class="exp-tag"><i class="ri-flag-line"></i> Sparziele</span>
+                    <span class="exp-tag"><i class="ri-repeat-line"></i> Fixkosten</span>
+                    <span class="exp-tag"><i class="ri-scales-line"></i> Schulden</span>
+                    <span class="exp-tag"><i class="ri-file-line"></i> Dokumente*</span>
+                    <span class="exp-tag"><i class="ri-shield-check-line"></i> Versicherungen</span>
+                    <span class="exp-tag"><i class="ri-checkbox-line"></i> Todos</span>
+                    <span class="exp-tag"><i class="ri-sticky-note-line"></i> Notizen</span>
+                    <span class="exp-tag"><i class="ri-bar-chart-box-line"></i> Budgets</span>
+                </div>
+                <!-- Haushalt-Tags (versteckt) -->
+                <div class="exp-backup-tags" id="backupTagsHaushalt" style="display:none;">
+                    <span class="exp-tag" style="border-color:rgba(16,185,129,0.3);color:#10b981;"><i class="ri-exchange-dollar-line"></i> Transaktionen</span>
+                    <span class="exp-tag" style="border-color:rgba(16,185,129,0.3);color:#10b981;"><i class="ri-bank-card-line"></i> Konten</span>
+                    <span class="exp-tag" style="border-color:rgba(16,185,129,0.3);color:#10b981;"><i class="ri-repeat-line"></i> Fixkosten</span>
+                    <span class="exp-tag" style="border-color:rgba(16,185,129,0.3);color:#10b981;"><i class="ri-checkbox-line"></i> Todos</span>
+                    <span class="exp-tag" style="border-color:rgba(16,185,129,0.3);color:#10b981;"><i class="ri-file-line"></i> Dokumente*</span>
+                </div>
+                <div style="font-size:0.72rem;color:var(--text-3);margin-top:6px;">* Nur Metadaten, keine Datei-Anhänge</div>
+            </div>
+
+            <button class="btn-primary exp-btn" style="background:var(--accent);" onclick="exportBackup()">
+                <i class="ri-download-2-line"></i> <span id="backupBtnLabel">Backup herunterladen (JSON)</span>
+            </button>
+        </div>
+
+    </div>
+
+    <div id="exportStatus" style="display:none;margin-top:20px;" class="card" style="padding:16px 20px;"></div>
+
+    <%- include('footer.html') %>
+
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/export.js"></script>
+    <script src="/navheader.js"></script>
+</body>
+</html>

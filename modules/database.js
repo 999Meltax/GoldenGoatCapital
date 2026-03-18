@@ -143,6 +143,8 @@ export default class Database {
             try { await database.query("ALTER TABLE user_settings ADD COLUMN reminder_rechnungen INTEGER DEFAULT 1"); } catch(e) {}
             try { await database.query("ALTER TABLE user_settings ADD COLUMN reminder_budget     INTEGER DEFAULT 1"); } catch(e) {}
             try { await database.query("ALTER TABLE user_settings ADD COLUMN reminder_sparziele  INTEGER DEFAULT 1"); } catch(e) {}
+            try { await database.query("ALTER TABLE user_settings ADD COLUMN totp_secret TEXT DEFAULT NULL"); } catch(e) {}
+            try { await database.query("ALTER TABLE user_settings ADD COLUMN totp_backup_codes TEXT DEFAULT NULL"); } catch(e) {}
 
             // ── Passwort-Reset-Token ─────────────────────────────────────
             try { await database.query("ALTER TABLE users ADD COLUMN reset_token TEXT DEFAULT NULL"); } catch(e) {}
@@ -190,6 +192,7 @@ export default class Database {
                     created_at TEXT DEFAULT (datetime('now'))
                 )
             `);
+            try { await database.query('ALTER TABLE sparziele ADD COLUMN account_id INTEGER DEFAULT NULL'); } catch(e) {}
 
             // ── Abonnements-Tabelle (Legacy – Daten werden in fixkosten migriert) ──
             await database.query(`
@@ -405,6 +408,7 @@ export default class Database {
             try { await database.query('ALTER TABLE haushalt_ausgaben ADD COLUMN tx_id INTEGER DEFAULT NULL'); } catch(e) {}
             try { await database.query('ALTER TABLE haushalt_transaktionen ADD COLUMN anteil_user1 REAL DEFAULT 50'); } catch(e) {}
             try { await database.query('ALTER TABLE haushalt_transaktionen ADD COLUMN anteil_user2 REAL DEFAULT 50'); } catch(e) {}
+            try { await database.query('ALTER TABLE haushalt_transaktionen ADD COLUMN konto_id INTEGER DEFAULT NULL'); } catch(e) {}
 
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_konten (
@@ -417,6 +421,35 @@ export default class Database {
                     created_at TEXT DEFAULT (datetime('now'))
                 )
             `);
+
+            // ── Migration: UNIQUE-Constraint auf haushalt_id entfernen ──
+            // SQLite unterstützt kein ALTER TABLE DROP CONSTRAINT → neue Tabelle anlegen
+            try {
+                await database.query(`
+                    CREATE TABLE IF NOT EXISTS haushalt_konten_v2 (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        haushalt_id INTEGER NOT NULL,
+                        name TEXT NOT NULL DEFAULT 'Gemeinsames Konto',
+                        balance REAL DEFAULT 0,
+                        color TEXT DEFAULT '#10b981',
+                        linked_account_id INTEGER DEFAULT NULL,
+                        created_at TEXT DEFAULT (datetime('now'))
+                    )
+                `);
+                const migrated = await database.query(
+                    "SELECT COUNT(*) as cnt FROM haushalt_konten_v2",
+                    { type: Sequelize.QueryTypes.SELECT }
+                );
+                const oldData = await database.query(
+                    "SELECT COUNT(*) as cnt FROM haushalt_konten",
+                    { type: Sequelize.QueryTypes.SELECT }
+                );
+                if (migrated[0].cnt === 0 && oldData[0].cnt > 0) {
+                    await database.query(
+                        "INSERT INTO haushalt_konten_v2 (id, haushalt_id, name, balance, color, linked_account_id, created_at) SELECT id, haushalt_id, name, balance, color, linked_account_id, created_at FROM haushalt_konten"
+                    );
+                }
+            } catch(e) { console.log('haushalt_konten_v2 migration:', e.message); }
 
             await database.query(`
                 CREATE TABLE IF NOT EXISTS haushalt_transaktionen (
@@ -493,6 +526,12 @@ export default class Database {
             try { await database.query("ALTER TABLE fixkosten ADD COLUMN aktiv INTEGER DEFAULT 1"); } catch(e) {}
             try { await database.query("ALTER TABLE fixkosten ADD COLUMN migrated_abo_id INTEGER DEFAULT NULL"); } catch(e) {}
             try { await database.query("ALTER TABLE fixkosten ADD COLUMN tx_type TEXT DEFAULT 'Ausgaben'"); } catch(e) {}
+            // ── Umbuchungen ──
+            try { await database.query("ALTER TABLE ausgabenDB ADD COLUMN transfer_to_account_id INTEGER DEFAULT NULL"); } catch(e) {}
+            try { await database.query("ALTER TABLE ausgabenDB ADD COLUMN transfer_pair_id INTEGER DEFAULT NULL"); } catch(e) {}
+            try { await database.query("ALTER TABLE fixkosten ADD COLUMN transfer_to_account_id INTEGER DEFAULT NULL"); } catch(e) {}
+            try { await database.query("ALTER TABLE fixkosten ADD COLUMN transfer_to_source TEXT DEFAULT NULL"); } catch(e) {}
+            try { await database.query("ALTER TABLE fixkosten ADD COLUMN transfer_to_haushalt_id INTEGER DEFAULT NULL"); } catch(e) {}
 
             // ── Migration: bestehende Abos → fixkosten (subtyp='abo') ──
             try {
@@ -802,6 +841,60 @@ export default class Database {
                 type: Sequelize.QueryTypes.INSERT
             }
         );
+    }
+
+    // ── TOTP / 2FA Methoden ────────────────────────────────────
+
+    async getTotpSecret(userId) {
+        const rows = await this._database.query(
+            'SELECT totp_secret, totp_backup_codes FROM user_settings WHERE user_id=?',
+            { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
+        );
+        return rows[0] || null;
+    }
+
+    async setTotpSecret(userId, secret, backupCodes) {
+        await this._database.query(
+            `INSERT INTO user_settings (user_id, totp_secret, totp_backup_codes)
+             VALUES (?, ?, ?)
+             ON CONFLICT(user_id) DO UPDATE SET
+               totp_secret = excluded.totp_secret,
+               totp_backup_codes = excluded.totp_backup_codes`,
+            { replacements: [userId, secret, JSON.stringify(backupCodes)], type: Sequelize.QueryTypes.INSERT }
+        );
+    }
+
+    async enableTotp(userId) {
+        await this._database.query(
+            `INSERT INTO user_settings (user_id, two_factor) VALUES (?, 1)
+             ON CONFLICT(user_id) DO UPDATE SET two_factor = 1`,
+            { replacements: [userId], type: Sequelize.QueryTypes.INSERT }
+        );
+    }
+
+    async disableTotp(userId) {
+        await this._database.query(
+            `UPDATE user_settings SET two_factor=0, totp_secret=NULL, totp_backup_codes=NULL WHERE user_id=?`,
+            { replacements: [userId], type: Sequelize.QueryTypes.UPDATE }
+        );
+    }
+
+    async consumeBackupCode(userId, code) {
+        const rows = await this._database.query(
+            'SELECT totp_backup_codes FROM user_settings WHERE user_id=?',
+            { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
+        );
+        if (!rows.length || !rows[0].totp_backup_codes) return false;
+        let codes;
+        try { codes = JSON.parse(rows[0].totp_backup_codes); } catch { return false; }
+        const idx = codes.indexOf(code.trim().toUpperCase());
+        if (idx === -1) return false;
+        codes.splice(idx, 1);
+        await this._database.query(
+            'UPDATE user_settings SET totp_backup_codes=? WHERE user_id=?',
+            { replacements: [JSON.stringify(codes), userId], type: Sequelize.QueryTypes.UPDATE }
+        );
+        return true;
     }
 
     async saveTransaction(userId, name, category, date, amount, type, accountId = null) {
@@ -1503,23 +1596,27 @@ export default class Database {
 
     async getSparziele(userId) {
         return await this._database.query(
-            'SELECT * FROM sparziele WHERE user_id=? ORDER BY created_at DESC',
+            `SELECT sz.*, a.name as account_name, a.color as account_color, a.icon as account_icon
+             FROM sparziele sz
+             LEFT JOIN accounts a ON sz.account_id = a.id AND a.user_id = sz.user_id
+             WHERE sz.user_id=?
+             ORDER BY sz.created_at DESC`,
             { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
         );
     }
 
-    async addSparziel(userId, name, zielbetrag, gespart, datum, farbe) {
+    async addSparziel(userId, name, zielbetrag, gespart, datum, farbe, accountId) {
         const result = await this._database.query(
-            'INSERT INTO sparziele (user_id, name, zielbetrag, gespart, datum, farbe) VALUES (?,?,?,?,?,?)',
-            { replacements: [userId, name, zielbetrag, gespart || 0, datum || null, farbe || '#6358e6'], type: Sequelize.QueryTypes.INSERT }
+            'INSERT INTO sparziele (user_id, name, zielbetrag, gespart, datum, farbe, account_id) VALUES (?,?,?,?,?,?,?)',
+            { replacements: [userId, name, zielbetrag, gespart || 0, datum || null, farbe || '#6358e6', accountId || null], type: Sequelize.QueryTypes.INSERT }
         );
         return result[0];
     }
 
-    async updateSparziel(userId, id, name, zielbetrag, gespart, datum, farbe) {
+    async updateSparziel(userId, id, name, zielbetrag, gespart, datum, farbe, accountId) {
         await this._database.query(
-            'UPDATE sparziele SET name=?, zielbetrag=?, gespart=?, datum=?, farbe=? WHERE id=? AND user_id=?',
-            { replacements: [name, zielbetrag, gespart, datum || null, farbe, id, userId], type: Sequelize.QueryTypes.UPDATE }
+            'UPDATE sparziele SET name=?, zielbetrag=?, gespart=?, datum=?, farbe=?, account_id=? WHERE id=? AND user_id=?',
+            { replacements: [name, zielbetrag, gespart, datum || null, farbe, accountId || null, id, userId], type: Sequelize.QueryTypes.UPDATE }
         );
     }
 
@@ -1535,6 +1632,33 @@ export default class Database {
             'DELETE FROM sparziele WHERE id=? AND user_id=?',
             { replacements: [id, userId], type: Sequelize.QueryTypes.DELETE }
         );
+    }
+
+    // Gibt für jedes Sparkonto: Kontostand, zugewiesene Sparziele (mit Betrag), freier Rest
+    async getKontoSparzieleAufteilung(userId) {
+        // Alle Konten des Users
+        const accounts = await this.getAccountsWithBalance(userId);
+        // Sparziele mit account_id
+        const sparziele = await this._database.query(
+            'SELECT * FROM sparziele WHERE user_id=? AND account_id IS NOT NULL',
+            { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
+        );
+
+        return accounts.map(acc => {
+            const zugewiesene = sparziele.filter(sz => sz.account_id === acc.id);
+            const reserviert = zugewiesene.reduce((sum, sz) => sum + (sz.gespart || 0), 0);
+            const frei = Math.max(acc.currentBalance - reserviert, 0);
+            return {
+                id: acc.id,
+                name: acc.name,
+                color: acc.color,
+                icon: acc.icon,
+                currentBalance: acc.currentBalance,
+                reserviert,
+                frei,
+                sparziele: zugewiesene
+            };
+        }).filter(acc => acc.sparziele.length > 0 || acc.currentBalance > 0);
     }
 
     // ── Abonnements-Methoden (Legacy-Shims – schreiben jetzt in fixkosten) ──
@@ -1849,24 +1973,25 @@ export default class Database {
     }
 
     async addFixkostUnified(userId, data) {
-        const { name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz, naechste_faelligkeit, icon, farbe, aktiv, tx_type } = data;
+        const { name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz,
+                naechste_faelligkeit, icon, farbe, aktiv, tx_type,
+                transfer_to_account_id, transfer_to_source, transfer_to_haushalt_id } = data;
         const result = await this._database.query(
-            `INSERT INTO fixkosten (user_id, name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz, naechste_faelligkeit, icon, farbe, aktiv, tx_type)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO fixkosten (user_id, name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz,
+             naechste_faelligkeit, icon, farbe, aktiv, tx_type, transfer_to_account_id, transfer_to_source, transfer_to_haushalt_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             {
                 replacements: [
                     userId, name, parseFloat(betrag) || 0,
-                    parseInt(datum_tag) || 1,
-                    haeufigkeit || 'monatlich',
-                    kategorie || 'sonstiges',
-                    account_id || null,
-                    subtyp || 'fixkosten',
-                    notiz || '',
-                    naechste_faelligkeit || null,
-                    icon || 'ri-repeat-line',
-                    farbe || '#6358e6',
-                    aktiv !== false ? 1 : 0,
-                    tx_type || 'Ausgaben'
+                    parseInt(datum_tag) || 1, haeufigkeit || 'monatlich',
+                    kategorie || 'sonstiges', account_id || null,
+                    subtyp || 'fixkosten', notiz || '',
+                    naechste_faelligkeit || null, icon || 'ri-repeat-line',
+                    farbe || '#6358e6', aktiv !== false ? 1 : 0,
+                    tx_type || 'Ausgaben',
+                    transfer_to_account_id || null,
+                    transfer_to_source || null,
+                    transfer_to_haushalt_id || null,
                 ],
                 type: Sequelize.QueryTypes.INSERT
             }
@@ -1875,25 +2000,26 @@ export default class Database {
     }
 
     async updateFixkostUnified(userId, id, data) {
-        const { name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz, naechste_faelligkeit, icon, farbe, aktiv, tx_type } = data;
+        const { name, betrag, datum_tag, haeufigkeit, kategorie, account_id, subtyp, notiz,
+                naechste_faelligkeit, icon, farbe, aktiv, tx_type,
+                transfer_to_account_id, transfer_to_source, transfer_to_haushalt_id } = data;
         await this._database.query(
             `UPDATE fixkosten SET name=?, betrag=?, datum_tag=?, haeufigkeit=?, kategorie=?, account_id=?,
-             subtyp=?, notiz=?, naechste_faelligkeit=?, icon=?, farbe=?, aktiv=?, tx_type=?
+             subtyp=?, notiz=?, naechste_faelligkeit=?, icon=?, farbe=?, aktiv=?, tx_type=?,
+             transfer_to_account_id=?, transfer_to_source=?, transfer_to_haushalt_id=?
              WHERE id=? AND user_id=?`,
             {
                 replacements: [
                     name, parseFloat(betrag) || 0,
-                    parseInt(datum_tag) || 1,
-                    haeufigkeit || 'monatlich',
-                    kategorie || 'sonstiges',
-                    account_id || null,
-                    subtyp || 'fixkosten',
-                    notiz || '',
-                    naechste_faelligkeit || null,
-                    icon || 'ri-repeat-line',
-                    farbe || '#6358e6',
-                    aktiv !== false ? 1 : 0,
+                    parseInt(datum_tag) || 1, haeufigkeit || 'monatlich',
+                    kategorie || 'sonstiges', account_id || null,
+                    subtyp || 'fixkosten', notiz || '',
+                    naechste_faelligkeit || null, icon || 'ri-repeat-line',
+                    farbe || '#6358e6', aktiv !== false ? 1 : 0,
                     tx_type || 'Ausgaben',
+                    transfer_to_account_id || null,
+                    transfer_to_source || null,
+                    transfer_to_haushalt_id || null,
                     id, userId
                 ],
                 type: Sequelize.QueryTypes.UPDATE
@@ -1909,7 +2035,23 @@ export default class Database {
         if (!rows.length) throw new Error('Eintrag nicht gefunden');
         const f = rows[0];
         const today = new Date().toISOString().substring(0, 10);
-        const txId = await this.saveTransaction(userId, f.name, f.kategorie, today, f.betrag, f.tx_type || 'Ausgaben', f.account_id);
+
+        let txId;
+        if (f.subtyp === 'transfer' && f.transfer_to_account_id) {
+            txId = await this.addTransfer(userId, {
+                from_account_id:        f.account_id,
+                from_source:            'privat',
+                to_account_id:          f.transfer_to_account_id,
+                to_source:              f.transfer_to_source || 'privat',
+                to_haushalt_id:         f.transfer_to_haushalt_id || null,
+                amount:                 f.betrag,
+                date:                   today,
+                name:                   f.name,
+                notiz:                  f.notiz || '',
+            });
+        } else {
+            txId = await this.saveTransaction(userId, f.name, f.kategorie, today, f.betrag, f.tx_type || 'Ausgaben', f.account_id);
+        }
 
         const base = f.naechste_faelligkeit ? new Date(f.naechste_faelligkeit) : new Date();
         let next = new Date(base);
@@ -1925,6 +2067,93 @@ export default class Database {
             { replacements: [nextStr, fixkostId, userId], type: Sequelize.QueryTypes.UPDATE }
         );
         return { txId, nextFaelligkeit: nextStr };
+    }
+
+    // ── Umbuchung zwischen Konten (auch über Privat↔Haushalt) ──
+    async addTransfer(userId, data) {
+        const { from_account_id, from_source, to_account_id, to_source,
+                to_haushalt_id, amount, date, name, notiz } = data;
+        const parsedAmount = parseFloat(amount);
+        if (!parsedAmount || parsedAmount <= 0) throw new Error('Ungültiger Betrag');
+
+        const txName = name || 'Umbuchung';
+        const txDate = date || new Date().toISOString().substring(0, 10);
+
+        // Abgang auf Privat-Quellkonto (nur wenn Quellkonto ein privates Konto ist)
+        let abgangId = null;
+        if (from_account_id && (from_source || 'privat') === 'privat') {
+            const [id] = await this._database.query(
+                'INSERT INTO ausgabenDB (user_id, name, category, date, amount, type, account_id, transfer_to_account_id) VALUES (?,?,?,?,?,?,?,?)',
+                { replacements: [userId, txName, 'Umbuchung', txDate, parsedAmount, 'Ausgaben', from_account_id, to_account_id || null], type: Sequelize.QueryTypes.INSERT }
+            );
+            abgangId = id;
+        }
+
+        // Zugang auf Privat-Zielkonto (nur wenn Zielkonto ein privates Konto ist)
+        if (to_account_id && (to_source || 'privat') === 'privat') {
+            const [zugangId] = await this._database.query(
+                'INSERT INTO ausgabenDB (user_id, name, category, date, amount, type, account_id, transfer_to_account_id, transfer_pair_id) VALUES (?,?,?,?,?,?,?,?,?)',
+                { replacements: [userId, txName, 'Umbuchung', txDate, parsedAmount, 'Einnahmen', to_account_id, from_account_id || null, abgangId], type: Sequelize.QueryTypes.INSERT }
+            );
+            // Abgang kennt seinen Partner
+            if (abgangId) {
+                await this._database.query(
+                    'UPDATE ausgabenDB SET transfer_pair_id=? WHERE id=?',
+                    { replacements: [zugangId, abgangId], type: Sequelize.QueryTypes.UPDATE }
+                );
+            }
+        }
+
+        // Zugang auf Haushaltskonto (wenn Zielkonto ein Haushaltskonto ist)
+        if (to_account_id && to_source === 'haushalt' && to_haushalt_id) {
+            await this.addHaushaltTransaktion(to_haushalt_id, userId, {
+                name:     txName,
+                category: 'Umbuchung',
+                amount:   parsedAmount,
+                type:     'Einnahmen',
+                date:     txDate,
+                notiz:    notiz || '',
+                konto_id: to_account_id,
+            });
+        }
+
+        // Abgang von Haushaltskonto (wenn Quellkonto ein Haushaltskonto ist)
+        if (from_account_id && from_source === 'haushalt') {
+            // Haushalt-ID ermitteln falls nicht mitgegeben
+            const hausRows = await this._database.query(
+                'SELECT haushalt_id FROM haushalt_konten_v2 WHERE id=?',
+                { replacements: [from_account_id], type: Sequelize.QueryTypes.SELECT }
+            );
+            if (hausRows.length) {
+                await this.addHaushaltTransaktion(hausRows[0].haushalt_id, userId, {
+                    name:     txName,
+                    category: 'Umbuchung',
+                    amount:   parsedAmount,
+                    type:     'Ausgaben',
+                    date:     txDate,
+                    notiz:    notiz || '',
+                    konto_id: from_account_id,
+                });
+            }
+        }
+
+        return abgangId;
+    }
+
+    async deleteTransfer(userId, txId) {
+        const rows = await this._database.query(
+            'SELECT id, transfer_pair_id FROM ausgabenDB WHERE id=? AND user_id=?',
+            { replacements: [txId, userId], type: Sequelize.QueryTypes.SELECT }
+        );
+        if (!rows.length) return;
+        const ids = [txId];
+        if (rows[0].transfer_pair_id) ids.push(rows[0].transfer_pair_id);
+        for (const id of ids) {
+            await this._database.query(
+                'DELETE FROM ausgabenDB WHERE id=? AND user_id=?',
+                { replacements: [id, userId], type: Sequelize.QueryTypes.DELETE }
+            );
+        }
     }
 
     // ══════════════════════════════════════════════════════════
@@ -2308,10 +2537,33 @@ export default class Database {
         );
     }
 
+    async getHaushaltKonten(haushaltId) {
+        const rows = await this._database.query(
+            'SELECT * FROM haushalt_konten_v2 WHERE haushalt_id = ? ORDER BY created_at ASC',
+            { replacements: [haushaltId], type: Sequelize.QueryTypes.SELECT }
+        );
+        return await Promise.all(rows.map(async konto => {
+            const tx = await this._database.query(
+                `SELECT COALESCE(SUM(CASE WHEN type='Einnahmen' THEN amount ELSE -amount END),0) AS delta
+                 FROM haushalt_transaktionen WHERE haushalt_id=? AND konto_id=?`,
+                { replacements: [haushaltId, konto.id], type: Sequelize.QueryTypes.SELECT }
+            );
+            return { ...konto, currentBalance: konto.balance + (tx[0]?.delta || 0) };
+        }));
+    }
+
     async getHaushaltKonto(haushaltId) {
         const rows = await this._database.query(
-            'SELECT * FROM haushalt_konten WHERE haushalt_id = ? LIMIT 1',
+            'SELECT * FROM haushalt_konten_v2 WHERE haushalt_id = ? ORDER BY created_at ASC LIMIT 1',
             { replacements: [haushaltId], type: Sequelize.QueryTypes.SELECT }
+        );
+        return rows[0] || null;
+    }
+
+    async getHaushaltKontoById(haushaltId, kontoId) {
+        const rows = await this._database.query(
+            'SELECT * FROM haushalt_konten_v2 WHERE id=? AND haushalt_id=?',
+            { replacements: [kontoId, haushaltId], type: Sequelize.QueryTypes.SELECT }
         );
         return rows[0] || null;
     }
@@ -2329,7 +2581,7 @@ export default class Database {
 
     async createHaushaltKonto(haushaltId, name, balance, color) {
         const result = await this._database.query(
-            'INSERT INTO haushalt_konten (haushalt_id, name, balance, color) VALUES (?,?,?,?)',
+            'INSERT INTO haushalt_konten_v2 (haushalt_id, name, balance, color) VALUES (?,?,?,?)',
             { replacements: [haushaltId, name || 'Gemeinsames Konto', parseFloat(balance) || 0, color || '#10b981'], type: Sequelize.QueryTypes.INSERT }
         );
         return result[0];
@@ -2337,21 +2589,43 @@ export default class Database {
 
     async updateHaushaltKonto(haushaltId, name, balance, color) {
         await this._database.query(
-            'UPDATE haushalt_konten SET name=?, balance=?, color=? WHERE haushalt_id=?',
+            'UPDATE haushalt_konten_v2 SET name=?, balance=?, color=? WHERE haushalt_id=? ORDER BY created_at ASC LIMIT 1',
             { replacements: [name, parseFloat(balance) || 0, color, haushaltId], type: Sequelize.QueryTypes.UPDATE }
+        );
+    }
+
+    async updateHaushaltKontoById(haushaltId, kontoId, name, balance, color) {
+        await this._database.query(
+            'UPDATE haushalt_konten_v2 SET name=?, balance=?, color=? WHERE id=? AND haushalt_id=?',
+            { replacements: [name, parseFloat(balance) || 0, color, kontoId, haushaltId], type: Sequelize.QueryTypes.UPDATE }
         );
     }
 
     async linkHaushaltKonto(haushaltId, linkedAccountId) {
         await this._database.query(
-            'UPDATE haushalt_konten SET linked_account_id=? WHERE haushalt_id=?',
+            'UPDATE haushalt_konten_v2 SET linked_account_id=? WHERE haushalt_id=? ORDER BY created_at ASC LIMIT 1',
             { replacements: [linkedAccountId || null, haushaltId], type: Sequelize.QueryTypes.UPDATE }
         );
     }
 
     async deleteHaushaltKonto(haushaltId) {
-        await this._database.query('DELETE FROM haushalt_konten WHERE haushalt_id=?', { replacements: [haushaltId], type: Sequelize.QueryTypes.DELETE });
+        await this._database.query('DELETE FROM haushalt_konten_v2 WHERE haushalt_id=?', { replacements: [haushaltId], type: Sequelize.QueryTypes.DELETE });
         await this._database.query('DELETE FROM haushalt_transaktionen WHERE haushalt_id=?', { replacements: [haushaltId], type: Sequelize.QueryTypes.DELETE });
+    }
+
+    async deleteHaushaltKontoById(haushaltId, kontoId) {
+        const konten = await this.getHaushaltKonten(haushaltId);
+        if (konten.length <= 1) throw new Error('Das letzte Konto kann nicht gelöscht werden.');
+        await this._database.query(
+            'DELETE FROM haushalt_konten_v2 WHERE id=? AND haushalt_id=?',
+            { replacements: [kontoId, haushaltId], type: Sequelize.QueryTypes.DELETE }
+        );
+        try {
+            await this._database.query(
+                'UPDATE haushalt_transaktionen SET konto_id=NULL WHERE konto_id=? AND haushalt_id=?',
+                { replacements: [kontoId, haushaltId], type: Sequelize.QueryTypes.UPDATE }
+            );
+        } catch(e) {}
     }
 
     async getHaushaltTransaktionen(haushaltId) {
@@ -2372,11 +2646,11 @@ export default class Database {
     }
 
     async addHaushaltTransaktion(haushaltId, userId, data) {
-        const { name, category, amount, type, date, notiz, ausgabe_id, anteil_user1, anteil_user2 } = data;
+        const { name, category, amount, type, date, notiz, ausgabe_id, anteil_user1, anteil_user2, konto_id } = data;
         const result = await this._database.query(
-            'INSERT INTO haushalt_transaktionen (haushalt_id, eingetragen_von, name, category, amount, type, date, notiz, ausgabe_id, anteil_user1, anteil_user2) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+            'INSERT INTO haushalt_transaktionen (haushalt_id, eingetragen_von, name, category, amount, type, date, notiz, ausgabe_id, anteil_user1, anteil_user2, konto_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
             {
-                replacements: [haushaltId, userId, name, category || 'Sonstiges', parseFloat(amount), type || 'Ausgaben', date, notiz || '', ausgabe_id || null, anteil_user1 ?? 50, anteil_user2 ?? 50],
+                replacements: [haushaltId, userId, name, category || 'Sonstiges', parseFloat(amount), type || 'Ausgaben', date, notiz || '', ausgabe_id || null, anteil_user1 ?? 50, anteil_user2 ?? 50, konto_id || null],
                 type: Sequelize.QueryTypes.INSERT
             }
         );
@@ -2384,10 +2658,10 @@ export default class Database {
     }
 
     async updateHaushaltTransaktion(haushaltId, id, data) {
-        const { name, category, amount, type, date, notiz, anteil_user1, anteil_user2 } = data;
+        const { name, category, amount, type, date, notiz, anteil_user1, anteil_user2, konto_id } = data;
         await this._database.query(
-            'UPDATE haushalt_transaktionen SET name=?, category=?, amount=?, type=?, date=?, notiz=?, anteil_user1=?, anteil_user2=? WHERE id=? AND haushalt_id=?',
-            { replacements: [name, category || 'Sonstiges', parseFloat(amount), type || 'Ausgaben', date, notiz || '', anteil_user1 ?? 50, anteil_user2 ?? 50, id, haushaltId], type: Sequelize.QueryTypes.UPDATE }
+            'UPDATE haushalt_transaktionen SET name=?, category=?, amount=?, type=?, date=?, notiz=?, anteil_user1=?, anteil_user2=?, konto_id=? WHERE id=? AND haushalt_id=?',
+            { replacements: [name, category || 'Sonstiges', parseFloat(amount), type || 'Ausgaben', date, notiz || '', anteil_user1 ?? 50, anteil_user2 ?? 50, konto_id || null, id, haushaltId], type: Sequelize.QueryTypes.UPDATE }
         );
     }
 

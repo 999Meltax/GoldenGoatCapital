@@ -124,6 +124,11 @@
                     <span>Wiederkehrend</span>
                     <small>Einnahmen oder Ausgaben</small>
                 </button>
+                <button class="fk-type-btn" data-type="transfer" onclick="selectType('transfer', this)">
+                    <i class="ri-arrow-left-right-line"></i>
+                    <span>Überweisung</span>
+                    <small>Sparrate, Haushaltsgeld…</small>
+                </button>
             </div>
 
             <div class="fk-modal-body">
@@ -185,6 +190,13 @@
                         <label class="form-label">Konto (optional)</label>
                         <select id="fkKonto">
                             <option value="">Kein Konto verknüpft</option>
+                        </select>
+                    </div>
+                    <!-- Nur bei Überweisung: Zielkonto -->
+                    <div class="form-group" id="fieldTransferTo" style="display:none;grid-column:1/-1;">
+                        <label class="form-label">Zielkonto <span style="color:#22c55e;font-size:0.75rem;">(Geld geht hierhin)</span></label>
+                        <select id="fkTransferTo">
+                            <option value="">Bitte Zielkonto wählen</option>
                         </select>
                     </div>
                     <div class="form-group" style="grid-column:1/-1;">
@@ -355,11 +367,13 @@
     .badge-abo       { background: rgba(236,72,153,0.12); color: #ec4899; }
     .badge-recurring { background: rgba(34,197,94,0.12);  color: #22c55e; }
     .badge-recurring.einnahme { background: rgba(59,130,246,0.12); color: #3b82f6; }
+    .badge-transfer  { background: rgba(99,88,230,0.1); color: var(--accent); border: 1px solid rgba(99,88,230,0.25); }
 
     .fk-item-right { text-align: right; flex-shrink: 0; }
     .fk-item-betrag { font-size: 1.05rem; font-weight: 800; }
-    .fk-item-betrag.ausgabe { color: var(--red, #ef4444); }
+    .fk-item-betrag.ausgabe  { color: var(--red, #ef4444); }
     .fk-item-betrag.einnahme { color: var(--green, #22c55e); }
+    .fk-item-betrag.transfer { color: var(--accent); display: flex; align-items: center; gap: 4px; }
     .fk-item-rhythmus { font-size: 0.72rem; color: var(--text-3); margin-top: 2px; }
 
     .fk-item-actions { display: flex; gap: 6px; flex-shrink: 0; }

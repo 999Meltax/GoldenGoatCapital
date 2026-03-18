@@ -21,7 +21,11 @@
                 <p>Logge dich ein, um auf dein Konto zuzugreifen</p>
             </div>
 
-            <form method="POST" action="/users/check_login" class="auth-form">
+            <% if (!twoFactor) { %>
+            <form method="POST" action="/users/check_login" class="auth-form" id="loginForm">
+            <% } else { %>
+            <form method="POST" action="/users/check_login" class="auth-form" id="loginForm" style="display:none;">
+            <% } %>
                 <div class="form-group">
                     <label class="form-label">E-Mail</label>
                     <input type="email" name="user" id="inputName" placeholder="deine@email.de" required>
@@ -31,7 +35,7 @@
                     <input type="password" name="pw" id="inputPasswort" placeholder="••••••••" required>
                 </div>
 
-                <% if (error) { %>
+                <% if (error && !twoFactor) { %>
                     <div class="auth-error">
                         <p style="margin:0; font-size:0.85rem;"><%= error %></p>
                     </div>
@@ -43,6 +47,51 @@
 
                 <button type="submit">Einloggen</button>
             </form>
+
+            <!-- ── 2FA-Schritt ── -->
+            <% if (twoFactor) { %>
+            <div id="twoFaForm">
+            <% } else { %>
+            <div id="twoFaForm" style="display:none;">
+            <% } %>
+                <div style="text-align:center;margin-bottom:22px;">
+                    <div style="width:56px;height:56px;border-radius:16px;background:rgba(99,88,230,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin:0 auto 14px;">
+                        <i class="ri-shield-keyhole-line"></i>
+                    </div>
+                    <h3 style="margin:0 0 6px;font-size:1rem;color:var(--text-1);">Zwei-Faktor-Authentifizierung</h3>
+                    <p style="margin:0;font-size:0.83rem;color:var(--text-3);">Gib den 6-stelligen Code aus deiner Authenticator-App ein</p>
+                </div>
+
+                <% if (error && twoFactor) { %>
+                    <div class="auth-error" style="margin-bottom:16px;">
+                        <p style="margin:0; font-size:0.85rem;"><%= error %></p>
+                    </div>
+                <% } %>
+
+                <form method="POST" action="/users/verify-2fa" class="auth-form">
+                    <div class="form-group">
+                        <label class="form-label">Authentifizierungs-Code</label>
+                        <input type="text" name="code" id="twoFaCode"
+                            placeholder="000 000"
+                            maxlength="9"
+                            autocomplete="one-time-code"
+                            inputmode="numeric"
+                            style="text-align:center;font-size:1.4rem;letter-spacing:0.2em;font-weight:700;"
+                            autofocus
+                            required>
+                        <div style="font-size:0.74rem;color:var(--text-3);margin-top:6px;text-align:center;">
+                            Oder gib einen Backup-Code ein (Format: XXXX-XXXX)
+                        </div>
+                    </div>
+                    <button type="submit" style="width:100%;">
+                        <i class="ri-shield-check-line"></i> Verifizieren
+                    </button>
+                </form>
+
+                <div style="text-align:center;margin-top:16px;">
+                    <a href="/users/login" style="font-size:0.8rem;color:var(--text-3);text-decoration:none;">← Zurück zum Login</a>
+                </div>
+            </div>
 
             <div class="auth-footer">
                 Noch kein Konto?

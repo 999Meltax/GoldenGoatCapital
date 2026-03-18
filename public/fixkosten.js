@@ -28,19 +28,33 @@ async function loadEintraege() {
 
 async function loadAccounts() {
     try {
-        const res = await fetch('/users/accounts');
+        const res = await fetch('/users/accounts/all');
         allAccounts = res.ok ? await res.json() : [];
     } catch(e) {
         allAccounts = [];
     }
-    const sel = document.getElementById('fkKonto');
-    sel.innerHTML = '<option value="">Kein Konto verknüpft</option>';
-    allAccounts.forEach(a => {
-        const opt = document.createElement('option');
-        opt.value = a.id;
-        opt.textContent = a.name;
-        sel.appendChild(opt);
-    });
+    // Konten in Privat und Haushalt aufteilen
+    const privat   = allAccounts.filter(a => a._source !== 'haushalt');
+    const haushalt = allAccounts.filter(a => a._source === 'haushalt');
+
+    function buildOptsGrouped(includeEmpty, emptyLabel) {
+        let html = includeEmpty ? `<option value="">${emptyLabel}</option>` : '';
+        if (privat.length) {
+            html += `<optgroup label="── Privat">` +
+                privat.map(a => `<option value="${a.id}" data-source="privat">${esc(a.name)}</option>`).join('') +
+                `</optgroup>`;
+        }
+        if (haushalt.length) {
+            html += `<optgroup label="── Haushalt">` +
+                haushalt.map(a => `<option value="${a.id}" data-source="haushalt" data-haushalt-id="${a._haushalt_id}">${esc(a.name)}</option>`).join('') +
+                `</optgroup>`;
+        }
+        return html;
+    }
+
+    document.getElementById('fkKonto').innerHTML    = buildOptsGrouped(true, 'Kein Konto verknüpft');
+    const toSel = document.getElementById('fkTransferTo');
+    if (toSel) toSel.innerHTML = buildOptsGrouped(true, 'Bitte Zielkonto wählen');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -142,7 +156,13 @@ function renderItem(e) {
         fixkosten: '<span class="fk-item-badge badge-fixkosten"><i class="ri-home-2-line"></i> Fixkosten</span>',
         abo:       '<span class="fk-item-badge badge-abo"><i class="ri-repeat-line"></i> Abo</span>',
         recurring: `<span class="fk-item-badge badge-recurring ${isEinnahme ? 'einnahme' : ''}"><i class="${isEinnahme ? 'ri-arrow-down-line' : 'ri-arrow-up-line'}"></i> ${isEinnahme ? 'Einnahme' : 'Ausgabe'}</span>`,
+        transfer:  '<span class="fk-item-badge badge-transfer"><i class="ri-arrow-left-right-line"></i> Überweisung</span>',
     };
+
+    // Zielkonto-Info für Transfers
+    const transferZiel = e.transfer_to_account_id
+        ? allAccounts.find(a => a.id == e.transfer_to_account_id)
+        : null;
 
     // Icon & Farbe
     const iconMap = {
@@ -176,9 +196,13 @@ function renderItem(e) {
         else                 faelligHtml = `<span class="fk-faellig-badge fk-faellig-ok">${dStr}</span>`;
     }
 
-    // Konto-Name
+    // Konto-Name / Transfer-Info
     const konto = allAccounts.find(a => a.id == e.account_id);
-    const kontoInfo = konto ? `<span><i class="ri-bank-card-line"></i> ${esc(konto.name)}</span>` : '';
+    let kontoInfo = konto ? `<span><i class="ri-bank-card-line"></i> ${esc(konto.name)}</span>` : '';
+    if (e.subtyp === 'transfer' && transferZiel) {
+        const vonName = konto ? esc(konto.name) : 'Extern';
+        kontoInfo = `<span style="color:var(--accent);"><i class="ri-bank-card-line"></i> ${vonName} <i class="ri-arrow-right-line"></i> ${esc(transferZiel.name)}</span>`;
+    }
 
     return `<div class="fk-item${e.aktiv ? '' : ' inaktiv'}">
         <div class="fk-item-icon" style="background:${bgCol};color:${color};">
@@ -196,8 +220,8 @@ function renderItem(e) {
             </div>
         </div>
         <div class="fk-item-right">
-            <div class="fk-item-betrag ${isEinnahme ? 'einnahme' : 'ausgabe'}">
-                ${isEinnahme ? '+' : '-'} ${fmt.format(e.betrag)}
+            <div class="fk-item-betrag ${e.subtyp === 'transfer' ? 'transfer' : (isEinnahme ? 'einnahme' : 'ausgabe')}">
+                ${e.subtyp === 'transfer' ? '<i class="ri-arrow-left-right-line"></i> ' : (isEinnahme ? '+' : '-') + ' '}${fmt.format(e.betrag)}
             </div>
             <div class="fk-item-rhythmus">${rhythmusLabels[e.haeufigkeit] || e.haeufigkeit}</div>
         </div>
@@ -238,6 +262,8 @@ function openModal(id = null) {
         document.getElementById('fkAktiv').checked    = !!e.aktiv;
         document.getElementById('fkEditId').value     = e.id;
         document.getElementById('fkSubtyp').value     = e.subtyp || 'fixkosten';
+        const toSel = document.getElementById('fkTransferTo');
+        if (toSel) toSel.value = e.transfer_to_account_id || '';
         selectType(e.subtyp || 'fixkosten', null, true);
     } else {
         document.getElementById('modalTitle').textContent = 'Neuer Eintrag';
@@ -260,6 +286,8 @@ function resetModal() {
     document.getElementById('fkEditId').value      = '';
     document.getElementById('fkSubtyp').value      = 'fixkosten';
     document.getElementById('fkMsg').textContent   = '';
+    const toSel = document.getElementById('fkTransferTo');
+    if (toSel) toSel.value = '';
     selectType('fixkosten', null, true);
 }
 
@@ -287,8 +315,15 @@ function selectType(type, btn, silent = false) {
     }
 
     // Felder ein-/ausblenden
-    document.getElementById('fieldDatumTag').style.display = (type === 'fixkosten') ? '' : 'none';
-    document.getElementById('fieldTxType').style.display   = (type === 'recurring')  ? '' : 'none';
+    document.getElementById('fieldDatumTag').style.display   = (type === 'fixkosten') ? '' : 'none';
+    document.getElementById('fieldTxType').style.display     = (type === 'recurring')  ? '' : 'none';
+    document.getElementById('fieldTransferTo').style.display = (type === 'transfer')   ? '' : 'none';
+
+    // Konto-Label anpassen
+    const kontoLabel = document.querySelector('#fkKonto')?.closest('.form-group')?.querySelector('.form-label');
+    if (kontoLabel) {
+        kontoLabel.textContent = type === 'transfer' ? 'Von Konto (Quellkonto)' : 'Konto (optional)';
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -305,17 +340,43 @@ async function saveEintrag() {
         return;
     }
 
+    const transferToId = document.getElementById('fkTransferTo')?.value || null;
+    if (subtyp === 'transfer' && !transferToId) {
+        showMsg('Bitte ein Zielkonto für die Überweisung auswählen.', true);
+        return;
+    }
+    const fromId = document.getElementById('fkKonto').value || null;
+    if (subtyp === 'transfer' && fromId && fromId === transferToId) {
+        showMsg('Quell- und Zielkonto dürfen nicht identisch sein.', true);
+        return;
+    }
+
+    // _source und _haushalt_id aus den data-Attributen der gewählten Option lesen
+    function getOptMeta(selId) {
+        const sel = document.getElementById(selId);
+        const opt = sel?.options[sel.selectedIndex];
+        return {
+            source:     opt?.dataset?.source     || 'privat',
+            haushaltId: opt?.dataset?.haushaltId || null,
+        };
+    }
+    const fromMeta = getOptMeta('fkKonto');
+    const toMeta   = getOptMeta('fkTransferTo');
+
     const payload = {
         name,
         betrag,
-        haeufigkeit:         document.getElementById('fkRhythmus').value,
-        kategorie:           document.getElementById('fkKategorie').value,
-        naechste_faelligkeit:document.getElementById('fkFaelligkeit').value || null,
-        datum_tag:           parseInt(document.getElementById('fkDatumTag').value) || 1,
-        tx_type:             document.getElementById('fkTxType').value,
-        account_id:          document.getElementById('fkKonto').value || null,
-        notiz:               document.getElementById('fkNotiz').value.trim(),
-        aktiv:               document.getElementById('fkAktiv').checked,
+        haeufigkeit:                document.getElementById('fkRhythmus').value,
+        kategorie:                  document.getElementById('fkKategorie').value,
+        naechste_faelligkeit:       document.getElementById('fkFaelligkeit').value || null,
+        datum_tag:                  parseInt(document.getElementById('fkDatumTag').value) || 1,
+        tx_type:                    document.getElementById('fkTxType').value,
+        account_id:                 fromId,
+        transfer_to_account_id:     subtyp === 'transfer' ? (transferToId || null) : null,
+        transfer_to_source:         subtyp === 'transfer' ? toMeta.source   : null,
+        transfer_to_haushalt_id:    subtyp === 'transfer' ? (toMeta.haushaltId || null) : null,
+        notiz:                      document.getElementById('fkNotiz').value.trim(),
+        aktiv:                      document.getElementById('fkAktiv').checked,
         subtyp,
     };
 
