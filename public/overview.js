@@ -126,6 +126,7 @@ function setGreeting() {
 
 function renderAll() {
     renderStats();
+    renderNetWorth();
     renderWealthChart();
     renderAccountsList();
     renderUpcoming();
@@ -188,6 +189,117 @@ function getEffectiveStatus(doc) {
     if (doc.status === 'bezahlt') return 'bezahlt';
     if (doc.faellig_datum && new Date(doc.faellig_datum) < new Date()) return 'ueberfaellig';
     return doc.status || 'offen';
+}
+
+// ── Net-Worth Dashboard ──────────────────────────────────────
+
+let _nwChart = null;
+
+function renderNetWorth() {
+    const wrap = document.getElementById('widget-networth');
+    if (!wrap) return;
+
+    const fmtOv = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const active = getActiveAccountsOv();
+
+    // ── Daten berechnen ──────────────────────────────────────
+    const cashAccounts   = active.filter(a => a.type !== 'depot');
+    const investAccounts = active.filter(a => a.type === 'depot');
+
+    const cashTotal   = cashAccounts.reduce((s, a) => s + (a.currentBalance ?? a.balance ?? 0), 0);
+    const investTotal = investAccounts.reduce((s, a) => s + (a.currentBalance ?? a.balance ?? 0), 0);
+    const grossTotal  = cashTotal + investTotal;
+    const debtTotal   = allSchuldenOv.reduce((s, d) => s + (parseFloat(d.restbetrag) || 0), 0);
+    const netWorth    = grossTotal - debtTotal;
+
+    // ── Texte befüllen ───────────────────────────────────────
+    const fmtEl = (id, val, colorFn) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = fmtOv.format(val);
+        if (colorFn) el.style.color = colorFn(val);
+    };
+
+    fmtEl('nwTotal',  netWorth,    v => v >= 0 ? 'var(--green)' : '#ef4444');
+    fmtEl('nwCash',   cashTotal,   null);
+    fmtEl('nwInvest', investTotal, null);
+    fmtEl('nwGross',  grossTotal,  null);
+    fmtEl('nwDebt',   -debtTotal,  null);
+    fmtEl('nwNet2',   netWorth,    v => v >= 0 ? 'var(--green)' : '#ef4444');
+
+    // Konto-Anzahl als Subtext
+    const cashSubEl = document.getElementById('nwCashSub');
+    if (cashSubEl) cashSubEl.textContent = cashAccounts.length ? `(${cashAccounts.length} Konto${cashAccounts.length !== 1 ? 'en' : ''})` : '';
+
+    // Badge
+    const badge = document.getElementById('nwBadge');
+    if (badge) {
+        if (netWorth >= 0) {
+            badge.textContent = '▲ Positiv'; badge.style.cssText = 'background:rgba(34,197,94,.12);color:#22c55e;font-size:.8rem;font-weight:600;padding:5px 12px;border-radius:20px;';
+        } else {
+            badge.textContent = '▼ Negativ'; badge.style.cssText = 'background:rgba(239,68,68,.1);color:#ef4444;font-size:.8rem;font-weight:600;padding:5px 12px;border-radius:20px;';
+        }
+    }
+
+    // Zeilen ausblenden wenn 0
+    const rowInvest = document.getElementById('nwRowInvest');
+    if (rowInvest) rowInvest.style.display = investTotal === 0 && investAccounts.length === 0 ? 'none' : '';
+    const rowSchulden = document.getElementById('nwRowSchulden');
+    if (rowSchulden) rowSchulden.style.display = debtTotal === 0 ? 'none' : '';
+
+    // ── Donut-Chart ──────────────────────────────────────────
+    const canvas = document.getElementById('nwDonutChart');
+    if (!canvas) return;
+
+    const segments = [];
+    if (cashTotal > 0)   segments.push({ label: 'Liquidität',   value: cashTotal,   color: '#3b82f6' });
+    if (investTotal > 0) segments.push({ label: 'Investments',   value: investTotal, color: '#8b5cf6' });
+    if (debtTotal > 0)   segments.push({ label: 'Schulden',      value: debtTotal,   color: '#ef4444' });
+
+    const chartData   = segments.map(s => s.value);
+    const chartColors = segments.map(s => s.color);
+    const chartLabels = segments.map(s => s.label);
+
+    if (_nwChart) { _nwChart.destroy(); _nwChart = null; }
+
+    if (segments.length === 0) {
+        canvas.style.display = 'none';
+    } else {
+        canvas.style.display = '';
+        _nwChart = new Chart(canvas, {
+            type: 'doughnut',
+            data: { labels: chartLabels, datasets: [{ data: chartData, backgroundColor: chartColors, borderWidth: 2, borderColor: 'var(--surface-1, #1a1a2e)', hoverOffset: 6 }] },
+            options: {
+                cutout: '68%',
+                plugins: { legend: { display: false }, tooltip: {
+                    callbacks: { label: ctx => ` ${ctx.label}: ${fmtOv.format(ctx.raw)}` }
+                }},
+                animation: { duration: 500 }
+            }
+        });
+    }
+
+    // Donut-Mitte
+    const center = document.getElementById('nwDonutCenter');
+    if (center) {
+        center.innerHTML = `<div style="font-size:.62rem;color:var(--text-3);font-weight:600;letter-spacing:.04em;">NETTO</div>`+
+                           `<div style="font-size:.95rem;font-weight:800;color:${netWorth >= 0 ? '#22c55e' : '#ef4444'};">${fmtOv.format(netWorth)}</div>`;
+    }
+
+    // Legende
+    const legend = document.getElementById('nwLegend');
+    if (legend) {
+        legend.innerHTML = segments.map(s => {
+            const pct = grossTotal > 0 ? (s.value / (grossTotal + (s.label === 'Schulden' ? debtTotal : 0)) * 100).toFixed(1) : '0.0';
+            return `<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                <div style="display:flex;align-items:center;gap:5px;">
+                    <div style="width:8px;height:8px;border-radius:50%;background:${s.color};flex-shrink:0;"></div>
+                    <span style="color:var(--text-2);">${s.label}</span>
+                </div>
+                <span style="font-weight:600;color:var(--text-1);">${fmtOv.format(s.value)}</span>
+            </div>`;
+        }).join('');
+    }
 }
 
 // ── Vermögensverlauf Chart ───────────────────────────────────

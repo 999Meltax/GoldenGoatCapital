@@ -24,6 +24,7 @@ let list, form, categoryForm, status, balance, income, expense,
 let transactions = [];
 let categories   = [];
 let allAccounts  = [];          // alle Konten vom Server
+let allRegeln    = [];          // Kategorisierungs-Regeln
 let activeTab    = 'list';
 let chartInstance = null;
 
@@ -300,14 +301,16 @@ function setChartType(type) {
 
 async function loadData() {
     try {
-        const [txRes, catRes, accRes] = await Promise.all([
+        const [txRes, catRes, accRes, regelRes] = await Promise.all([
             fetch('/users/getTransactions'),
             fetch('/users/categories'),
-            fetch('/users/accounts')
+            fetch('/users/accounts'),
+            fetch('/users/regeln/list')
         ]);
         transactions = await txRes.json();
         const userCats = await catRes.json();
         allAccounts = await accRes.json();
+        allRegeln   = regelRes.ok ? await regelRes.json() : [];
 
         // Neue Konten automatisch als aktiv markieren
         const existingIds = getTrackerActiveIds();
@@ -383,6 +386,76 @@ function populateCategorySelect() {
         selectItems.appendChild(div);
     });
 }
+
+// ─── Regeln live anwenden ─────────────────────────────────────
+
+function applyRegelLocal(name) {
+    const nameLower = (name || '').toLowerCase().trim();
+    if (!nameLower) return null;
+    let result = { category: null, type: null };
+    for (const r of allRegeln) {
+        if (!r.aktiv) continue;
+        const wert = (r.bedingung_wert || '').toLowerCase();
+        let match = false;
+        switch (r.bedingung_operator) {
+            case 'enthält':      match = nameLower.includes(wert); break;
+            case 'beginnt_mit':  match = nameLower.startsWith(wert); break;
+            case 'endet_mit':    match = nameLower.endsWith(wert); break;
+            case 'gleich':       match = nameLower === wert; break;
+        }
+        if (match) {
+            if (r.aktion_kategorie) result.category = r.aktion_kategorie;
+            if (r.aktion_typ)       result.type     = r.aktion_typ;
+        }
+    }
+    return (result.category || result.type) ? result : null;
+}
+
+function setCategoryInForm(catName) {
+    if (!catName) return;
+    categoryInput.value = catName;
+    categorySelect.querySelector('.select-selected').textContent = catName;
+}
+
+function setTypeInForm(type) {
+    const cb = document.querySelector('#transactionForm #type');
+    if (!cb) return;
+    cb.checked = type === 'Einnahmen';
+}
+
+let _regelHintEl = null;
+function showRegelHint(regelName) {
+    if (!_regelHintEl) {
+        _regelHintEl = document.createElement('div');
+        _regelHintEl.id = 'regelHint';
+        _regelHintEl.style.cssText = 'font-size:0.76rem;color:var(--accent);margin-top:5px;display:flex;align-items:center;gap:5px;';
+        const nameInput = document.querySelector('#transactionForm input[name="name"]');
+        if (nameInput) nameInput.parentElement.appendChild(_regelHintEl);
+    }
+    _regelHintEl.style.display = regelName ? 'flex' : 'none';
+    if (regelName) _regelHintEl.innerHTML = `<i class="ri-magic-line"></i> Regel angewendet: <b>${regelName}</b>`;
+}
+
+// Name-Feld Listener: Regel live anwenden
+document.addEventListener('DOMContentLoaded', () => {
+    const nameInput = document.querySelector('#transactionForm input[name="name"]');
+    if (!nameInput) return;
+    let _debounce = null;
+    nameInput.addEventListener('input', () => {
+        clearTimeout(_debounce);
+        _debounce = setTimeout(() => {
+            const matched = applyRegelLocal(nameInput.value);
+            if (matched) {
+                if (matched.category) setCategoryInForm(matched.category);
+                if (matched.type)     setTypeInForm(matched.type);
+                const parts = [matched.category, matched.type].filter(Boolean).join(', ');
+                showRegelHint(parts);
+            } else {
+                showRegelHint(null);
+            }
+        }, 250);
+    });
+});
 
 async function addCategory(e) {
     e.preventDefault();
@@ -624,14 +697,35 @@ async function addTransaction(e) {
 
 // ─── Transaktion löschen ──────────────────────────────────────
 
-async function deleteTransaction(id) {
-    try {
-        const res = await fetch(`/users/deleteTransaction/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error((await res.json()).message);
-        await loadData();
-    } catch (err) {
-        showStatus(err.message, true);
+function deleteTransaction(id) {
+    const tx = transactions.find(t => t.id === id);
+    if (!tx) return;
+
+    // Optimistisch aus Liste entfernen
+    transactions = transactions.filter(t => t.id !== id);
+    renderList();
+
+    let deleteTimer = null;
+
+    function restoreTx() {
+        clearTimeout(deleteTimer);
+        transactions.push(tx);
+        transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+        renderList();
     }
+
+    showUndoToast(`„${tx.name}" gelöscht`, restoreTx);
+
+    // Nach 5 Sekunden wirklich löschen (wenn kein Undo)
+    deleteTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(`/users/deleteTransaction/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error();
+        } catch {
+            showStatus('Fehler beim Löschen.', true);
+            restoreTx();
+        }
+    }, 5000);
 }
 
 // ─── Account Filter UI ────────────────────────────────────────
@@ -2036,13 +2130,39 @@ async function confirmTransfer() {
     }
 }
 
-async function deleteTransfer(txId) {
-    if (!confirm('Diese Umbuchung (beide Seiten) wirklich löschen?')) return;
-    try {
-        const res = await fetch('/users/transfer/' + txId, { method: 'DELETE' });
-        if (!res.ok) throw new Error();
-        await loadData();
-    } catch {
-        alert('Fehler beim Löschen der Umbuchung.');
+function deleteTransfer(txId) {
+    const tx = transactions.find(t => t.id === txId);
+    // Beide Seiten der Umbuchung entfernen (gleiche transfer_pair_id)
+    const pairId = tx?.transfer_pair_id;
+    const removed = pairId
+        ? transactions.filter(t => t.transfer_pair_id === pairId)
+        : (tx ? [tx] : []);
+
+    if (removed.length === 0) return;
+
+    transactions = pairId
+        ? transactions.filter(t => t.transfer_pair_id !== pairId)
+        : transactions.filter(t => t.id !== txId);
+    renderList();
+
+    let deleteTimer = null;
+
+    function restoreTransfer() {
+        clearTimeout(deleteTimer);
+        removed.forEach(t => transactions.push(t));
+        transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+        renderList();
     }
+
+    showUndoToast('Umbuchung gelöscht', restoreTransfer);
+
+    deleteTimer = setTimeout(async () => {
+        try {
+            const res = await fetch('/users/transfer/' + txId, { method: 'DELETE' });
+            if (!res.ok) throw new Error();
+        } catch {
+            ggcToast('Fehler beim Löschen der Umbuchung.', true);
+            restoreTransfer();
+        }
+    }, 5000);
 }

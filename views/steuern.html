@@ -34,6 +34,15 @@
         <button class="steuer-tab" data-tab="werbungskosten" onclick="switchTab('werbungskosten',this)">
             <i class="ri-briefcase-4-line"></i> Werbungskosten
         </button>
+        <button class="steuer-tab" data-tab="kapital" onclick="switchTab('kapital',this)">
+            <i class="ri-stock-line"></i> Kapitalerträge
+        </button>
+        <button class="steuer-tab" data-tab="altersvorsorge" onclick="switchTab('altersvorsorge',this)">
+            <i class="ri-shield-user-line"></i> Altersvorsorge
+        </button>
+        <button class="steuer-tab" data-tab="sonder" onclick="switchTab('sonder',this)">
+            <i class="ri-heart-line"></i> Sonderausgaben
+        </button>
         <button class="steuer-tab" data-tab="assistent" onclick="switchTab('assistent',this)">
             <i class="ri-checkbox-multiple-line"></i> Steuererklärung
         </button>
@@ -92,7 +101,7 @@
                         <input type="number" id="schaetzerWerbung" placeholder="1230" step="50" oninput="berechneSchaetzer()">
                     </div>
                     <div class="form-group" style="margin-bottom:12px;">
-                        <label class="form-label">Sonderausgaben (Versicherungen etc.)</label>
+                        <label class="form-label">Sonderausgaben (Kirchensteuer, Spenden etc.)</label>
                         <input type="number" id="schaetzerSonder" placeholder="0" step="50" oninput="berechneSchaetzer()">
                     </div>
                     <div class="form-group" style="margin-bottom:12px;">
@@ -102,6 +111,30 @@
                     <div class="form-group" style="margin-bottom:0;">
                         <label class="form-label">Gezahlte Lohnsteuer (laut Lohnsteuerbescheinigung)</label>
                         <input type="number" id="schaetzerGezahlt" placeholder="0" step="50" oninput="berechneSchaetzer()">
+                    </div>
+                </div>
+
+                <div class="steuer-form-section">
+                    <div class="steuer-form-label">Kapitalerträge</div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Gesamte Kapitalerträge (Jahr) <span class="form-hint">Sparerpauschbetrag: 1.000 €</span></label>
+                        <input type="number" id="schaetzerKapital" placeholder="0" step="50" oninput="berechneSchaetzer()">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Bereits genutzte Freistellungsaufträge (€)</label>
+                        <input type="number" id="schaetzerKapitalFSA" placeholder="1000" step="50" oninput="berechneSchaetzer()">
+                    </div>
+                </div>
+
+                <div class="steuer-form-section">
+                    <div class="steuer-form-label">Altersvorsorge (Sonderausgaben)</div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label">Rürup/Basisrente Eigenbeitrag (€) <span class="form-hint">Max. 27.565 €, 94% absetzbar</span></label>
+                        <input type="number" id="schaetzerRuerup" placeholder="0" step="100" oninput="berechneSchaetzer()">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Riester Eigenbeitrag (€) <span class="form-hint">Max. 2.100 €</span></label>
+                        <input type="number" id="schaetzerRiester" placeholder="0" step="50" oninput="berechneSchaetzer()">
                     </div>
                 </div>
             </div>
@@ -149,6 +182,54 @@
 
         <div id="wbkRoot">
             <div class="steuer-loading"><i class="ri-loader-4-line steuer-spin"></i> Lade Werbungskosten…</div>
+        </div>
+    </div>
+
+    <!-- ══ TAB: KAPITALERTRÄGE ══ -->
+    <div id="tab-kapital" class="steuer-tab-content" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+            <div id="kapitalSumBadge" style="display:flex;gap:10px;flex-wrap:wrap;"></div>
+            <button class="btn-primary" onclick="openKapitalModal()">
+                <i class="ri-add-line"></i> Depot/Konto hinzufügen
+            </button>
+        </div>
+        <div id="kapitalRoot">
+            <div class="steuer-loading"><i class="ri-loader-4-line steuer-spin"></i> Lade Kapitalerträge…</div>
+        </div>
+    </div>
+
+    <!-- ══ TAB: ALTERSVORSORGE ══ -->
+    <div id="tab-altersvorsorge" class="steuer-tab-content" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+            <div id="avSumBadge" style="display:flex;gap:10px;flex-wrap:wrap;"></div>
+            <button class="btn-primary" onclick="openAvModal()">
+                <i class="ri-add-line"></i> Vertrag hinzufügen
+            </button>
+        </div>
+        <div id="avRoot">
+            <div class="steuer-loading"><i class="ri-loader-4-line steuer-spin"></i> Lade Altersvorsorge…</div>
+        </div>
+    </div>
+
+    <!-- ══ TAB: SONDERAUSGABEN ══ -->
+    <div id="tab-sonder" class="steuer-tab-content" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+            <div id="sonderSumBadge" style="display:flex;gap:10px;flex-wrap:wrap;"></div>
+            <button class="btn-primary" onclick="openSonderModal()">
+                <i class="ri-add-line"></i> Posten hinzufügen
+            </button>
+        </div>
+        <div class="steuer-kat-tabs" id="sonderKatTabs">
+            <button class="steuer-kat-tab active" onclick="filterSonder('alle',this)">Alle</button>
+            <button class="steuer-kat-tab" onclick="filterSonder('kirchensteuer',this)"><i class="ri-building-line"></i> Kirchensteuer</button>
+            <button class="steuer-kat-tab" onclick="filterSonder('spenden',this)"><i class="ri-heart-line"></i> Spenden</button>
+            <button class="steuer-kat-tab" onclick="filterSonder('schulgeld',this)"><i class="ri-graduation-cap-line"></i> Schulgeld/Kinderbetr.</button>
+            <button class="steuer-kat-tab" onclick="filterSonder('ausbildung',this)"><i class="ri-book-open-line"></i> Berufsausbildung</button>
+            <button class="steuer-kat-tab" onclick="filterSonder('unterhalt',this)"><i class="ri-parent-line"></i> Unterhalt</button>
+            <button class="steuer-kat-tab" onclick="filterSonder('sonstiges',this)"><i class="ri-more-line"></i> Sonstiges</button>
+        </div>
+        <div id="sonderRoot">
+            <div class="steuer-loading"><i class="ri-loader-4-line steuer-spin"></i> Lade Sonderausgaben…</div>
         </div>
     </div>
 
@@ -236,6 +317,145 @@
             <div class="steuer-modal-footer">
                 <button class="btn-ghost" onclick="closeWbkModal()">Abbrechen</button>
                 <button class="btn-primary" id="wbkSaveBtn" onclick="saveWbk()"><i class="ri-save-line"></i> Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════ MODAL: Kapitalertrag hinzufügen ════ -->
+    <div class="steuer-overlay" id="kapitalModal" onclick="closeKapitalModal(event)">
+        <div class="steuer-modal" onclick="event.stopPropagation()">
+            <div class="steuer-modal-header">
+                <h3 id="kapitalModalTitle"><i class="ri-stock-line"></i> Depot / Konto</h3>
+                <button class="steuer-close" onclick="closeKapitalModal()"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="steuer-modal-body">
+                <input type="hidden" id="kapitalId">
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Institution / Bank / Broker *</label>
+                    <input type="text" id="kapitalInstitution" placeholder="z.B. DKB, comdirect, Trade Republic…">
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Steuerjahr</label>
+                    <select id="kapitalJahr"></select>
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Freistellungsauftrag bei dieser Bank (€) <span class="form-hint">Gesamt: 1.000 € (ledig) / 2.000 € (verheiratet)</span></label>
+                    <input type="number" id="kapitalFSA" step="1" placeholder="0">
+                </div>
+                <div class="steuer-form-label" style="margin-top:4px;">Erträge dieses Jahr</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Dividenden (€)</label>
+                        <input type="number" id="kapitalDiv" step="0.01" placeholder="0,00">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Zinsen (€)</label>
+                        <input type="number" id="kapitalZins" step="0.01" placeholder="0,00">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Kursgewinne (€)</label>
+                        <input type="number" id="kapitalKurs" step="0.01" placeholder="0,00">
+                    </div>
+                </div>
+            </div>
+            <div class="steuer-modal-footer">
+                <button class="btn-ghost" onclick="closeKapitalModal()">Abbrechen</button>
+                <button class="btn-primary" id="kapitalSaveBtn" onclick="saveKapital()"><i class="ri-save-line"></i> Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════ MODAL: Altersvorsorge hinzufügen ════ -->
+    <div class="steuer-overlay" id="avModal" onclick="closeAvModal(event)">
+        <div class="steuer-modal" onclick="event.stopPropagation()">
+            <div class="steuer-modal-header">
+                <h3 id="avModalTitle"><i class="ri-shield-user-line"></i> Altersvorsorge-Vertrag</h3>
+                <button class="steuer-close" onclick="closeAvModal()"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="steuer-modal-body">
+                <input type="hidden" id="avId">
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Typ</label>
+                    <select id="avTyp" onchange="updateAvHinweis()">
+                        <option value="riester">Riester-Rente</option>
+                        <option value="ruerup">Rürup (Basisrente)</option>
+                        <option value="bav">Betriebliche Altersvorsorge (bAV)</option>
+                        <option value="gkv">Gesetzliche Rentenversicherung (GRV)</option>
+                    </select>
+                </div>
+                <div id="avHinweis" style="background:rgba(99,88,230,0.07);border:1px solid rgba(99,88,230,0.18);border-radius:var(--radius-md);padding:10px 14px;font-size:0.8rem;color:var(--text-2);margin-bottom:14px;line-height:1.6;"></div>
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Bezeichnung / Anbieter *</label>
+                    <input type="text" id="avBezeichnung" placeholder="z.B. DWS TopRente, Deutsche Rentenversicherung…">
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Steuerjahr</label>
+                    <select id="avJahr"></select>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Eigenbeitrag (€/Jahr)</label>
+                        <input type="number" id="avEigenbeitrag" step="0.01" placeholder="0,00">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;" id="avAgBeitragGroup">
+                        <label class="form-label">AG-Beitrag (€/Jahr)</label>
+                        <input type="number" id="avAgBeitrag" step="0.01" placeholder="0,00">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:0;" id="avZulageGroup">
+                    <label class="form-label">Zulage (€/Jahr) <span class="form-hint">Grundzulage: 175 €</span></label>
+                    <input type="number" id="avZulage" step="0.01" placeholder="0,00">
+                </div>
+            </div>
+            <div class="steuer-modal-footer">
+                <button class="btn-ghost" onclick="closeAvModal()">Abbrechen</button>
+                <button class="btn-primary" id="avSaveBtn" onclick="saveAv()"><i class="ri-save-line"></i> Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════ MODAL: Sonderausgabe hinzufügen ════ -->
+    <div class="steuer-overlay" id="sonderModal" onclick="closeSonderModal(event)">
+        <div class="steuer-modal" onclick="event.stopPropagation()">
+            <div class="steuer-modal-header">
+                <h3 id="sonderModalTitle"><i class="ri-heart-line"></i> Sonderausgaben-Posten</h3>
+                <button class="steuer-close" onclick="closeSonderModal()"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="steuer-modal-body">
+                <input type="hidden" id="sonderId">
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Kategorie</label>
+                    <select id="sonderKat">
+                        <option value="kirchensteuer">Kirchensteuer</option>
+                        <option value="spenden">Spenden</option>
+                        <option value="schulgeld">Schulgeld / Kinderbetreuung</option>
+                        <option value="ausbildung">Berufsausbildungskosten</option>
+                        <option value="unterhalt">Unterhaltszahlungen</option>
+                        <option value="sonstiges">Sonstiges</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Bezeichnung *</label>
+                    <input type="text" id="sonderBezeichnung" placeholder="z.B. Kirchensteuer 2024, Spende DRK…">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label class="form-label">Betrag (€)</label>
+                        <input type="number" id="sonderBetrag" step="0.01" placeholder="0,00">
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label class="form-label">Steuerjahr</label>
+                        <select id="sonderJahr"></select>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">Notiz</label>
+                    <textarea id="sonderNotiz" placeholder="Optional…" style="min-height:60px;"></textarea>
+                </div>
+            </div>
+            <div class="steuer-modal-footer">
+                <button class="btn-ghost" onclick="closeSonderModal()">Abbrechen</button>
+                <button class="btn-primary" id="sonderSaveBtn" onclick="saveSonder()"><i class="ri-save-line"></i> Speichern</button>
             </div>
         </div>
     </div>

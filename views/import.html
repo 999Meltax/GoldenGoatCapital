@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV-Import – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+<style>
+/* ── Wizard-Steps ─────────────────────────────────────────── */
+.imp-steps {
+    display: flex; align-items: center; gap: 0;
+    margin-bottom: 32px; overflow-x: auto;
+}
+.imp-step {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px; border-radius: var(--radius-md);
+    font-size: 0.83rem; font-weight: 600; color: var(--text-3);
+    white-space: nowrap; flex-shrink: 0;
+}
+.imp-step.active { color: var(--accent); }
+.imp-step.done   { color: #22c55e; }
+.imp-step-num {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+    background: var(--surface-2); border: 2px solid var(--border);
+    color: var(--text-3);
+}
+.imp-step.active .imp-step-num { background: rgba(99,88,230,0.15); border-color: var(--accent); color: var(--accent); }
+.imp-step.done   .imp-step-num { background: rgba(34,197,94,0.15); border-color: #22c55e; color: #22c55e; }
+.imp-step-sep { width: 32px; height: 2px; background: var(--border); flex-shrink: 0; }
+
+/* ── Drop-Zone ────────────────────────────────────────────── */
+.imp-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-xl);
+    padding: 48px 32px; text-align: center;
+    cursor: pointer; transition: border-color 0.2s, background 0.2s;
+    background: var(--surface);
+}
+.imp-dropzone:hover, .imp-dropzone.drag-over {
+    border-color: var(--accent);
+    background: rgba(99,88,230,0.04);
+}
+.imp-dropzone i { font-size: 2.5rem; color: var(--text-3); display: block; margin-bottom: 12px; }
+.imp-dropzone h3 { margin: 0 0 6px; font-size: 1rem; }
+.imp-dropzone p  { margin: 0; font-size: 0.83rem; color: var(--text-3); }
+
+/* ── Bank Presets ─────────────────────────────────────────── */
+.imp-preset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+    margin-top: 8px;
+}
+.imp-preset-btn {
+    padding: 10px 12px; border-radius: var(--radius-md);
+    background: var(--surface-2); border: 2px solid var(--border);
+    color: var(--text-2); font-size: 0.82rem; font-weight: 600;
+    cursor: pointer; transition: var(--transition); text-align: center;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.imp-preset-btn:hover { border-color: var(--border-accent); color: var(--text-1); }
+.imp-preset-btn.active { background: rgba(99,88,230,0.1); border-color: var(--accent); color: var(--accent); }
+
+/* ── Mapping Table ────────────────────────────────────────── */
+.imp-map-grid {
+    display: grid; grid-template-columns: 1fr 24px 1fr; gap: 8px 12px; align-items: center;
+}
+.imp-map-label { font-size: 0.82rem; font-weight: 600; color: var(--text-2); }
+.imp-map-arrow { color: var(--text-3); text-align: center; }
+
+/* ── Preview Table ────────────────────────────────────────── */
+.imp-preview-wrap { overflow-x: auto; }
+.imp-preview-table {
+    width: 100%; border-collapse: collapse; font-size: 0.8rem;
+}
+.imp-preview-table th {
+    text-align: left; padding: 8px 10px;
+    font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--text-3);
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.imp-preview-table td {
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+.imp-preview-table tr:last-child td { border-bottom: none; }
+.imp-preview-table tr.skip td { opacity: 0.35; }
+.imp-preview-table select, .imp-preview-table input[type=text] {
+    padding: 3px 7px; border-radius: 5px; font-size: 0.78rem;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-1); font-family: inherit;
+}
+.imp-preview-table select { width: 130px; }
+.imp-type-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 20px; font-size: 0.72rem; font-weight: 700;
+}
+.imp-type-e { background: rgba(34,197,94,0.12); color: #22c55e; }
+.imp-type-a { background: rgba(239,68,68,0.1);  color: #ef4444; }
+.imp-rule-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 6px; border-radius: 20px; font-size: 0.68rem; font-weight: 600;
+    background: rgba(99,88,230,0.1); color: var(--accent);
+}
+
+/* ── Summary ─────────────────────────────────────────────── */
+.imp-summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;
+}
+.imp-stat {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius-md); padding: 14px 16px;
+}
+.imp-stat-label { font-size: 0.68rem; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.imp-stat-value { font-size: 1.4rem; font-weight: 800; }
+
+/* ── Misc ─────────────────────────────────────────────────── */
+.imp-section { margin-bottom: 28px; }
+.imp-section-label {
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--text-3); margin-bottom: 10px;
+    padding-bottom: 6px; border-bottom: 1px solid var(--border); display: block;
+}
+.imp-badge-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.imp-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2);
+}
+</style>
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header">
+        <div>
+            <h1><i class="ri-upload-cloud-2-line" style="color:var(--accent);margin-right:8px;"></i>CSV-Import</h1>
+            <p>Importiere Transaktionen aus deiner Bank oder einer anderen App</p>
+        </div>
+    </div>
+
+    <!-- Wizard-Steps -->
+    <div class="imp-steps">
+        <div class="imp-step active" id="step-ind-1">
+            <div class="imp-step-num">1</div> Datei hochladen
+        </div>
+        <div class="imp-step-sep"></div>
+        <div class="imp-step" id="step-ind-2">
+            <div class="imp-step-num">2</div> Spalten zuordnen
+        </div>
+        <div class="imp-step-sep"></div>
+        <div class="imp-step" id="step-ind-3">
+            <div class="imp-step-num">3</div> Vorschau & Import
+        </div>
+    </div>
+
+    <!-- ══ STEP 1: Upload ══ -->
+    <div id="step1">
+        <div class="card" style="padding:28px;margin-bottom:20px;">
+
+            <div class="imp-section">
+                <span class="imp-section-label">Bank / Format-Voreinstellung</span>
+                <div class="imp-preset-grid" id="presetGrid">
+                    <button class="imp-preset-btn active" data-preset="auto" onclick="selectPreset('auto',this)">
+                        <i class="ri-magic-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
+                        Auto-Erkennung
+                    </button>
+                    <button class="imp-preset-btn" data-preset="ggc" onclick="selectPreset('ggc',this)">
+                        <i class="ri-goat-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
+                        GoldenGoat CSV
+                    </button>
+                    <button class="imp-preset-btn" data-preset="dkb" onclick="selectPreset('dkb',this)">
+                        <i class="ri-bank-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
+                        DKB
+                    </button>
+                    <button class="imp-preset-btn" data-preset="ing" onclick="selectPreset('ing',this)">
+                        <i class="ri-bank-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
+                        ING
+                    </button>
+                    <button class="imp-preset-btn" data-preset="sparkasse" onclick="selectPreset('sparkasse',this)">
+                        <i class="ri-bank-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
+                        Sparkasse
+                    </button>
+                    <button class="imp-preset-btn" data-preset="n26" onclick="selectPreset('n26',this)">
+                        <i class="ri-bank-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
+                        N26
+                    </button>
+                    <button class="imp-preset-btn" data-preset="custom" onclick="selectPreset('custom',this)">
+                        <i class="ri-settings-3-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
+                        Eigenes Format
+                    </button>
+                </div>
+            </div>
+
+            <div class="imp-section">
+                <span class="imp-section-label">CSV-Datei</span>
+                <div class="imp-dropzone" id="dropzone" onclick="document.getElementById('csvFileInput').click()"
+                    ondragover="event.preventDefault();this.classList.add('drag-over')"
+                    ondragleave="this.classList.remove('drag-over')"
+                    ondrop="handleDrop(event)">
+                    <i class="ri-file-excel-2-line"></i>
+                    <h3>CSV-Datei hier ablegen</h3>
+                    <p>oder klicken zum Auswählen · .csv, .txt · max. 5 MB</p>
+                </div>
+                <input type="file" id="csvFileInput" accept=".csv,.txt" style="display:none;" onchange="handleFileSelect(event)">
+            </div>
+
+            <div id="step1FileInfo" style="display:none;" class="imp-badge-row"></div>
+            <div id="step1Msg" style="color:#ef4444;font-size:0.83rem;margin-top:8px;"></div>
+
+            <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+                <button class="btn-primary" id="toStep2Btn" onclick="goToStep2()" disabled>
+                    Weiter <i class="ri-arrow-right-line"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ STEP 2: Column Mapping ══ -->
+    <div id="step2" style="display:none;">
+        <div class="card" style="padding:28px;margin-bottom:20px;">
+            <h3 style="margin:0 0 20px;display:flex;align-items:center;gap:8px;">
+                <i class="ri-table-line" style="color:var(--accent);"></i> Spalten zuordnen
+            </h3>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;" id="mappingGrid">
+                <div>
+                    <span class="imp-section-label">Pflichtfelder</span>
+                    <div class="imp-map-grid" id="requiredMappings"></div>
+                </div>
+                <div>
+                    <span class="imp-section-label">Optionale Felder</span>
+                    <div class="imp-map-grid" id="optionalMappings"></div>
+                </div>
+            </div>
+
+            <div style="margin-top:20px;">
+                <span class="imp-section-label">Vorschau (erste 3 Zeilen)</span>
+                <div class="imp-preview-wrap">
+                    <table class="imp-preview-table" id="sampleTable"></table>
+                </div>
+            </div>
+
+            <div id="step2Msg" style="color:#ef4444;font-size:0.83rem;margin-top:8px;"></div>
+
+            <div style="display:flex;justify-content:space-between;margin-top:20px;">
+                <button class="btn-ghost" onclick="goToStep1()"><i class="ri-arrow-left-line"></i> Zurück</button>
+                <button class="btn-primary" onclick="goToStep3()">
+                    Vorschau anzeigen <i class="ri-arrow-right-line"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ STEP 3: Preview & Import ══ -->
+    <div id="step3" style="display:none;">
+        <div class="card" style="padding:24px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+                <h3 style="margin:0;display:flex;align-items:center;gap:8px;">
+                    <i class="ri-list-check-2" style="color:var(--accent);"></i>
+                    <span id="previewTitle">Transaktionen prüfen</span>
+                </h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button style="padding:6px 12px;border-radius:var(--radius-md);background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);font-size:0.8rem;cursor:pointer;font-family:inherit;" onclick="selectAll(true)">
+                        Alle aktivieren
+                    </button>
+                    <button style="padding:6px 12px;border-radius:var(--radius-md);background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);font-size:0.8rem;cursor:pointer;font-family:inherit;" onclick="selectAll(false)">
+                        Alle deaktivieren
+                    </button>
+                    <button class="btn-ghost" onclick="goToStep2()"><i class="ri-arrow-left-line"></i> Zurück</button>
+                </div>
+            </div>
+
+            <div class="imp-summary-grid" id="previewSummary" style="margin-bottom:16px;"></div>
+
+            <div id="rulesInfoBanner" style="display:none;background:rgba(99,88,230,0.07);border:1px solid rgba(99,88,230,0.2);border-radius:var(--radius-md);padding:10px 14px;font-size:0.82rem;color:var(--text-2);margin-bottom:14px;">
+                <i class="ri-magic-line" style="color:var(--accent);margin-right:6px;"></i>
+                <span id="rulesInfoText"></span>
+            </div>
+
+            <div class="imp-preview-wrap">
+                <table class="imp-preview-table" id="previewTable">
+                    <thead>
+                        <tr>
+                            <th style="width:32px;"><input type="checkbox" id="selectAllCb" onchange="selectAll(this.checked)" style="cursor:pointer;accent-color:var(--accent);"></th>
+                            <th>Datum</th>
+                            <th>Bezeichnung</th>
+                            <th>Betrag</th>
+                            <th>Typ</th>
+                            <th>Kategorie</th>
+                            <th>Konto</th>
+                        </tr>
+                    </thead>
+                    <tbody id="previewBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;">
+            <span id="importCountLabel" style="font-size:0.85rem;color:var(--text-3);"></span>
+            <button class="btn-primary" id="importBtn" onclick="doImport()" style="min-width:180px;justify-content:center;">
+                <i class="ri-upload-cloud-2-line"></i> Importieren
+            </button>
+        </div>
+    </div>
+
+    <!-- ══ STEP 4: Success ══ -->
+    <div id="stepDone" style="display:none;">
+        <div class="card" style="padding:48px;text-align:center;">
+            <i class="ri-checkbox-circle-line" style="font-size:3rem;color:#22c55e;display:block;margin-bottom:16px;"></i>
+            <h2 id="doneTitle" style="margin:0 0 10px;"></h2>
+            <p id="doneMsg" style="color:var(--text-3);margin:0 0 24px;"></p>
+            <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+                <a href="/users/ausgabentracker" class="btn-primary" style="text-decoration:none;">
+                    <i class="ri-exchange-dollar-line"></i> Zum Ausgabentracker
+                </a>
+                <button class="btn-ghost" onclick="resetImport()">
+                    <i class="ri-upload-cloud-2-line"></i> Weitere Datei importieren
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+    <script src="/navheader.js"></script>
+    <script src="/import.js"></script>
+</body>
+</html>

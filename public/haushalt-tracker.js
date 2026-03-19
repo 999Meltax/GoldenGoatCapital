@@ -24,6 +24,7 @@ let list, form, categoryForm, status, balance, income, expense,
 let transactions = [];
 let categories   = [];
 let allAccounts  = [];          // alle Konten vom Server
+let allRegeln    = [];          // Kategorisierungs-Regeln
 let activeTab    = 'list';
 let chartInstance = null;
 
@@ -63,6 +64,7 @@ function initialize() {
     modalContent        = document.getElementById('modalContentCategory');
 
     form.addEventListener("submit", addTransaction);
+    initRegelListener();
     monthFilter.addEventListener("change", applyAndRender);
     categoryFilter.addEventListener("change", applyAndRender);
     categoryForm.addEventListener("submit", addCategory);
@@ -105,6 +107,79 @@ window.addEventListener("load", () => {
     initialize();
     loadData();
 });
+
+// ─── Regeln live anwenden ─────────────────────────────────────
+
+function applyRegelLocal(name) {
+    const nameLower = (name || '').toLowerCase().trim();
+    if (!nameLower) return null;
+    let result = { category: null, type: null };
+    for (const r of allRegeln) {
+        if (!r.aktiv) continue;
+        const regelModus = r.modus || 'beide';
+        if (regelModus !== 'beide' && regelModus !== 'haushalt') continue;
+        const wert = (r.bedingung_wert || '').toLowerCase();
+        let match = false;
+        switch (r.bedingung_operator) {
+            case 'enthält':      match = nameLower.includes(wert); break;
+            case 'beginnt_mit':  match = nameLower.startsWith(wert); break;
+            case 'endet_mit':    match = nameLower.endsWith(wert); break;
+            case 'gleich':       match = nameLower === wert; break;
+        }
+        if (match) {
+            if (r.aktion_kategorie) result.category = r.aktion_kategorie;
+            if (r.aktion_typ)       result.type     = r.aktion_typ;
+        }
+    }
+    return (result.category || result.type) ? result : null;
+}
+
+function setCategoryInForm(catName) {
+    if (!catName) return;
+    if (categoryInput) categoryInput.value = catName;
+    const selected = categorySelect?.querySelector('.select-selected');
+    if (selected) selected.textContent = catName;
+}
+
+function setTypeInForm(type) {
+    const cb = document.querySelector('#transactionForm #type');
+    if (!cb) return;
+    cb.checked = type === 'Einnahmen';
+}
+
+let _hausRegelHintEl = null;
+function showRegelHint(regelName) {
+    if (!_hausRegelHintEl) {
+        _hausRegelHintEl = document.createElement('div');
+        _hausRegelHintEl.style.cssText = 'font-size:0.75rem;color:var(--haus-accent,#22c55e);margin-top:4px;display:flex;align-items:center;gap:4px;min-height:16px;';
+        const nameInput = document.querySelector('#transactionForm input[name="name"]');
+        if (nameInput?.parentElement) nameInput.parentElement.appendChild(_hausRegelHintEl);
+    }
+    _hausRegelHintEl.innerHTML = regelName
+        ? `<i class="ri-magic-line"></i> Regel angewendet: ${regelName}`
+        : '';
+}
+
+// Debounced Name-Input Listener
+let _hausDebounce = null;
+function initRegelListener() {
+    const nameInput = document.querySelector('#transactionForm input[name="name"]');
+    if (!nameInput) return;
+    nameInput.addEventListener('input', () => {
+        clearTimeout(_hausDebounce);
+        _hausDebounce = setTimeout(() => {
+            const matched = applyRegelLocal(nameInput.value);
+            if (matched) {
+                if (matched.category) setCategoryInForm(matched.category);
+                if (matched.type)     setTypeInForm(matched.type);
+                const parts = [matched.category, matched.type].filter(Boolean).join(', ');
+                showRegelHint(parts);
+            } else {
+                showRegelHint(null);
+            }
+        }, 250);
+    });
+}
 
 // ─── Tab-Logik ────────────────────────────────────────────────
 
@@ -300,14 +375,16 @@ function setChartType(type) {
 
 async function loadData() {
     try {
-        const [txRes, catRes, accRes] = await Promise.all([
+        const [txRes, catRes, accRes, regelRes] = await Promise.all([
             fetch('/users/haushalt/transaktionen'),
             fetch('/users/haushalt/tracker/categories'),
-            fetch('/users/haushalt/tracker/accounts')
+            fetch('/users/haushalt/tracker/accounts'),
+            fetch('/users/regeln/list')
         ]);
         transactions = await txRes.json();
         const userCats = await catRes.json();
         allAccounts = await accRes.json();
+        allRegeln   = regelRes.ok ? await regelRes.json() : [];
 
         // Neue Konten automatisch als aktiv markieren
         const existingIds = getTrackerActiveIds();
@@ -624,14 +701,33 @@ async function addTransaction(e) {
 
 // ─── Transaktion löschen ──────────────────────────────────────
 
-async function deleteTransaction(id) {
-    try {
-        const res = await fetch(`/users/haushalt/transaktionen/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error((await res.json()).message);
-        await loadData();
-    } catch (err) {
-        showStatus(err.message, true);
+function deleteTransaction(id) {
+    const tx = transactions.find(t => t.id === id);
+    if (!tx) return;
+
+    transactions = transactions.filter(t => t.id !== id);
+    renderList();
+
+    let deleteTimer = null;
+
+    function restoreTx() {
+        clearTimeout(deleteTimer);
+        transactions.push(tx);
+        transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+        renderList();
     }
+
+    showUndoToast(`„${tx.name}" gelöscht`, restoreTx);
+
+    deleteTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(`/users/haushalt/transaktionen/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error((await res.json()).message);
+        } catch (err) {
+            showStatus(err.message || 'Fehler beim Löschen.', true);
+            restoreTx();
+        }
+    }, 5000);
 }
 
 // ─── Account Filter UI ────────────────────────────────────────
@@ -1750,19 +1846,36 @@ async function saveRecurring() {
 
 // ── Löschen ───────────────────────────────────────────────────
 
-async function deleteRecurring() {
+function deleteRecurring() {
     const id = document.getElementById('recurEditId').value;
-    if (!id || !confirm('Vorlage wirklich löschen?')) return;
-    try {
-        const res = await fetch('/users/haushalt/recurring/' + id, { method: 'DELETE' });
-        if (!res.ok) throw new Error();
-        await loadRecurring();
+    if (!id) return;
+
+    const vorlage = alleRecurring.find(r => r.id == id);
+    alleRecurring = alleRecurring.filter(r => r.id != id);
+    renderRecurringListe();
+    switchRecurTab('liste');
+
+    let deleteTimer = null;
+
+    function restoreVorlage() {
+        clearTimeout(deleteTimer);
+        if (vorlage) alleRecurring.push(vorlage);
         renderRecurringListe();
-        switchRecurTab('liste');
-        showStatus('Vorlage gelöscht.', false);
-    } catch {
-        showStatus('Fehler beim Löschen.', true);
     }
+
+    showUndoToast(vorlage ? `„${vorlage.name}" gelöscht` : 'Vorlage gelöscht', restoreVorlage);
+
+    deleteTimer = setTimeout(async () => {
+        try {
+            const res = await fetch('/users/haushalt/recurring/' + id, { method: 'DELETE' });
+            if (!res.ok) throw new Error();
+            await loadRecurring();
+            renderRecurringListe();
+        } catch {
+            showStatus('Fehler beim Löschen.', true);
+            restoreVorlage();
+        }
+    }, 5000);
 }
 
 // ── Hilfsfunktion ─────────────────────────────────────────────

@@ -10,6 +10,10 @@ let aktuellesJahr = new Date().getFullYear() - 1; // Standard: letztes Jahr
 let alleWerbungskosten = [];
 let aktiveWbkKat = 'alle';
 let assistentChecks = {};
+let alleKapitalertraege = [];
+let alleSonderausgaben = [];
+let aktiveSonderKat = 'alle';
+let alleAltersvorsorge = [];
 
 // ── WBK-Kategorien ────────────────────────────────────────────
 const WBK_KAT = {
@@ -75,6 +79,9 @@ document.addEventListener('DOMContentLoaded', () => {
     buildJahrSelect();
     switchTab('uebersicht', document.querySelector('.steuer-tab.active'));
     ladeWerbungskosten();
+    ladeKapitalertraege();
+    ladeSonderausgaben();
+    ladeAltersvorsorge();
     ladeAssistentChecks();
 });
 
@@ -88,23 +95,27 @@ function buildJahrSelect() {
         if (j === aktuellesJahr) opt.selected = true;
         sel.appendChild(opt);
     }
-    // Auch Werbungskosten-Modal befüllen
-    const wbkJahrSel = document.getElementById('wbkJahr');
-    if (wbkJahrSel) {
+    // Modal-Jahr-Selects befüllen
+    ['wbkJahr', 'kapitalJahr', 'avJahr', 'sonderJahr'].forEach(selId => {
+        const s = document.getElementById(selId);
+        if (!s) return;
         for (let j = aktJahr; j >= aktJahr - 5; j--) {
             const opt = document.createElement('option');
             opt.value = j;
             opt.textContent = j;
             if (j === aktJahr - 1) opt.selected = true;
-            wbkJahrSel.appendChild(opt);
+            s.appendChild(opt);
         }
-    }
+    });
 }
 
 function jahrWechseln() {
     aktuellesJahr = parseInt(document.getElementById('jahrSelect').value);
     ladeUebersicht();
-    filterWbk(aktiveWbkKat, document.querySelector('.steuer-kat-tab.active'));
+    filterWbk(aktiveWbkKat, null);
+    renderKapital();
+    renderAltersvorsorge();
+    renderSonder();
 }
 
 function switchTab(tab, btn) {
@@ -114,8 +125,11 @@ function switchTab(tab, btn) {
     const el = document.getElementById('tab-' + tab);
     if (el) { el.style.display = 'block'; el.classList.add('active'); }
 
-    if (tab === 'uebersicht') ladeUebersicht();
-    if (tab === 'dokumente')  ladeSteuerDokumente();
+    if (tab === 'uebersicht')    ladeUebersicht();
+    if (tab === 'dokumente')     ladeSteuerDokumente();
+    if (tab === 'kapital')       renderKapital();
+    if (tab === 'altersvorsorge') renderAltersvorsorge();
+    if (tab === 'sonder')        renderSonder();
 }
 
 function esc(s) {
@@ -286,6 +300,10 @@ function berechneSchaetzer() {
     const sonder       = parseFloat(document.getElementById('schaetzerSonder')?.value) || 0;
     const belastung    = parseFloat(document.getElementById('schaetzerBelastung')?.value) || 0;
     const gezahlt      = parseFloat(document.getElementById('schaetzerGezahlt')?.value) || 0;
+    const kapital      = parseFloat(document.getElementById('schaetzerKapital')?.value) || 0;
+    const kapitalFSA   = parseFloat(document.getElementById('schaetzerKapitalFSA')?.value);
+    const ruerupInput  = parseFloat(document.getElementById('schaetzerRuerup')?.value) || 0;
+    const riesterInput = parseFloat(document.getElementById('schaetzerRiester')?.value) || 0;
 
     const root = document.getElementById('schaetzerErgebnis');
     if (!brutto) {
@@ -296,11 +314,24 @@ function berechneSchaetzer() {
     // Werbungskosten: mind. 1.230 € Pauschbetrag
     const werbung = Math.max(werbungInput || 1230, 1230);
 
+    // Altersvorsorge-Abzüge
+    const sparerpauschbetrag = stklasse === 3 ? 2000 : 1000;
+    const fsa = kapitalFSA !== undefined ? kapitalFSA : sparerpauschbetrag;
+    const kapitalSteuerpflichtig = Math.max(0, kapital - fsa);
+    const abgeltungssteuer = kapitalSteuerpflichtig * 0.25;
+    const abgeltungsSoli   = abgeltungssteuer > 972.5 ? abgeltungssteuer * 0.055 : 0; // Soli-Freigrenze Abgeltung
+
+    // Rürup: 94% des Beitrags abzugsfähig, max. 27.565 € (2024)
+    const ruerupAbzug = Math.min(ruerupInput * 0.94, 27565 * 0.94);
+    // Riester: max. 2.100 €
+    const riesterAbzug = Math.min(riesterInput, 2100);
+    const avAbzug = ruerupAbzug + riesterAbzug;
+
     // Grundfreibetrag 2024
     const grundfreibetrag = stklasse === 3 ? 23208 : 11604;
 
     // Zu versteuerndes Einkommen
-    const zve = Math.max(0, brutto - werbung - sonder - belastung - grundfreibetrag);
+    const zve = Math.max(0, brutto - werbung - sonder - belastung - avAbzug - grundfreibetrag);
 
     // Vereinfachte Einkommensteuerberechnung (Progressionszonen 2024)
     let est = berechnESt(zve, stklasse);
@@ -318,8 +349,8 @@ function berechneSchaetzer() {
     const grenzsteuersatz = berechneGrenzsteuersatz(zve);
     const wbkErsparnisExtra = Math.max(0, werbung - 1230) * grenzsteuersatz;
 
-    const gesamtSchuld = est + soli + kirche;
-    const differenz    = gezahlt - gesamtSchuld;
+    const gesamtSchuld = est + soli + kirche + abgeltungssteuer + abgeltungsSoli;
+    const differenz    = gezahlt - (est + soli + kirche);
     const positiv      = differenz >= 0;
 
     root.innerHTML =
@@ -327,7 +358,7 @@ function berechneSchaetzer() {
             '<i class="ri-calculator-line" style="color:var(--accent);"></i> Schätzung für ' + brutto.toLocaleString('de-DE') + ' € Brutto' +
         '</h4>' +
         '<div style="background:' + (positiv ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.06)') + ';border:1px solid ' + (positiv ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.2)') + ';border-radius:var(--radius-lg);padding:18px;margin-bottom:18px;text-align:center;">' +
-            '<div style="font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">' + (positiv ? 'Geschätzte Erstattung' : 'Geschätzte Nachzahlung') + '</div>' +
+            '<div style="font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">' + (positiv ? 'Geschätzte Erstattung (Einkommensteuer)' : 'Geschätzte Nachzahlung (Einkommensteuer)') + '</div>' +
             '<div style="font-size:2.2rem;font-weight:800;color:' + (positiv ? '#22c55e' : '#ef4444') + ';margin-top:6px;">' +
                 (positiv ? '+' : '-') + fmt.format(Math.abs(differenz)) +
             '</div>' +
@@ -335,9 +366,17 @@ function berechneSchaetzer() {
         '</div>' +
         '<div style="border-top:1px solid var(--border);padding-top:14px;">' +
             zeileSchaetzer('Zu versteuerndes Einkommen', fmt.format(zve), '') +
+            (avAbzug > 0 ? zeileSchaetzer('Altersvorsorge-Abzug (Rürup + Riester)', '−' + fmt.format(avAbzug), '#22c55e') : '') +
             zeileSchaetzer('Einkommensteuer (geschätzt)', fmt.format(est), '') +
             (soli > 0 ? zeileSchaetzer('Solidaritätszuschlag', fmt.format(soli), '') : '') +
             (kirche > 0 ? zeileSchaetzer('Kirchensteuer (' + kirchePct + '%)', fmt.format(kirche), '') : '') +
+            (kapital > 0 ? '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">' +
+                zeileSchaetzer('Kapitalerträge', fmt.format(kapital), '') +
+                zeileSchaetzer('Sparerpauschbetrag (genutzt)', '−' + fmt.format(Math.min(kapital, fsa)), '#22c55e') +
+                (kapitalSteuerpflichtig > 0 ? zeileSchaetzer('Steuerpflichtige Kapitalerträge', fmt.format(kapitalSteuerpflichtig), '') : '') +
+                (abgeltungssteuer > 0 ? zeileSchaetzer('Abgeltungssteuer (25%)', fmt.format(abgeltungssteuer), '#ef4444') : '') +
+                (abgeltungsSoli > 0 ? zeileSchaetzer('Soli auf Abgeltungssteuer', fmt.format(abgeltungsSoli), '') : '') +
+            '</div>' : '') +
             '<div class="schaetzer-result-row total">' +
                 '<span>Steuerbelastung gesamt</span>' +
                 '<span style="color:#ef4444;">' + fmt.format(gesamtSchuld) + '</span>' +
@@ -528,12 +567,20 @@ async function saveWbk() {
     }
 }
 
-async function deleteWbk(id) {
-    if (!confirm('Werbungskosten-Posten löschen?')) return;
-    try {
-        await fetch('/users/steuer/werbungskosten/delete/' + id, { method: 'DELETE' });
-        await ladeWerbungskosten();
-    } catch { alert('Fehler beim Löschen.'); }
+function deleteWbk(id) {
+    const w = alleWerbungskosten.find(w => w.id == id);
+    if (!w) return;
+    alleWerbungskosten = alleWerbungskosten.filter(w => w.id != id);
+    renderWerbungskosten();
+    let timer = setTimeout(async () => {
+        try { await fetch('/users/steuer/werbungskosten/delete/' + id, { method: 'DELETE' }); }
+        catch { alleWerbungskosten.push(w); renderWerbungskosten(); }
+    }, 5000);
+    showUndoToast('„' + w.bezeichnung + '" gelöscht', () => {
+        clearTimeout(timer);
+        alleWerbungskosten.push(w);
+        renderWerbungskosten();
+    });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -604,7 +651,482 @@ async function toggleCheck(id) {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  5. STEUER-DOKUMENTE
+//  5. KAPITALERTRÄGE
+// ══════════════════════════════════════════════════════════════
+async function ladeKapitalertraege() {
+    try {
+        const res = await fetch('/users/steuer/kapitalertraege');
+        alleKapitalertraege = res.ok ? await res.json() : [];
+    } catch { alleKapitalertraege = []; }
+    renderKapital();
+}
+
+function renderKapital() {
+    const root = document.getElementById('kapitalRoot');
+    if (!root) return;
+    const filtered = alleKapitalertraege.filter(k => parseInt(k.steuerjahr) === aktuellesJahr);
+
+    const sparerpauschbetrag = 1000; // Standard ledig
+    const gesamtErtraege = filtered.reduce((s, k) => s + (parseFloat(k.dividenden)||0) + (parseFloat(k.zinsen)||0) + (parseFloat(k.kursgewinne)||0), 0);
+    const gesamtFSA      = filtered.reduce((s, k) => s + (parseFloat(k.freistellungsauftrag)||0), 0);
+    const steuerpflichtig = Math.max(0, gesamtErtraege - gesamtFSA);
+    const abgeltung      = steuerpflichtig * 0.25;
+
+    // Badge
+    const badge = document.getElementById('kapitalSumBadge');
+    if (badge) {
+        badge.innerHTML =
+            '<div style="background:rgba(99,88,230,0.1);border:1px solid rgba(99,88,230,0.2);border-radius:var(--radius-md);padding:8px 16px;font-size:0.83rem;">' +
+                '<span style="font-weight:700;color:var(--accent);">' + fmt.format(gesamtErtraege) + '</span> Erträge ' + aktuellesJahr +
+            '</div>' +
+            (abgeltung > 0 ?
+            '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius-md);padding:8px 16px;font-size:0.83rem;">' +
+                '<span style="font-weight:700;color:#ef4444;">' + fmt.format(abgeltung) + '</span> Abgeltungssteuer (25%)' +
+            '</div>' : '') +
+            (gesamtFSA > 0 ?
+            '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.15);border-radius:var(--radius-md);padding:8px 16px;font-size:0.83rem;">' +
+                '<span style="font-weight:700;color:#22c55e;">' + fmt.format(gesamtFSA) + '</span> Freistellungsaufträge' +
+            '</div>' : '');
+    }
+
+    if (filtered.length === 0) {
+        root.innerHTML = '<div class="card" style="text-align:center;padding:50px;">' +
+            '<i class="ri-stock-line" style="font-size:2.5rem;display:block;margin-bottom:14px;opacity:0.25;"></i>' +
+            '<h3 style="margin-bottom:8px;">Keine Kapitalerträge erfasst</h3>' +
+            '<p style="color:var(--text-3);">Trage deine Depots und Konten mit Erträgen ein. Dividenden, Zinsen und Kursgewinne werden automatisch mit deinem Freistellungsauftrag verrechnet.</p>' +
+            '<button class="btn-primary" style="margin-top:12px;" onclick="openKapitalModal()"><i class="ri-add-line"></i> Depot hinzufügen</button>' +
+        '</div>';
+        return;
+    }
+
+    // Info-Banner wenn FSA < Sparerpauschbetrag
+    const fsa_hinweis = gesamtFSA < sparerpauschbetrag ?
+        '<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:var(--radius-md);padding:12px 16px;display:flex;align-items:center;gap:10px;font-size:0.82rem;color:var(--text-2);margin-bottom:16px;">' +
+            '<i class="ri-information-line" style="color:#f59e0b;font-size:1.1rem;flex-shrink:0;"></i>' +
+            'Tipp: Der Sparerpauschbetrag beträgt 1.000 € (ledig) / 2.000 € (verheiratet). Du kannst Freistellungsaufträge bei mehreren Banken stellen.' +
+        '</div>' : '';
+
+    root.innerHTML = fsa_hinweis + filtered.map(k => {
+        const gesErtraege = (parseFloat(k.dividenden)||0) + (parseFloat(k.zinsen)||0) + (parseFloat(k.kursgewinne)||0);
+        const kFSA = parseFloat(k.freistellungsauftrag)||0;
+        const kSteuerpflichtig = Math.max(0, gesErtraege - kFSA);
+        return '<div class="card" style="padding:20px;margin-bottom:14px;">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
+                '<div style="display:flex;align-items:center;gap:12px;">' +
+                    '<div style="width:42px;height:42px;border-radius:12px;background:rgba(99,88,230,0.12);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1.1rem;">' +
+                        '<i class="ri-stock-line"></i>' +
+                    '</div>' +
+                    '<div>' +
+                        '<div style="font-weight:700;font-size:0.95rem;">' + esc(k.institution) + '</div>' +
+                        '<div style="font-size:0.75rem;color:var(--text-3);">Steuerjahr ' + k.steuerjahr + '</div>' +
+                    '</div>' +
+                '</div>' +
+                '<div style="display:flex;align-items:center;gap:8px;">' +
+                    '<button onclick="openKapitalModal(' + k.id + ')" style="width:30px;height:30px;border-radius:6px;background:var(--surface-2);border:none;color:var(--text-3);cursor:pointer;"><i class="ri-edit-line"></i></button>' +
+                    '<button onclick="deleteKapital(' + k.id + ')" style="width:30px;height:30px;border-radius:6px;background:rgba(239,68,68,0.1);border:none;color:#ef4444;cursor:pointer;"><i class="ri-delete-bin-line"></i></button>' +
+                '</div>' +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;">' +
+                kapitalCell('Dividenden', k.dividenden, '#f59e0b') +
+                kapitalCell('Zinsen', k.zinsen, '#3b82f6') +
+                kapitalCell('Kursgewinne', k.kursgewinne, '#22c55e') +
+                '<div style="background:var(--surface-2);border-radius:var(--radius-md);padding:12px;">' +
+                    '<div style="font-size:0.7rem;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">FSA</div>' +
+                    '<div style="font-size:0.88rem;font-weight:700;color:' + (kFSA >= gesErtraege ? '#22c55e' : 'var(--text-1)') + ';">' + fmt.format(kFSA) + '</div>' +
+                '</div>' +
+                (kSteuerpflichtig > 0 ? '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.18);border-radius:var(--radius-md);padding:12px;">' +
+                    '<div style="font-size:0.7rem;color:#ef4444;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Steuerpflichtig</div>' +
+                    '<div style="font-size:0.88rem;font-weight:700;color:#ef4444;">' + fmt.format(kSteuerpflichtig) + '</div>' +
+                '</div>' : '') +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function kapitalCell(label, val, color) {
+    const v = parseFloat(val) || 0;
+    return '<div style="background:var(--surface-2);border-radius:var(--radius-md);padding:12px;">' +
+        '<div style="font-size:0.7rem;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">' + label + '</div>' +
+        '<div style="font-size:0.88rem;font-weight:700;color:' + (v > 0 ? color : 'var(--text-3)') + ';">' + fmt.format(v) + '</div>' +
+    '</div>';
+}
+
+function openKapitalModal(id) {
+    const existing = id ? alleKapitalertraege.find(k => k.id == id) : null;
+    document.getElementById('kapitalId').value          = existing?.id || '';
+    document.getElementById('kapitalInstitution').value = existing?.institution || '';
+    document.getElementById('kapitalJahr').value        = existing?.steuerjahr || aktuellesJahr;
+    document.getElementById('kapitalFSA').value         = existing?.freistellungsauftrag || '';
+    document.getElementById('kapitalDiv').value         = existing?.dividenden || '';
+    document.getElementById('kapitalZins').value        = existing?.zinsen || '';
+    document.getElementById('kapitalKurs').value        = existing?.kursgewinne || '';
+    document.getElementById('kapitalModalTitle').innerHTML =
+        '<i class="ri-stock-line"></i> ' + (existing ? 'Depot bearbeiten' : 'Depot / Konto hinzufügen');
+    document.getElementById('kapitalModal').classList.add('active');
+    document.getElementById('kapitalInstitution').focus();
+}
+
+function closeKapitalModal(e) {
+    if (e && e.target !== document.getElementById('kapitalModal')) return;
+    document.getElementById('kapitalModal').classList.remove('active');
+}
+
+async function saveKapital() {
+    const institution = document.getElementById('kapitalInstitution').value.trim();
+    if (!institution) { alert('Bitte Institution eingeben.'); return; }
+    const btn = document.getElementById('kapitalSaveBtn');
+    btn.disabled = true;
+    const id = document.getElementById('kapitalId').value;
+    const payload = {
+        institution,
+        steuerjahr:          parseInt(document.getElementById('kapitalJahr').value),
+        freistellungsauftrag: parseFloat(document.getElementById('kapitalFSA').value) || 0,
+        dividenden:           parseFloat(document.getElementById('kapitalDiv').value) || 0,
+        zinsen:               parseFloat(document.getElementById('kapitalZins').value) || 0,
+        kursgewinne:          parseFloat(document.getElementById('kapitalKurs').value) || 0,
+    };
+    try {
+        const url    = id ? '/users/steuer/kapitalertraege/' + id : '/users/steuer/kapitalertraege/add';
+        const method = id ? 'PUT' : 'POST';
+        const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!r.ok) throw new Error();
+        closeKapitalModal();
+        await ladeKapitalertraege();
+    } catch { alert('Fehler beim Speichern.'); }
+    finally { btn.disabled = false; }
+}
+
+function deleteKapital(id) {
+    const k = alleKapitalertraege.find(k => k.id == id);
+    if (!k) return;
+    alleKapitalertraege = alleKapitalertraege.filter(k => k.id != id);
+    renderKapital();
+    let timer = setTimeout(async () => {
+        try { await fetch('/users/steuer/kapitalertraege/' + id, { method: 'DELETE' }); }
+        catch { alleKapitalertraege.push(k); renderKapital(); }
+    }, 5000);
+    showUndoToast('„' + k.institution + '" gelöscht', () => {
+        clearTimeout(timer);
+        alleKapitalertraege.push(k);
+        renderKapital();
+    });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  6. ALTERSVORSORGE
+// ══════════════════════════════════════════════════════════════
+const AV_CFG = {
+    riester:  { label: 'Riester-Rente',             icon: 'ri-secure-payment-line',  bg: 'rgba(99,88,230,0.12)',  color: 'var(--accent)',  hinweis: 'Abzugsfähig als Sonderausgabe bis max. 2.100 € (inkl. Zulagen). Grundzulage: 175 €/Jahr.' },
+    ruerup:   { label: 'Rürup / Basisrente',         icon: 'ri-shield-user-line',     bg: 'rgba(59,130,246,0.12)',  color: '#3b82f6',       hinweis: 'Beiträge zu 94% absetzbar (2024), bis max. 27.565 € p.a. Keine staatliche Zulage, aber hohe Steuerersparnis.' },
+    bav:      { label: 'Betriebliche AV (bAV)',      icon: 'ri-building-4-line',      bg: 'rgba(34,197,94,0.12)',  color: '#22c55e',        hinweis: 'AN-Beiträge bis 4% der BBG (3.624 €, 2024) steuerfrei. AG-Beiträge oft zusätzlich. Entgeltumwandlung möglich.' },
+    gkv:      { label: 'Gesetzliche Rentenvers.',    icon: 'ri-government-line',      bg: 'rgba(245,158,11,0.12)', color: '#f59e0b',        hinweis: 'Beiträge fließen automatisch in die Rentenversicherung und werden über die Lohnsteuerbescheinigung berücksichtigt.' },
+};
+
+async function ladeAltersvorsorge() {
+    try {
+        const res = await fetch('/users/steuer/altersvorsorge');
+        alleAltersvorsorge = res.ok ? await res.json() : [];
+    } catch { alleAltersvorsorge = []; }
+    renderAltersvorsorge();
+}
+
+function renderAltersvorsorge() {
+    const root = document.getElementById('avRoot');
+    if (!root) return;
+    const filtered = alleAltersvorsorge.filter(a => parseInt(a.steuerjahr) === aktuellesJahr);
+
+    const gesamtEigenbeitrag = filtered.reduce((s, a) => s + (parseFloat(a.eigenbeitrag)||0), 0);
+    const gesamtAgBeitrag    = filtered.reduce((s, a) => s + (parseFloat(a.ag_beitrag)||0), 0);
+    const gesamtZulagen      = filtered.reduce((s, a) => s + (parseFloat(a.zulage)||0), 0);
+
+    const badge = document.getElementById('avSumBadge');
+    if (badge) {
+        badge.innerHTML =
+            '<div style="background:rgba(99,88,230,0.1);border:1px solid rgba(99,88,230,0.2);border-radius:var(--radius-md);padding:8px 16px;font-size:0.83rem;">' +
+                '<span style="font-weight:700;color:var(--accent);">' + fmt.format(gesamtEigenbeitrag) + '</span> Eigenbeiträge ' + aktuellesJahr +
+            '</div>' +
+            (gesamtZulagen > 0 ?
+            '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.15);border-radius:var(--radius-md);padding:8px 16px;font-size:0.83rem;">' +
+                '<span style="font-weight:700;color:#22c55e;">' + fmt.format(gesamtZulagen) + '</span> staatliche Zulagen' +
+            '</div>' : '');
+    }
+
+    if (filtered.length === 0) {
+        root.innerHTML = '<div class="card" style="text-align:center;padding:50px;">' +
+            '<i class="ri-shield-user-line" style="font-size:2.5rem;display:block;margin-bottom:14px;opacity:0.25;"></i>' +
+            '<h3 style="margin-bottom:8px;">Keine Altersvorsorge-Verträge erfasst</h3>' +
+            '<p style="color:var(--text-3);">Erfasse Riester, Rürup, bAV und GRV-Beiträge um deine steuerlichen Abzüge im Blick zu behalten.</p>' +
+            '<button class="btn-primary" style="margin-top:12px;" onclick="openAvModal()"><i class="ri-add-line"></i> Vertrag hinzufügen</button>' +
+        '</div>';
+        return;
+    }
+
+    const byTyp = {};
+    filtered.forEach(a => { const t = a.typ || 'riester'; if (!byTyp[t]) byTyp[t] = []; byTyp[t].push(a); });
+
+    root.innerHTML = Object.entries(byTyp).map(([typ, items]) => {
+        const cfg = AV_CFG[typ] || AV_CFG.riester;
+        const sumEigen = items.reduce((s, a) => s + (parseFloat(a.eigenbeitrag)||0), 0);
+        const sumAG    = items.reduce((s, a) => s + (parseFloat(a.ag_beitrag)||0), 0);
+        const sumZulage = items.reduce((s, a) => s + (parseFloat(a.zulage)||0), 0);
+        return '<div class="card" style="padding:20px;margin-bottom:14px;">' +
+            '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">' +
+                '<div style="width:40px;height:40px;border-radius:12px;background:' + cfg.bg + ';color:' + cfg.color + ';display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">' +
+                    '<i class="' + cfg.icon + '"></i>' +
+                '</div>' +
+                '<div style="flex:1;">' +
+                    '<div style="font-weight:700;">' + cfg.label + '</div>' +
+                    '<div style="font-size:0.75rem;color:var(--text-3);">' + items.length + ' Vertrag' + (items.length !== 1 ? '&#8203;&#8203;&#8203;e' : '') + '</div>' +
+                '</div>' +
+                '<div style="text-align:right;">' +
+                    '<div style="font-weight:800;color:' + cfg.color + ';">' + fmt.format(sumEigen) + '</div>' +
+                    '<div style="font-size:0.73rem;color:var(--text-3);">Eigenbeitrag</div>' +
+                '</div>' +
+            '</div>' +
+            items.map(a =>
+                '<div class="wbk-item">' +
+                    '<div style="flex:1;min-width:0;">' +
+                        '<div style="font-weight:600;font-size:0.85rem;">' + esc(a.bezeichnung) + '</div>' +
+                        '<div style="font-size:0.74rem;color:var(--text-3);margin-top:2px;">' +
+                            (parseFloat(a.ag_beitrag) > 0 ? 'AG-Beitrag: ' + fmt.format(a.ag_beitrag) : '') +
+                            (parseFloat(a.zulage) > 0 ? ' · Zulage: ' + fmt.format(a.zulage) : '') +
+                        '</div>' +
+                    '</div>' +
+                    '<div style="display:flex;align-items:center;gap:8px;">' +
+                        '<span style="font-weight:700;font-size:0.88rem;color:' + cfg.color + ';">' + fmt.format(parseFloat(a.eigenbeitrag)||0) + '</span>' +
+                        '<button onclick="openAvModal(' + a.id + ')" style="width:26px;height:26px;border-radius:6px;background:var(--surface-2);border:none;color:var(--text-3);cursor:pointer;"><i class="ri-edit-line"></i></button>' +
+                        '<button onclick="deleteAv(' + a.id + ')" style="width:26px;height:26px;border-radius:6px;background:rgba(239,68,68,0.1);border:none;color:#ef4444;cursor:pointer;"><i class="ri-delete-bin-line"></i></button>' +
+                    '</div>' +
+                '</div>'
+            ).join('') +
+        '</div>';
+    }).join('');
+}
+
+function updateAvHinweis() {
+    const typ = document.getElementById('avTyp')?.value || 'riester';
+    const cfg = AV_CFG[typ] || AV_CFG.riester;
+    const el = document.getElementById('avHinweis');
+    if (el) el.innerHTML = '<i class="' + cfg.icon + '" style="color:' + cfg.color + ';margin-right:6px;"></i>' + cfg.hinweis;
+    const agGroup = document.getElementById('avAgBeitragGroup');
+    const zulageGroup = document.getElementById('avZulageGroup');
+    if (agGroup) agGroup.style.display = typ === 'bav' ? '' : 'none';
+    if (zulageGroup) zulageGroup.style.display = typ === 'riester' ? '' : 'none';
+}
+
+function openAvModal(id) {
+    const existing = id ? alleAltersvorsorge.find(a => a.id == id) : null;
+    document.getElementById('avId').value          = existing?.id || '';
+    document.getElementById('avTyp').value         = existing?.typ || 'riester';
+    document.getElementById('avBezeichnung').value = existing?.bezeichnung || '';
+    document.getElementById('avJahr').value        = existing?.steuerjahr || aktuellesJahr;
+    document.getElementById('avEigenbeitrag').value = existing?.eigenbeitrag || '';
+    document.getElementById('avAgBeitrag').value   = existing?.ag_beitrag || '';
+    document.getElementById('avZulage').value      = existing?.zulage || '';
+    document.getElementById('avModalTitle').innerHTML =
+        '<i class="ri-shield-user-line"></i> ' + (existing ? 'Vertrag bearbeiten' : 'Altersvorsorge-Vertrag hinzufügen');
+    updateAvHinweis();
+    document.getElementById('avModal').classList.add('active');
+    document.getElementById('avBezeichnung').focus();
+}
+
+function closeAvModal(e) {
+    if (e && e.target !== document.getElementById('avModal')) return;
+    document.getElementById('avModal').classList.remove('active');
+}
+
+async function saveAv() {
+    const bezeichnung = document.getElementById('avBezeichnung').value.trim();
+    if (!bezeichnung) { alert('Bitte Bezeichnung eingeben.'); return; }
+    const btn = document.getElementById('avSaveBtn');
+    btn.disabled = true;
+    const id = document.getElementById('avId').value;
+    const payload = {
+        typ:         document.getElementById('avTyp').value,
+        bezeichnung,
+        steuerjahr:  parseInt(document.getElementById('avJahr').value),
+        eigenbeitrag: parseFloat(document.getElementById('avEigenbeitrag').value) || 0,
+        ag_beitrag:   parseFloat(document.getElementById('avAgBeitrag').value) || 0,
+        zulage:       parseFloat(document.getElementById('avZulage').value) || 0,
+    };
+    try {
+        const url    = id ? '/users/steuer/altersvorsorge/' + id : '/users/steuer/altersvorsorge/add';
+        const method = id ? 'PUT' : 'POST';
+        const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!r.ok) throw new Error();
+        closeAvModal();
+        await ladeAltersvorsorge();
+    } catch { alert('Fehler beim Speichern.'); }
+    finally { btn.disabled = false; }
+}
+
+function deleteAv(id) {
+    const a = alleAltersvorsorge.find(a => a.id == id);
+    if (!a) return;
+    alleAltersvorsorge = alleAltersvorsorge.filter(a => a.id != id);
+    renderAltersvorsorge();
+    let timer = setTimeout(async () => {
+        try { await fetch('/users/steuer/altersvorsorge/' + id, { method: 'DELETE' }); }
+        catch { alleAltersvorsorge.push(a); renderAltersvorsorge(); }
+    }, 5000);
+    showUndoToast('„' + a.bezeichnung + '" gelöscht', () => {
+        clearTimeout(timer);
+        alleAltersvorsorge.push(a);
+        renderAltersvorsorge();
+    });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  7. SONDERAUSGABEN
+// ══════════════════════════════════════════════════════════════
+const SONDER_KAT = {
+    kirchensteuer: { label: 'Kirchensteuer',              icon: 'ri-building-line',        bg: 'rgba(245,158,11,0.12)',  color: '#f59e0b',  hinweis: 'Bereits gezahlte Kirchensteuer ist selbst als Sonderausgabe absetzbar.' },
+    spenden:       { label: 'Spenden',                    icon: 'ri-heart-line',           bg: 'rgba(239,68,68,0.12)',   color: '#ef4444',  hinweis: 'Bis 300 € reicht Kontoauszug. Darüber: Zuwendungsbestätigung. Max. 20% des Einkommens.' },
+    schulgeld:     { label: 'Schulgeld / Kinderbetreuung', icon: 'ri-graduation-cap-line',  bg: 'rgba(34,197,94,0.12)',   color: '#22c55e', hinweis: '2/3 der Kosten bis max. 4.000 € pro Kind absetzbar (Kinder unter 14).' },
+    ausbildung:    { label: 'Berufsausbildungskosten',    icon: 'ri-book-open-line',       bg: 'rgba(99,88,230,0.12)',   color: 'var(--accent)', hinweis: 'Kosten für Erstausbildung / Studium bis 6.000 € als Sonderausgabe (nicht als Werbungskosten).' },
+    unterhalt:     { label: 'Unterhaltszahlungen',        icon: 'ri-parent-line',          bg: 'rgba(59,130,246,0.12)',  color: '#3b82f6',  hinweis: 'Unterhaltszahlungen an Ex-Partner bis 13.805 € als Sonderausgabe mit Zustimmung des Empfängers (Anlage U).' },
+    sonstiges:     { label: 'Sonstiges',                  icon: 'ri-more-line',            bg: 'rgba(107,114,128,0.12)', color: '#9ca3af', hinweis: '' },
+};
+
+async function ladeSonderausgaben() {
+    try {
+        const res = await fetch('/users/steuer/sonderausgaben');
+        alleSonderausgaben = res.ok ? await res.json() : [];
+    } catch { alleSonderausgaben = []; }
+    renderSonder();
+}
+
+function filterSonder(kat, btn) {
+    aktiveSonderKat = kat;
+    document.querySelectorAll('#sonderKatTabs .steuer-kat-tab').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderSonder();
+}
+
+function renderSonder() {
+    const root = document.getElementById('sonderRoot');
+    if (!root) return;
+    let filtered = alleSonderausgaben.filter(s => parseInt(s.steuerjahr) === aktuellesJahr);
+    const gesamtJahr = filtered.reduce((s, a) => s + (parseFloat(a.betrag)||0), 0);
+
+    const badge = document.getElementById('sonderSumBadge');
+    if (badge) {
+        badge.innerHTML = '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius-md);padding:8px 16px;font-size:0.83rem;">' +
+            '<span style="font-weight:700;color:#ef4444;">' + fmt.format(gesamtJahr) + '</span> Sonderausgaben ' + aktuellesJahr +
+        '</div>';
+    }
+
+    if (aktiveSonderKat !== 'alle') filtered = filtered.filter(s => s.kategorie === aktiveSonderKat);
+
+    if (filtered.length === 0) {
+        root.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:var(--text-3);">' +
+            '<i class="ri-heart-line" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.3;"></i>' +
+            'Keine Sonderausgaben für ' + aktuellesJahr + (aktiveSonderKat !== 'alle' ? ' in dieser Kategorie' : '') + ' erfasst.' +
+        '</div>';
+        return;
+    }
+
+    const gruppen = {};
+    filtered.forEach(s => { const k = s.kategorie || 'sonstiges'; if (!gruppen[k]) gruppen[k] = []; gruppen[k].push(s); });
+
+    root.innerHTML = Object.entries(gruppen).map(([kat, items]) => {
+        const cfg   = SONDER_KAT[kat] || SONDER_KAT.sonstiges;
+        const summe = items.reduce((s, a) => s + (parseFloat(a.betrag)||0), 0);
+        return '<div class="card" style="padding:20px;margin-bottom:14px;">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+                '<div style="display:flex;align-items:center;gap:10px;">' +
+                    '<div style="width:36px;height:36px;border-radius:10px;background:' + cfg.bg + ';color:' + cfg.color + ';display:flex;align-items:center;justify-content:center;">' +
+                        '<i class="' + cfg.icon + '"></i>' +
+                    '</div>' +
+                    '<div>' +
+                        '<div style="font-weight:700;font-size:0.9rem;">' + cfg.label + '</div>' +
+                        (cfg.hinweis ? '<div style="font-size:0.72rem;color:var(--text-3);max-width:400px;">' + cfg.hinweis + '</div>' : '') +
+                    '</div>' +
+                '</div>' +
+                '<div style="font-weight:800;font-size:1.1rem;color:' + cfg.color + ';">' + fmt.format(summe) + '</div>' +
+            '</div>' +
+            '<div>' +
+                items.map(s =>
+                    '<div class="wbk-item">' +
+                        '<div style="flex:1;min-width:0;">' +
+                            '<div style="font-weight:600;font-size:0.85rem;">' + esc(s.bezeichnung) + '</div>' +
+                            '<div style="font-size:0.74rem;color:var(--text-3);margin-top:2px;">' +
+                                (s.notiz ? esc(s.notiz) : '&nbsp;') +
+                            '</div>' +
+                        '</div>' +
+                        '<div style="display:flex;align-items:center;gap:8px;">' +
+                            '<span style="font-weight:700;font-size:0.88rem;color:' + cfg.color + ';">' + fmt.format(parseFloat(s.betrag)||0) + '</span>' +
+                            '<button onclick="openSonderModal(' + s.id + ')" style="width:26px;height:26px;border-radius:6px;background:var(--surface-2);border:none;color:var(--text-3);cursor:pointer;"><i class="ri-edit-line"></i></button>' +
+                            '<button onclick="deleteSonder(' + s.id + ')" style="width:26px;height:26px;border-radius:6px;background:rgba(239,68,68,0.1);border:none;color:#ef4444;cursor:pointer;"><i class="ri-delete-bin-line"></i></button>' +
+                        '</div>' +
+                    '</div>'
+                ).join('') +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function openSonderModal(id) {
+    const existing = id ? alleSonderausgaben.find(s => s.id == id) : null;
+    document.getElementById('sonderId').value         = existing?.id || '';
+    document.getElementById('sonderKat').value        = existing?.kategorie || 'kirchensteuer';
+    document.getElementById('sonderBezeichnung').value = existing?.bezeichnung || '';
+    document.getElementById('sonderBetrag').value     = existing?.betrag || '';
+    document.getElementById('sonderJahr').value       = existing?.steuerjahr || aktuellesJahr;
+    document.getElementById('sonderNotiz').value      = existing?.notiz || '';
+    document.getElementById('sonderModalTitle').innerHTML =
+        '<i class="ri-heart-line"></i> ' + (existing ? 'Posten bearbeiten' : 'Sonderausgaben-Posten hinzufügen');
+    document.getElementById('sonderModal').classList.add('active');
+    document.getElementById('sonderBezeichnung').focus();
+}
+
+function closeSonderModal(e) {
+    if (e && e.target !== document.getElementById('sonderModal')) return;
+    document.getElementById('sonderModal').classList.remove('active');
+}
+
+async function saveSonder() {
+    const bezeichnung = document.getElementById('sonderBezeichnung').value.trim();
+    if (!bezeichnung) { alert('Bitte Bezeichnung eingeben.'); return; }
+    const btn = document.getElementById('sonderSaveBtn');
+    btn.disabled = true;
+    const id = document.getElementById('sonderId').value;
+    const payload = {
+        kategorie:   document.getElementById('sonderKat').value,
+        bezeichnung,
+        betrag:      parseFloat(document.getElementById('sonderBetrag').value) || 0,
+        steuerjahr:  parseInt(document.getElementById('sonderJahr').value),
+        notiz:       document.getElementById('sonderNotiz').value.trim(),
+    };
+    try {
+        const url    = id ? '/users/steuer/sonderausgaben/' + id : '/users/steuer/sonderausgaben/add';
+        const method = id ? 'PUT' : 'POST';
+        const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!r.ok) throw new Error();
+        closeSonderModal();
+        await ladeSonderausgaben();
+    } catch { alert('Fehler beim Speichern.'); }
+    finally { btn.disabled = false; }
+}
+
+function deleteSonder(id) {
+    const s = alleSonderausgaben.find(s => s.id == id);
+    if (!s) return;
+    alleSonderausgaben = alleSonderausgaben.filter(s => s.id != id);
+    renderSonder();
+    let timer = setTimeout(async () => {
+        try { await fetch('/users/steuer/sonderausgaben/' + id, { method: 'DELETE' }); }
+        catch { alleSonderausgaben.push(s); renderSonder(); }
+    }, 5000);
+    showUndoToast('„' + s.bezeichnung + '" gelöscht', () => {
+        clearTimeout(timer);
+        alleSonderausgaben.push(s);
+        renderSonder();
+    });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  8. STEUER-DOKUMENTE
 // ══════════════════════════════════════════════════════════════
 async function ladeSteuerDokumente() {
     const root = document.getElementById('dokRoot');

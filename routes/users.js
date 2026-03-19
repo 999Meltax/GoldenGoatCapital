@@ -306,12 +306,20 @@ router.post('/addTransaction', async (req, res) => {
     try {
         const db = await Database.getInstance();
         const userId = req.session.userId;
-        const transactionType = type === "inbound" ? "Einnahmen" : "Ausgaben";
+        let transactionType = type === "inbound" ? "Einnahmen" : "Ausgaben";
+        let finalCategory = category;
+
+        // Regeln anwenden
+        const applied = await db.applyRegeln(userId, name, finalCategory, transactionType, 'privat');
+        finalCategory    = applied.category;
+        transactionType  = applied.type;
+
         const transactionId = await db.saveTransaction(
-            userId, name, category, date, parseFloat(amount), transactionType,
+            userId, name, finalCategory, date, parseFloat(amount), transactionType,
             account_id ? parseInt(account_id) : null
         );
-        res.status(201).json({ message: 'Transaktion erfolgreich hinzugefügt', transactionId });
+        db.logActivity(userId, 'erstellt', 'Transaktion', transactionId, { name, category: finalCategory, amount: parseFloat(amount), type: transactionType, date });
+        res.status(201).json({ message: 'Transaktion erfolgreich hinzugefügt', transactionId, appliedRule: applied.category !== category || applied.type !== transactionType });
     } catch (error) {
         console.error('Fehler beim Hinzufügen der Transaktion:', error);
         res.status(500).json({ message: 'Interner Serverfehler' });
@@ -354,9 +362,12 @@ router.delete('/deleteTransaction/:id', async (req, res) => {
 
         if (userId !== -1) {
             console.log('Benutzer ID:', userId);
+            const txs = await db.getTransactionsForUser(userId);
+            const txToDelete = txs.find(t => t.id == transactionId);
             const deleteResult = await db.deleteTransaction(userId, transactionId);
             console.log('Löschergebnis:', deleteResult);
             if (deleteResult) {
+                if (txToDelete) db.logActivity(userId, 'gelöscht', 'Transaktion', transactionId, { name: txToDelete.name, amount: txToDelete.amount, type: txToDelete.type });
                 res.status(200).json({ message: 'Transaktion erfolgreich gelöscht' });
             } else {
                 res.status(404).json({ message: 'Transaktion nicht gefunden' });
@@ -1046,6 +1057,7 @@ router.post('/accounts/add', requireLogin, async (req, res) => {
             }
         }
         const id = await db.addAccount(req.session.userId, name, type, parseFloat(balance)||0, color||'#6358e6', icon||'ri-bank-line');
+        db.logActivity(req.session.userId, 'erstellt', 'Konto', id, { name, type });
         res.status(201).json({ message: 'Konto hinzugefügt', id });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
@@ -1055,6 +1067,7 @@ router.put('/accounts/:id', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         await db.updateAccount(req.session.userId, req.params.id, name, type, parseFloat(balance)||0, color, icon);
+        db.logActivity(req.session.userId, 'geändert', 'Konto', parseInt(req.params.id), { name, type });
         res.json({ message: 'Konto aktualisiert' });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
@@ -1062,7 +1075,10 @@ router.put('/accounts/:id', requireLogin, async (req, res) => {
 router.delete('/accounts/:id', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
+        const accounts = await db.getAccountsWithBalance(req.session.userId);
+        const acc = accounts.find(a => a.id == req.params.id);
         await db.deleteAccount(req.session.userId, req.params.id);
+        if (acc) db.logActivity(req.session.userId, 'gelöscht', 'Konto', parseInt(req.params.id), { name: acc.name });
         res.json({ message: 'Konto gelöscht' });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
@@ -1192,6 +1208,42 @@ router.put('/profil/password', requireLogin, async (req, res) => {
 // ── Einstellungen-Seite ─────────────────────────────────────────
 router.get('/einstellungen', requireLogin, (req, res) => {
     res.render('einstellungen', { isLoggedIn: true });
+});
+
+// ── CSV-Import ───────────────────────────────────────────────────
+router.get('/import', requireLogin, (req, res) => {
+    res.render('import', { isLoggedIn: true });
+});
+
+router.post('/import/transactions', requireLogin, async (req, res) => {
+    const { transactions } = req.body;
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+        return res.status(400).json({ message: 'Keine Transaktionen übergeben' });
+    }
+    try {
+        const db = await Database.getInstance();
+        let imported = 0;
+        for (const tx of transactions) {
+            if (!tx.name || !tx.date) continue;
+            await db.saveTransaction(
+                req.session.userId,
+                tx.name,
+                tx.category || 'Sonstiges',
+                tx.date,
+                Math.abs(parseFloat(tx.amount)) || 0,
+                tx.type || 'Ausgaben',
+                tx.account_id || null
+            );
+            imported++;
+        }
+        if (imported > 0) {
+            db.logActivity(req.session.userId, 'erstellt', 'Transaktion', null, { bulk_import: imported, quelle: 'CSV-Import' });
+        }
+        res.json({ imported, message: `${imported} Transaktion(en) importiert` });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Fehler beim Import' });
+    }
 });
 
 // ── Datenexport ──────────────────────────────────────────────────
@@ -1654,6 +1706,99 @@ router.put('/steuer/assistent/checks', requireLogin, async (req, res) => {
     }
 });
 
+// ── Kapitalerträge ───────────────────────────────────────────────
+router.get('/steuer/kapitalertraege', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const jahr = req.query.jahr ? parseInt(req.query.jahr) : null;
+        res.json(await db.getKapitalertraege(req.session.userId, jahr));
+    } catch (err) { console.error(err); res.status(500).json([]); }
+});
+router.post('/steuer/kapitalertraege/add', requireLogin, async (req, res) => {
+    if (!req.body.institution) return res.status(400).json({ message: 'Institution erforderlich' });
+    try {
+        const db = await Database.getInstance();
+        const id = await db.addKapitalertrag(req.session.userId, req.body);
+        res.status(201).json({ id, message: 'Gespeichert' });
+    } catch (err) { console.error(err); res.status(500).json({ message: 'Fehler' }); }
+});
+router.put('/steuer/kapitalertraege/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.updateKapitalertrag(req.session.userId, req.params.id, req.body);
+        res.json({ message: 'Aktualisiert' });
+    } catch (err) { console.error(err); res.status(500).json({ message: 'Fehler' }); }
+});
+router.delete('/steuer/kapitalertraege/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.deleteKapitalertrag(req.session.userId, req.params.id);
+        res.json({ message: 'Gelöscht' });
+    } catch (err) { console.error(err); res.status(500).json({ message: 'Fehler' }); }
+});
+
+// ── Sonderausgaben ───────────────────────────────────────────────
+router.get('/steuer/sonderausgaben', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const jahr = req.query.jahr ? parseInt(req.query.jahr) : null;
+        res.json(await db.getSonderausgaben(req.session.userId, jahr));
+    } catch (err) { console.error(err); res.status(500).json([]); }
+});
+router.post('/steuer/sonderausgaben/add', requireLogin, async (req, res) => {
+    if (!req.body.bezeichnung) return res.status(400).json({ message: 'Bezeichnung erforderlich' });
+    try {
+        const db = await Database.getInstance();
+        const id = await db.addSonderausgabe(req.session.userId, req.body);
+        res.status(201).json({ id, message: 'Gespeichert' });
+    } catch (err) { console.error(err); res.status(500).json({ message: 'Fehler' }); }
+});
+router.put('/steuer/sonderausgaben/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.updateSonderausgabe(req.session.userId, req.params.id, req.body);
+        res.json({ message: 'Aktualisiert' });
+    } catch (err) { console.error(err); res.status(500).json({ message: 'Fehler' }); }
+});
+router.delete('/steuer/sonderausgaben/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.deleteSonderausgabe(req.session.userId, req.params.id);
+        res.json({ message: 'Gelöscht' });
+    } catch (err) { console.error(err); res.status(500).json({ message: 'Fehler' }); }
+});
+
+// ── Altersvorsorge ───────────────────────────────────────────────
+router.get('/steuer/altersvorsorge', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const jahr = req.query.jahr ? parseInt(req.query.jahr) : null;
+        res.json(await db.getAltersvorsorge(req.session.userId, jahr));
+    } catch (err) { console.error(err); res.status(500).json([]); }
+});
+router.post('/steuer/altersvorsorge/add', requireLogin, async (req, res) => {
+    if (!req.body.bezeichnung) return res.status(400).json({ message: 'Bezeichnung erforderlich' });
+    try {
+        const db = await Database.getInstance();
+        const id = await db.addAltersvorsorge(req.session.userId, req.body);
+        res.status(201).json({ id, message: 'Gespeichert' });
+    } catch (err) { console.error(err); res.status(500).json({ message: 'Fehler' }); }
+});
+router.put('/steuer/altersvorsorge/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.updateAltersvorsorge(req.session.userId, req.params.id, req.body);
+        res.json({ message: 'Aktualisiert' });
+    } catch (err) { console.error(err); res.status(500).json({ message: 'Fehler' }); }
+});
+router.delete('/steuer/altersvorsorge/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.deleteAltersvorsorge(req.session.userId, req.params.id);
+        res.json({ message: 'Gelöscht' });
+    } catch (err) { console.error(err); res.status(500).json({ message: 'Fehler' }); }
+});
+
 // ── Budget-Seite ────────────────────────────────────────────────
 router.get('/budget', requireLogin, (req, res) => {
     res.render('budget', { isLoggedIn: true });
@@ -1673,6 +1818,7 @@ router.post('/budgets/add', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         const id = await db.addBudget(req.session.userId, kategorie, parseFloat(betrag));
+        db.logActivity(req.session.userId, 'erstellt', 'Budget', id, { kategorie, betrag: parseFloat(betrag) });
         res.status(201).json({ id, message: 'Budget gespeichert' });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
@@ -1682,6 +1828,7 @@ router.put('/budgets/:id', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         await db.updateBudget(req.session.userId, req.params.id, kategorie, parseFloat(betrag));
+        db.logActivity(req.session.userId, 'geändert', 'Budget', parseInt(req.params.id), { kategorie, betrag: parseFloat(betrag) });
         res.json({ message: 'Budget aktualisiert' });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
@@ -1690,6 +1837,7 @@ router.delete('/budgets/:id', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         await db.deleteBudget(req.session.userId, req.params.id);
+        db.logActivity(req.session.userId, 'gelöscht', 'Budget', parseInt(req.params.id), null);
         res.json({ message: 'Budget gelöscht' });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
@@ -1703,39 +1851,151 @@ router.get('/sparziele', requireLogin, async (req, res) => {
 });
 
 router.post('/sparziele/add', requireLogin, async (req, res) => {
-    const { name, zielbetrag, gespart, datum, farbe } = req.body;
+    const { name, zielbetrag, gespart, datum, farbe, account_id, typ } = req.body;
     if (!name || !zielbetrag) return res.status(400).json({ message: 'Name und Zielbetrag erforderlich' });
     try {
         const db = await Database.getInstance();
-        const id = await db.addSparziel(req.session.userId, name, parseFloat(zielbetrag), parseFloat(gespart) || 0, datum || null, farbe || '#6358e6');
+        const id = await db.addSparziel(req.session.userId, name, parseFloat(zielbetrag), parseFloat(gespart) || 0, datum || null, farbe || '#6358e6', account_id || null, typ || 'sonstiges');
+        db.logActivity(req.session.userId, 'erstellt', 'Finanzziel', id, { name, zielbetrag: parseFloat(zielbetrag) });
+
+        // Initial deposit → create transaction
+        if (parseFloat(gespart) > 0) {
+            const today = new Date().toISOString().slice(0, 10);
+            const txId = await db.saveTransaction(req.session.userId, `Sparziel: ${name}`, 'Sparziele', today, parseFloat(gespart), 'Ausgaben', account_id || null);
+            db.logActivity(req.session.userId, 'erstellt', 'Transaktion', txId, { name: `Sparziel: ${name}`, amount: parseFloat(gespart), type: 'Ausgaben', category: 'Sparziele', date: today });
+        }
+
         res.status(201).json({ id, message: 'Sparziel erstellt' });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
 
 router.put('/sparziele/:id', requireLogin, async (req, res) => {
-    const { name, zielbetrag, gespart, datum, farbe } = req.body;
+    const { name, zielbetrag, gespart, datum, farbe, account_id, typ } = req.body;
     try {
         const db = await Database.getInstance();
-        await db.updateSparziel(req.session.userId, req.params.id, name, parseFloat(zielbetrag), parseFloat(gespart) || 0, datum || null, farbe);
+        await db.updateSparziel(req.session.userId, req.params.id, name, parseFloat(zielbetrag), parseFloat(gespart) || 0, datum || null, farbe, account_id || null, typ || 'sonstiges');
+        db.logActivity(req.session.userId, 'geändert', 'Finanzziel', parseInt(req.params.id), { name, zielbetrag: parseFloat(zielbetrag) });
         res.json({ message: 'Aktualisiert' });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
 
 router.post('/sparziele/:id/add', requireLogin, async (req, res) => {
-    const { betrag } = req.body;
+    const { betrag, createTransaction = true } = req.body;
     if (!betrag) return res.status(400).json({ message: 'Betrag erforderlich' });
     try {
         const db = await Database.getInstance();
+        const szList = await db.getSparziele(req.session.userId);
+        const sz = szList.find(s => s.id == req.params.id);
+        if (!sz) return res.status(404).json({ message: 'Sparziel nicht gefunden' });
+
         await db.addToSparziel(req.session.userId, req.params.id, parseFloat(betrag));
-        res.json({ message: 'Betrag hinzugefügt' });
-    } catch (err) { res.status(500).json({ message: 'Fehler' }); }
+
+        let txId = null;
+        if (createTransaction !== false) {
+            const today = new Date().toISOString().slice(0, 10);
+            txId = await db.saveTransaction(
+                req.session.userId,
+                `Sparziel: ${sz.name}`,
+                'Sparziele',
+                today,
+                parseFloat(betrag),
+                'Ausgaben',
+                sz.account_id || null
+            );
+            db.logActivity(req.session.userId, 'erstellt', 'Transaktion', txId, {
+                name: `Sparziel: ${sz.name}`, amount: parseFloat(betrag), type: 'Ausgaben', category: 'Sparziele', date: today
+            });
+        }
+
+        db.logActivity(req.session.userId, 'geändert', 'Finanzziel', parseInt(req.params.id), { name: sz.name, betrag: parseFloat(betrag) });
+        res.json({ message: 'Betrag hinzugefügt', txId });
+    } catch (err) { console.error(err); res.status(500).json({ message: 'Fehler' }); }
 });
 
 router.delete('/sparziele/:id', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
+        const szList = await db.getSparziele(req.session.userId);
+        const sz = szList.find(s => s.id == req.params.id);
         await db.deleteSparziel(req.session.userId, req.params.id);
+        if (sz) db.logActivity(req.session.userId, 'gelöscht', 'Finanzziel', parseInt(req.params.id), { name: sz.name });
         res.json({ message: 'Gelöscht' });
+    } catch (err) { res.status(500).json({ message: 'Fehler' }); }
+});
+
+// ── Kategorisierungs-Regeln ──────────────────────────────────────
+router.get('/regeln', requireLogin, (req, res) => {
+    res.render('regeln', { isLoggedIn: true });
+});
+
+// ── Activity Log ─────────────────────────────────────────────────
+router.get('/activity', requireLogin, (req, res) => {
+    res.render('activity', { isLoggedIn: true });
+});
+
+router.get('/activity/list', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const { entity, limit = 100, offset = 0 } = req.query;
+        const entries = await db.getActivityLog(req.session.userId, {
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            entity: entity || null
+        });
+        res.json(entries);
+    } catch (err) { res.status(500).json([]); }
+});
+
+router.get('/regeln/list', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        res.json(await db.getRegeln(req.session.userId));
+    } catch (err) { res.status(500).json([]); }
+});
+
+router.post('/regeln/add', requireLogin, async (req, res) => {
+    const { bedingung_operator, bedingung_wert, aktion_kategorie, aktion_typ, modus } = req.body;
+    if (!bedingung_operator || !bedingung_wert) return res.status(400).json({ message: 'Bedingung erforderlich' });
+    if (!aktion_kategorie && !aktion_typ) return res.status(400).json({ message: 'Mindestens eine Aktion erforderlich' });
+    try {
+        const db = await Database.getInstance();
+        const id = await db.addRegel(req.session.userId, bedingung_operator, bedingung_wert, aktion_kategorie || null, aktion_typ || null, modus || 'beide');
+        res.status(201).json({ id, message: 'Regel erstellt' });
+    } catch (err) { res.status(500).json({ message: 'Fehler' }); }
+});
+
+router.put('/regeln/:id', requireLogin, async (req, res) => {
+    const { bedingung_operator, bedingung_wert, aktion_kategorie, aktion_typ, aktiv, modus } = req.body;
+    try {
+        const db = await Database.getInstance();
+        await db.updateRegel(req.session.userId, req.params.id, bedingung_operator, bedingung_wert, aktion_kategorie || null, aktion_typ || null, aktiv !== false, modus || 'beide');
+        res.json({ message: 'Regel aktualisiert' });
+    } catch (err) { res.status(500).json({ message: 'Fehler' }); }
+});
+
+router.delete('/regeln/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.deleteRegel(req.session.userId, req.params.id);
+        res.json({ message: 'Regel gelöscht' });
+    } catch (err) { res.status(500).json({ message: 'Fehler' }); }
+});
+
+// Bulk: Regeln auf alle bestehenden Transaktionen anwenden
+router.post('/regeln/apply-all', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const userId = req.session.userId;
+        const txs = await db.getTransactionsForUser(userId);
+        let updated = 0;
+        for (const tx of txs) {
+            const applied = await db.applyRegeln(userId, tx.name, tx.category, tx.type);
+            if (applied.category !== tx.category || applied.type !== tx.type) {
+                await db.updateTransaction(userId, tx.id, tx.name, applied.category, tx.amount, tx.date, applied.type, tx.account_id);
+                updated++;
+            }
+        }
+        res.json({ message: `${updated} Transaktion(en) aktualisiert`, updated });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
 
@@ -1921,6 +2181,7 @@ router.post('/schulden/add', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         const id = await db.addSchuld(req.session.userId, req.body);
+        db.logActivity(req.session.userId, 'erstellt', 'Schuld', id, { name });
         res.status(201).json({ id, message: 'Schuld gespeichert' });
     } catch (err) { res.status(500).json({ message: 'Interner Fehler' }); }
 });
@@ -1971,7 +2232,10 @@ router.put('/schulden/:id', requireLogin, async (req, res) => {
 router.delete('/schulden/:id', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
+        const schulden = await db.getSchulden(req.session.userId);
+        const schuld = schulden.find(s => s.id == req.params.id);
         await db.deleteSchuld(req.session.userId, req.params.id);
+        if (schuld) db.logActivity(req.session.userId, 'gelöscht', 'Schuld', parseInt(req.params.id), { name: schuld.name });
         res.json({ message: 'Gelöscht' });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
@@ -2750,14 +3014,15 @@ router.delete('/haushalt/tracker/categories/delete/:name', requireLogin, async (
 
 // --- Konto CRUD ---
 
-// Konto-Status abrufen (mit aktuellem Stand)
+// Konto-Status abrufen (mit aktuellem Stand, alle Konten)
 router.get('/haushalt/konto/data', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
-        if (!haushalt) return res.json({ konto: null });
-        const konto = await db.getHaushaltKontoMitStand(haushalt.id);
-        res.json({ konto });
+        if (!haushalt) return res.json({ konten: [], konto: null });
+        const konten = await db.getHaushaltKonten(haushalt.id);
+        // Rückwärtskompatibilität: konto = erstes Konto
+        res.json({ konten, konto: konten[0] || null });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -2861,7 +3126,14 @@ router.post('/haushalt/transaktionen/add', requireLogin, async (req, res) => {
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
         const konto = await db.getHaushaltKonto(haushalt.id);
         if (!konto) return res.status(404).json({ message: 'Kein Haushaltskonto vorhanden' });
-        const id = await db.addHaushaltTransaktion(haushalt.id, req.session.userId, req.body);
+        // Regeln anwenden (modus='haushalt')
+        let txBody = { ...req.body };
+        const appliedH = await db.applyRegeln(req.session.userId, txBody.name, txBody.category, txBody.type === 'inbound' ? 'Einnahmen' : 'Ausgaben', 'haushalt');
+        if (appliedH.category !== (txBody.category)) txBody.category = appliedH.category;
+        if (appliedH.type === 'Einnahmen') txBody.type = 'inbound';
+        else if (appliedH.type === 'Ausgaben') txBody.type = 'outbound';
+        const id = await db.addHaushaltTransaktion(haushalt.id, req.session.userId, txBody);
+        db.logActivity(req.session.userId, 'erstellt', 'Haushalt-Transaktion', id, { name: txBody.name, amount: parseFloat(txBody.amount||txBody.betrag||0), type: txBody.type });
         res.json({ id, message: 'Transaktion hinzugefügt' });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2882,6 +3154,7 @@ router.delete('/haushalt/transaktionen/:id', requireLogin, async (req, res) => {
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
         await db.deleteHaushaltTransaktion(haushalt.id, req.params.id);
+        db.logActivity(req.session.userId, 'gelöscht', 'Haushalt-Transaktion', parseInt(req.params.id), null);
         res.json({ message: 'Gelöscht' });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2973,6 +3246,7 @@ router.post('/fixkosten/unified/add', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         const id = await db.addFixkostUnified(req.session.userId, req.body);
+        db.logActivity(req.session.userId, 'erstellt', 'Fixkosten', id, { name, betrag: parseFloat(betrag) });
         res.status(201).json({ id, message: 'Eintrag gespeichert' });
     } catch (err) {
         console.error('Fehler beim Hinzufügen unified Fixkost:', err);
@@ -2996,7 +3270,10 @@ router.put('/fixkosten/unified/:id', requireLogin, async (req, res) => {
 router.delete('/fixkosten/unified/:id', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
+        const allFk = await db.getFixkostenUnified(req.session.userId);
+        const fk = allFk.find(f => f.id == req.params.id);
         await db.deleteFixkost(req.session.userId, req.params.id);
+        if (fk) db.logActivity(req.session.userId, 'gelöscht', 'Fixkosten', parseInt(req.params.id), { name: fk.name });
         res.json({ message: 'Gelöscht' });
     } catch (err) {
         console.error('Fehler beim Löschen unified Fixkost:', err);

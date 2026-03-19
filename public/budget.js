@@ -3,6 +3,42 @@
 // ═══════════════════════════════════════════════════════════
 const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
 
+// ── Zieltypen ────────────────────────────────────────────────
+const GOAL_TYPES = {
+    notgroschen: { label: 'Notgroschen',   icon: 'ri-shield-check-line' },
+    urlaub:      { label: 'Urlaub',         icon: 'ri-plane-line' },
+    auto:        { label: 'Auto',           icon: 'ri-car-line' },
+    haus:        { label: 'Haus',           icon: 'ri-home-3-line' },
+    rente:       { label: 'Rente',          icon: 'ri-user-star-line' },
+    ausbildung:  { label: 'Ausbildung',     icon: 'ri-graduation-cap-line' },
+    hochzeit:    { label: 'Hochzeit',       icon: 'ri-hearts-line' },
+    elektronik:  { label: 'Elektronik',     icon: 'ri-computer-line' },
+    sonstiges:   { label: 'Sonstiges',      icon: 'ri-flag-fill' },
+};
+
+function buildTypGrid() {
+    const grid = document.getElementById('szTypGrid');
+    if (!grid) return;
+    grid.innerHTML = Object.entries(GOAL_TYPES).map(([key, t]) => `
+        <button type="button" class="sz-typ-btn" data-typ="${key}" onclick="selectTyp('${key}')"
+            style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);cursor:pointer;font-size:0.7rem;color:var(--text-3);transition:all .15s;">
+            <i class="${t.icon}" style="font-size:1.1rem;"></i>
+            <span>${t.label}</span>
+        </button>`).join('');
+    selectTyp('sonstiges');
+}
+
+function selectTyp(typ) {
+    document.getElementById('szTyp').value = typ;
+    document.querySelectorAll('.sz-typ-btn').forEach(b => {
+        const active = b.dataset.typ === typ;
+        b.style.background    = active ? 'rgba(99,88,230,.15)' : 'var(--surface-2)';
+        b.style.borderColor   = active ? 'var(--accent)' : 'var(--border)';
+        b.style.color         = active ? 'var(--accent)' : 'var(--text-3)';
+        b.style.fontWeight    = active ? '600' : '400';
+    });
+}
+
 let budgetMonat = new Date().toISOString().slice(0, 7); // YYYY-MM
 let allTransactions = [];
 let allBudgets = [];
@@ -24,6 +60,7 @@ function switchTab(tabId, btn) {
 // INIT
 // ═══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
+    buildTypGrid();
     await loadAll();
     updateMonthLabel();
 });
@@ -95,38 +132,113 @@ function renderBudget() {
         byKat[k] = (byKat[k] || 0) + t.amount;
     });
 
+    // ── Prognose-Berechnung (nur aktueller Monat, ab Tag 3) ────────────────
+    const today          = new Date();
+    const currentMonthStr = today.toISOString().slice(0, 7);
+    const isCurrentMonth  = budgetMonat === currentMonthStr;
+    const dayOfMonth      = today.getDate();
+    const daysInMonth     = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const daysLeft        = daysInMonth - dayOfMonth;
+    const showPrognose    = isCurrentMonth && dayOfMonth >= 3 && spent > 0;
+
+    function prognoseFor(ausgaben) {
+        if (!showPrognose || ausgaben <= 0) return null;
+        return (ausgaben / dayOfMonth) * daysInMonth;
+    }
+
+    // Prognose Stat-Karte
+    const prognoseCard = document.getElementById('bsPrognoseCard');
+    const prognoseEl   = document.getElementById('bsPrognose');
+    const prognoseSub  = document.getElementById('bsPrognoseSub');
+    if (prognoseCard) {
+        const gesamtPrognose = showPrognose ? (spent / dayOfMonth) * daysInMonth : null;
+        if (gesamtPrognose !== null) {
+            prognoseCard.style.display = '';
+            prognoseEl.textContent     = fmt.format(gesamtPrognose);
+            prognoseEl.style.color     = gesamtPrognose > total ? '#f59e0b' : 'var(--green)';
+            if (prognoseSub) prognoseSub.textContent = `noch ${daysLeft} Tag${daysLeft !== 1 ? 'e' : ''}`;
+        } else {
+            prognoseCard.style.display = 'none';
+        }
+    }
+
     // Alle Kategorien aus Budgets + Transaktionen sammeln
     const allKats = new Set([...allBudgets.map(b => b.kategorie), ...Object.keys(byKat)]);
+
+    // Kategorien die Budget überschreiten werden
+    const warnKats = [];
 
     const listEl = document.getElementById('budgetKatList');
     if (allKats.size === 0) {
         listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-3);">Noch keine Budgets festgelegt.</div>';
     } else {
         listEl.innerHTML = [...allKats].map(kat => {
-            const budget  = allBudgets.find(b => b.kategorie === kat);
+            const budget   = allBudgets.find(b => b.kategorie === kat);
             const budgeted = budget ? budget.betrag : null;
             const ausgaben = byKat[kat] || 0;
-            const pct = budgeted ? Math.min(ausgaben / budgeted * 100, 100) : 0;
-            const color = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#22c55e';
+            const pct      = budgeted ? Math.min(ausgaben / budgeted * 100, 100) : 0;
+            const color    = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#22c55e';
             const budgetId = budget ? budget.id : '';
+
+            // Prognose für diese Kategorie
+            const prognose     = prognoseFor(ausgaben);
+            const progPct      = prognose !== null && budgeted ? prognose / budgeted * 100 : null;
+            const progExceeds  = progPct !== null && prognose > budgeted;
+            const showMarker   = progPct !== null && budgeted !== null && progPct > pct;
+
+            if (progExceeds && budget) warnKats.push({ kat, prognose, budgeted });
+
+            // Prognose-Marker-Linie auf dem Balken (wo wir Monatsende ankommen)
+            const markerLeft  = Math.min(progPct || 0, 100).toFixed(2);
+            const markerColor = progExceeds ? '#ef4444' : '#f59e0b';
+            const markerHtml  = showMarker
+                ? `<div style="position:absolute;top:-2px;bottom:-2px;left:${markerLeft}%;width:2px;background:${markerColor};border-radius:2px;z-index:1;" title="Prognose Monatsende: ${fmt.format(prognose)}"></div>`
+                : '';
+
+            // Prognose-Text im Footer
+            const prognoseFooterHtml = prognose !== null && budgeted !== null
+                ? `<span style="color:${progExceeds ? '#ef4444' : '#f59e0b'};display:flex;align-items:center;gap:3px;">` +
+                  `<i class="ri-line-chart-line" style="font-size:0.75rem;"></i> Prognose: ${fmt.format(prognose)}` +
+                  (progExceeds ? ' <i class="ri-arrow-up-line" style="font-size:0.7rem;"></i>' : '') +
+                  `</span>`
+                : '';
 
             return '<div class="kat-budget-row">' +
                 '<div class="kat-budget-header">' +
                     '<span style="font-weight:600;">' + kat + '</span>' +
                     '<div style="display:flex;align-items:center;gap:8px;">' +
-                        (budgeted !== null ? '<span style="color:' + (ausgaben > budgeted ? 'var(--red)' : 'var(--text-2)') + ';font-weight:700;">' + fmt.format(ausgaben) + ' / ' + fmt.format(budgeted) + '</span>' : '<span style="color:var(--text-3);">' + fmt.format(ausgaben) + ' (kein Budget)</span>') +
-                        '<button onclick="openBudgetModal(\'' + kat + '\',' + (budgeted || '') + ',\'' + budgetId + '\')" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.75rem;font-family:inherit;">' +
+                        (budgeted !== null
+                            ? `<span style="color:${ausgaben > budgeted ? 'var(--red)' : 'var(--text-2)'};font-weight:700;">${fmt.format(ausgaben)} / ${fmt.format(budgeted)}</span>`
+                            : `<span style="color:var(--text-3);">${fmt.format(ausgaben)} (kein Budget)</span>`) +
+                        `<button onclick="openBudgetModal('${kat}',${budgeted || ''},'${budgetId}')" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.75rem;font-family:inherit;">` +
                             (budget ? '<i class="ri-edit-line"></i>' : '<i class="ri-add-line"></i>') +
                         '</button>' +
-                        (budget ? '<button onclick="deleteBudget(\'' + budgetId + '\')" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#ef4444;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.75rem;font-family:inherit;"><i class="ri-delete-bin-line"></i></button>' : '') +
+                        (budget ? `<button onclick="deleteBudget('${budgetId}')" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#ef4444;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.75rem;font-family:inherit;"><i class="ri-delete-bin-line"></i></button>` : '') +
                     '</div>' +
                 '</div>' +
-                (budgeted !== null ? '<div class="kat-budget-bar-wrap"><div class="kat-budget-bar" style="width:' + pct + '%;background:' + color + ';"></div></div>' : '') +
+                (budgeted !== null
+                    ? `<div class="kat-budget-bar-wrap" style="position:relative;">${markerHtml}<div class="kat-budget-bar" style="width:${pct}%;background:${color};"></div></div>`
+                    : '') +
                 '<div class="kat-budget-footer">' +
-                    (budgeted !== null ? '<span>' + pct.toFixed(1) + '% genutzt</span><span>' + fmt.format(Math.max(budgeted - ausgaben, 0)) + ' verbleibend</span>' : '<span>Kein Budget gesetzt</span><span style="cursor:pointer;color:var(--accent);" onclick="openBudgetModal(\'' + kat + '\')">Budget festlegen →</span>') +
+                    (budgeted !== null
+                        ? `<span>${pct.toFixed(1)}% genutzt</span>${prognoseFooterHtml}<span>${fmt.format(Math.max(budgeted - ausgaben, 0))} verbleibend</span>`
+                        : `<span>Kein Budget gesetzt</span><span style="cursor:pointer;color:var(--accent);" onclick="openBudgetModal('${kat}')">Budget festlegen →</span>`) +
                 '</div>' +
             '</div>';
         }).join('');
+    }
+
+    // ── Warnbanner ────────────────────────────────────────────────────────
+    const warningEl   = document.getElementById('budgetPrognoseWarning');
+    const warningText = document.getElementById('budgetPrognoseWarningText');
+    if (warningEl && warningText) {
+        if (warnKats.length > 0) {
+            const namen = warnKats.map(w => w.kat).join(', ');
+            warningText.textContent = `${warnKats.length === 1 ? 'Die Kategorie' : 'Die Kategorien'} „${namen}" ${warnKats.length === 1 ? 'wird' : 'werden'} das Budget bis Monatsende voraussichtlich überschreiten.`;
+            warningEl.style.display = 'flex';
+        } else {
+            warningEl.style.display = 'none';
+        }
     }
 
     // Donut-Chart
@@ -228,14 +340,31 @@ async function saveBudgetModal() {
     } catch { alert('Fehler beim Speichern.'); }
 }
 
-async function deleteBudget(id) {
-    if (!confirm('Budget wirklich löschen?')) return;
-    try {
-        await fetch('/users/budgets/' + id, { method: 'DELETE' });
-        const budgetRes = await fetch('/users/budgets');
-        allBudgets = budgetRes.ok ? await budgetRes.json() : [];
+function deleteBudget(id) {
+    const budget = allBudgets.find(b => b.id == id);
+    if (!budget) return;
+
+    allBudgets = allBudgets.filter(b => b.id != id);
+    renderBudget();
+
+    let deleteTimer = null;
+
+    function restoreBudget() {
+        clearTimeout(deleteTimer);
+        allBudgets.push(budget);
         renderBudget();
-    } catch { alert('Fehler beim Löschen.'); }
+    }
+
+    showUndoToast(`Budget „${budget.kategorie}" gelöscht`, restoreBudget);
+
+    deleteTimer = setTimeout(async () => {
+        try {
+            await fetch('/users/budgets/' + id, { method: 'DELETE' });
+        } catch {
+            ggcToast('Fehler beim Löschen.', true);
+            restoreBudget();
+        }
+    }, 5000);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -361,20 +490,78 @@ function renderKontoAufteilung() {
 function renderSparziele() {
     const el = document.getElementById('sparzieleList');
     if (allSparziele.length === 0) {
-        el.innerHTML = '<div style="text-align:center;padding:60px 24px;color:var(--text-3);"><i class="ri-flag-line" style="font-size:3rem;display:block;margin-bottom:12px;opacity:0.3;"></i><div style="font-weight:600;">Noch keine Sparziele</div><div style="font-size:0.83rem;margin-top:6px;">Erstelle dein erstes Sparziel über das Formular.</div></div>';
+        el.innerHTML = '<div style="text-align:center;padding:60px 24px;color:var(--text-3);"><i class="ri-flag-line" style="font-size:3rem;display:block;margin-bottom:12px;opacity:0.3;"></i><div style="font-weight:600;">Noch keine Finanzziele</div><div style="font-size:0.83rem;margin-top:6px;">Erstelle dein erstes Finanzziel über das Formular.</div></div>';
         return;
     }
+
+    const heute = new Date();
+    heute.setHours(0, 0, 0, 0);
+
     el.innerHTML = allSparziele.map(sz => {
         const pct = Math.min((sz.gespart / sz.zielbetrag) * 100, 100);
         const verbleibend = Math.max(sz.zielbetrag - sz.gespart, 0);
         const done = sz.gespart >= sz.zielbetrag;
 
+        // Typ-Icon
+        const typInfo  = GOAL_TYPES[sz.typ] || GOAL_TYPES.sonstiges;
+        const typIcon  = typInfo.icon;
+        const typLabel = typInfo.label;
+
+        // Datum / Tage verbleibend
         let datumInfo = '';
+        let monthsLeft = null;
         if (sz.datum) {
             const zieldatum = new Date(sz.datum);
-            const heute = new Date();
+            zieldatum.setHours(0, 0, 0, 0);
             const tage = Math.ceil((zieldatum - heute) / (1000 * 60 * 60 * 24));
-            datumInfo = tage > 0 ? tage + ' Tage verbleibend' : (tage === 0 ? 'Heute!' : 'Abgelaufen');
+            monthsLeft = (zieldatum - heute) / (1000 * 60 * 60 * 24 * 30.44);
+            datumInfo = tage > 0
+                ? tage + ' Tage verbleibend'
+                : (tage === 0 ? 'Heute fällig!' : 'Abgelaufen');
+        }
+
+        // Monatliche Sparrate berechnen
+        let monatlichHtml = '';
+        if (!done && verbleibend > 0 && monthsLeft !== null && monthsLeft > 0) {
+            const monatlich = verbleibend / monthsLeft;
+            monatlichHtml = `<div style="font-size:0.75rem;color:var(--text-3);margin-top:3px;">
+                <i class="ri-calendar-line" style="font-size:0.7rem;"></i> ${fmt.format(monatlich)}/Monat nötig
+            </div>`;
+        }
+
+        // Status-Badge: "Auf Kurs" / "Hinter Plan"
+        let statusBadge = '';
+        if (!done && sz.datum && sz.created_at) {
+            const created   = new Date(sz.created_at);
+            const zieldatum = new Date(sz.datum);
+            const totalMs   = zieldatum - created;
+            const elapsedMs = heute - created;
+            if (totalMs > 0 && elapsedMs > 0) {
+                const sollPct   = Math.min(elapsedMs / totalMs * 100, 100);
+                const aufKurs   = pct >= sollPct - 5; // 5% Puffer
+                statusBadge = aufKurs
+                    ? `<span style="background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.2);padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700;white-space:nowrap;"><i class="ri-checkbox-circle-line"></i> Auf Kurs</span>`
+                    : `<span style="background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.2);padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700;white-space:nowrap;"><i class="ri-time-line"></i> Hinter Plan</span>`;
+            }
+        }
+
+        // Geschätztes Erreichen (ohne Zieldatum, basierend auf gesp. Transaktionen letzter 3 Monate)
+        let estimatedHtml = '';
+        if (!done && !sz.datum && sz.gespart > 0) {
+            // Durchschnitt aus Transaktionen mit sparziel_id oder vereinfacht: gespart / Monate seit Erstellung
+            if (sz.created_at) {
+                const created   = new Date(sz.created_at);
+                const monthsOld = Math.max((heute - created) / (1000 * 60 * 60 * 24 * 30.44), 0.5);
+                const avgPerMonth = sz.gespart / monthsOld;
+                if (avgPerMonth > 0) {
+                    const monthsNeeded = verbleibend / avgPerMonth;
+                    const est = new Date(heute);
+                    est.setMonth(est.getMonth() + Math.ceil(monthsNeeded));
+                    estimatedHtml = `<div style="font-size:0.75rem;color:var(--text-3);margin-top:3px;">
+                        <i class="ri-flag-2-line" style="font-size:0.7rem;"></i> Voraussichtlich: ${est.toLocaleDateString('de-DE', { month: 'short', year: 'numeric' })}
+                    </div>`;
+                }
+            }
         }
 
         // Konto-Badge
@@ -382,7 +569,7 @@ function renderSparziele() {
         if (sz.account_id && sz.account_name) {
             const iconColor = sz.account_color || '#6358e6';
             const iconClass = sz.account_icon  || 'ri-bank-line';
-            kontoBadge = `<div style="display:flex;align-items:center;gap:6px;font-size:0.75rem;color:var(--text-3);margin-top:6px;">
+            kontoBadge = `<div style="display:flex;align-items:center;gap:6px;font-size:0.75rem;color:var(--text-3);margin-top:4px;">
                 <i class="${iconClass}" style="color:${iconColor};"></i>
                 <span>${escHtml(sz.account_name)}</span>
             </div>`;
@@ -391,17 +578,21 @@ function renderSparziele() {
         return '<div class="sparziel-card">' +
             '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;">' +
                 '<div style="display:flex;align-items:flex-start;gap:12px;">' +
-                    '<div style="width:42px;height:42px;border-radius:12px;background:' + sz.farbe + '22;color:' + sz.farbe + ';display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;">' +
-                        '<i class="ri-flag-fill"></i>' +
+                    '<div style="width:42px;height:42px;border-radius:12px;background:' + sz.farbe + '22;color:' + sz.farbe + ';display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;" title="' + escHtml(typLabel) + '">' +
+                        '<i class="' + typIcon + '"></i>' +
                     '</div>' +
                     '<div>' +
                         '<div style="font-weight:700;font-size:1rem;">' + escHtml(sz.name) + '</div>' +
                         (datumInfo ? '<div style="font-size:0.75rem;color:var(--text-3);">' + datumInfo + '</div>' : '') +
+                        monatlichHtml +
+                        estimatedHtml +
                         kontoBadge +
                     '</div>' +
                 '</div>' +
-                '<div style="display:flex;gap:6px;align-items:center;">' +
-                    (done ? '<span style="background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.2);padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700;">✓ Erreicht</span>' : '') +
+                '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end;">' +
+                    (done
+                        ? '<span style="background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.2);padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700;">✓ Erreicht</span>'
+                        : statusBadge) +
                     '<button onclick="editSparziel(' + sz.id + ')" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);padding:5px 9px;border-radius:8px;cursor:pointer;font-size:0.8rem;font-family:inherit;"><i class="ri-edit-line"></i></button>' +
                     '<button onclick="addToSparziel(' + sz.id + ')" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);color:#22c55e;padding:5px 9px;border-radius:8px;cursor:pointer;font-size:0.8rem;font-family:inherit;" title="Betrag hinzufügen"><i class="ri-add-line"></i></button>' +
                     '<button onclick="deleteSparziel(' + sz.id + ')" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#ef4444;padding:5px 9px;border-radius:8px;cursor:pointer;font-size:0.8rem;font-family:inherit;"><i class="ri-delete-bin-line"></i></button>' +
@@ -426,6 +617,7 @@ async function saveSparziel() {
     const farbe     = document.getElementById('szColor').value;
     const editId    = document.getElementById('szEditId').value;
     const accountId = document.getElementById('szAccount').value || null;
+    const typ       = document.getElementById('szTyp')?.value || 'sonstiges';
 
     if (!name || isNaN(ziel)) { showMsg('szMsg', 'Bitte Name und Zielbetrag ausfüllen.', true); return; }
 
@@ -435,13 +627,13 @@ async function saveSparziel() {
             res = await fetch('/users/sparziele/' + editId, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, zielbetrag: ziel, gespart, datum: datum || null, farbe, account_id: accountId })
+                body: JSON.stringify({ name, zielbetrag: ziel, gespart, datum: datum || null, farbe, account_id: accountId, typ })
             });
         } else {
             res = await fetch('/users/sparziele/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, zielbetrag: ziel, gespart, datum: datum || null, farbe, account_id: accountId })
+                body: JSON.stringify({ name, zielbetrag: ziel, gespart, datum: datum || null, farbe, account_id: accountId, typ })
             });
         }
         if (!res.ok) throw new Error();
@@ -464,9 +656,10 @@ function editSparziel(id) {
     document.getElementById('szColor').value   = sz.farbe;
     document.getElementById('szEditId').value  = sz.id;
     document.getElementById('szAccount').value = sz.account_id || '';
+    selectTyp(sz.typ || 'sonstiges');
     document.getElementById('szCancelBtn').style.display = '';
     const titleEl = document.getElementById('szFormTitle');
-    if (titleEl) titleEl.textContent = 'Sparziel bearbeiten';
+    if (titleEl) titleEl.textContent = 'Finanzziel bearbeiten';
     document.querySelectorAll('.sz-color-dot').forEach(d => {
         d.classList.toggle('active', d.dataset.color === sz.farbe);
     });
@@ -500,31 +693,51 @@ async function confirmEinzahlen() {
     const betrag = parseFloat(document.getElementById('einzahlenBetrag')?.value);
     if (!_einzahlenId || isNaN(betrag) || betrag <= 0) return;
     const id = _einzahlenId;
+    const createTransaction = document.getElementById('einzahlenCreateTx')?.checked !== false;
     document.getElementById('einzahlenModal').style.display = 'none';
     _einzahlenId = null;
     try {
         const res = await fetch('/users/sparziele/' + id + '/add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ betrag })
+            body: JSON.stringify({ betrag, createTransaction })
         });
         if (!res.ok) throw new Error();
         const szRes = await fetch('/users/sparziele');
         allSparziele = szRes.ok ? await szRes.json() : [];
         renderSparziele();
         renderKontoAufteilung();
+        if (createTransaction) ggcToast('Einzahlung gespeichert & Transaktion erfasst');
     } catch { alert('Fehler beim Hinzufügen.'); }
 }
 
-async function deleteSparziel(id) {
-    if (!confirm('Sparziel wirklich löschen?')) return;
-    try {
-        await fetch('/users/sparziele/' + id, { method: 'DELETE' });
-        const szRes = await fetch('/users/sparziele');
-        allSparziele = szRes.ok ? await szRes.json() : [];
+function deleteSparziel(id) {
+    const sz = allSparziele.find(s => s.id == id);
+    if (!sz) return;
+
+    allSparziele = allSparziele.filter(s => s.id != id);
+    renderSparziele();
+    renderKontoAufteilung();
+
+    let deleteTimer = null;
+
+    function restoreSz() {
+        clearTimeout(deleteTimer);
+        allSparziele.push(sz);
         renderSparziele();
         renderKontoAufteilung();
-    } catch { alert('Fehler beim Löschen.'); }
+    }
+
+    showUndoToast(`„${sz.name}" gelöscht`, restoreSz);
+
+    deleteTimer = setTimeout(async () => {
+        try {
+            await fetch('/users/sparziele/' + id, { method: 'DELETE' });
+        } catch {
+            ggcToast('Fehler beim Löschen.', true);
+            restoreSz();
+        }
+    }, 5000);
 }
 
 function resetSparForm() {
@@ -535,9 +748,10 @@ function resetSparForm() {
     document.getElementById('szColor').value   = '#6358e6';
     document.getElementById('szEditId').value  = '';
     document.getElementById('szAccount').value = '';
+    selectTyp('sonstiges');
     document.getElementById('szCancelBtn').style.display = 'none';
     const titleEl = document.getElementById('szFormTitle');
-    if (titleEl) titleEl.textContent = 'Neues Sparziel';
+    if (titleEl) titleEl.textContent = 'Neues Finanzziel';
     document.querySelectorAll('.sz-color-dot').forEach((d, i) => d.classList.toggle('active', i === 0));
 }
 

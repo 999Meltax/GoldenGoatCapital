@@ -193,6 +193,35 @@ export default class Database {
                 )
             `);
             try { await database.query('ALTER TABLE sparziele ADD COLUMN account_id INTEGER DEFAULT NULL'); } catch(e) {}
+            try { await database.query("ALTER TABLE sparziele ADD COLUMN typ TEXT DEFAULT 'sonstiges'"); } catch(e) {}
+
+            // ── Kategorisierungs-Regeln ────────────────────────────────
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS kategorisierungs_regeln (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    bedingung_operator TEXT NOT NULL DEFAULT 'enthält',
+                    bedingung_wert TEXT NOT NULL,
+                    aktion_kategorie TEXT DEFAULT NULL,
+                    aktion_typ TEXT DEFAULT NULL,
+                    aktiv INTEGER DEFAULT 1,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            `);
+            try { await database.query("ALTER TABLE kategorisierungs_regeln ADD COLUMN modus TEXT DEFAULT 'beide'"); } catch(e) {}
+
+            // ── Activity Log ──────────────────────────────────────
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS activity_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    aktion TEXT NOT NULL,
+                    entity TEXT NOT NULL,
+                    entity_id INTEGER DEFAULT NULL,
+                    details TEXT DEFAULT NULL,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            `);
 
             // ── Abonnements-Tabelle (Legacy – Daten werden in fixkosten migriert) ──
             await database.query(`
@@ -513,6 +542,44 @@ export default class Database {
                     updated_at TEXT DEFAULT (datetime('now'))
                 )
             `);
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS steuer_kapitalertraege (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    institution TEXT NOT NULL,
+                    steuerjahr INTEGER NOT NULL,
+                    freistellungsauftrag REAL DEFAULT 0,
+                    dividenden REAL DEFAULT 0,
+                    zinsen REAL DEFAULT 0,
+                    kursgewinne REAL DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            `);
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS steuer_sonderausgaben (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    kategorie TEXT NOT NULL DEFAULT 'sonstiges',
+                    bezeichnung TEXT NOT NULL,
+                    betrag REAL DEFAULT 0,
+                    steuerjahr INTEGER NOT NULL,
+                    notiz TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            `);
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS steuer_altersvorsorge (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    typ TEXT NOT NULL DEFAULT 'riester',
+                    bezeichnung TEXT NOT NULL,
+                    eigenbeitrag REAL DEFAULT 0,
+                    ag_beitrag REAL DEFAULT 0,
+                    zulage REAL DEFAULT 0,
+                    steuerjahr INTEGER NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            `);
 
             // ══════════════════════════════════════════════════════════
             // ── UNIFIED FIXKOSTEN: Neue Spalten nachrüsten ─────────────
@@ -529,6 +596,8 @@ export default class Database {
             // ── Umbuchungen ──
             try { await database.query("ALTER TABLE ausgabenDB ADD COLUMN transfer_to_account_id INTEGER DEFAULT NULL"); } catch(e) {}
             try { await database.query("ALTER TABLE ausgabenDB ADD COLUMN transfer_pair_id INTEGER DEFAULT NULL"); } catch(e) {}
+            // ── Sparziel-Transaktionen ──
+            try { await database.query("ALTER TABLE ausgabenDB ADD COLUMN sparziel_id INTEGER DEFAULT NULL"); } catch(e) {}
             try { await database.query("ALTER TABLE fixkosten ADD COLUMN transfer_to_account_id INTEGER DEFAULT NULL"); } catch(e) {}
             try { await database.query("ALTER TABLE fixkosten ADD COLUMN transfer_to_source TEXT DEFAULT NULL"); } catch(e) {}
             try { await database.query("ALTER TABLE fixkosten ADD COLUMN transfer_to_haushalt_id INTEGER DEFAULT NULL"); } catch(e) {}
@@ -1561,6 +1630,103 @@ export default class Database {
         );
     }
 
+    // ── Kapitalerträge ─────────────────────────────────────────
+    async getKapitalertraege(userId, jahr) {
+        const where = jahr ? 'AND steuerjahr=?' : '';
+        const params = jahr ? [userId, jahr] : [userId];
+        return await this._database.query(
+            `SELECT * FROM steuer_kapitalertraege WHERE user_id=? ${where} ORDER BY steuerjahr DESC, id DESC`,
+            { replacements: params, type: Sequelize.QueryTypes.SELECT }
+        );
+    }
+    async addKapitalertrag(userId, data) {
+        const { institution, steuerjahr, freistellungsauftrag, dividenden, zinsen, kursgewinne } = data;
+        const r = await this._database.query(
+            `INSERT INTO steuer_kapitalertraege (user_id, institution, steuerjahr, freistellungsauftrag, dividenden, zinsen, kursgewinne)
+             VALUES (?,?,?,?,?,?,?)`,
+            { replacements: [userId, institution, steuerjahr, freistellungsauftrag||0, dividenden||0, zinsen||0, kursgewinne||0], type: Sequelize.QueryTypes.INSERT }
+        );
+        return r[0];
+    }
+    async updateKapitalertrag(userId, id, data) {
+        const { institution, steuerjahr, freistellungsauftrag, dividenden, zinsen, kursgewinne } = data;
+        await this._database.query(
+            `UPDATE steuer_kapitalertraege SET institution=?, steuerjahr=?, freistellungsauftrag=?, dividenden=?, zinsen=?, kursgewinne=?
+             WHERE id=? AND user_id=?`,
+            { replacements: [institution, steuerjahr, freistellungsauftrag||0, dividenden||0, zinsen||0, kursgewinne||0, id, userId], type: Sequelize.QueryTypes.UPDATE }
+        );
+    }
+    async deleteKapitalertrag(userId, id) {
+        await this._database.query(
+            'DELETE FROM steuer_kapitalertraege WHERE id=? AND user_id=?',
+            { replacements: [id, userId], type: Sequelize.QueryTypes.DELETE }
+        );
+    }
+
+    // ── Sonderausgaben ─────────────────────────────────────────
+    async getSonderausgaben(userId, jahr) {
+        const where = jahr ? 'AND steuerjahr=?' : '';
+        const params = jahr ? [userId, jahr] : [userId];
+        return await this._database.query(
+            `SELECT * FROM steuer_sonderausgaben WHERE user_id=? ${where} ORDER BY steuerjahr DESC, id DESC`,
+            { replacements: params, type: Sequelize.QueryTypes.SELECT }
+        );
+    }
+    async addSonderausgabe(userId, data) {
+        const { kategorie, bezeichnung, betrag, steuerjahr, notiz } = data;
+        const r = await this._database.query(
+            `INSERT INTO steuer_sonderausgaben (user_id, kategorie, bezeichnung, betrag, steuerjahr, notiz) VALUES (?,?,?,?,?,?)`,
+            { replacements: [userId, kategorie||'sonstiges', bezeichnung, betrag||0, steuerjahr, notiz||''], type: Sequelize.QueryTypes.INSERT }
+        );
+        return r[0];
+    }
+    async updateSonderausgabe(userId, id, data) {
+        const { kategorie, bezeichnung, betrag, steuerjahr, notiz } = data;
+        await this._database.query(
+            `UPDATE steuer_sonderausgaben SET kategorie=?, bezeichnung=?, betrag=?, steuerjahr=?, notiz=? WHERE id=? AND user_id=?`,
+            { replacements: [kategorie||'sonstiges', bezeichnung, betrag||0, steuerjahr, notiz||'', id, userId], type: Sequelize.QueryTypes.UPDATE }
+        );
+    }
+    async deleteSonderausgabe(userId, id) {
+        await this._database.query(
+            'DELETE FROM steuer_sonderausgaben WHERE id=? AND user_id=?',
+            { replacements: [id, userId], type: Sequelize.QueryTypes.DELETE }
+        );
+    }
+
+    // ── Altersvorsorge ─────────────────────────────────────────
+    async getAltersvorsorge(userId, jahr) {
+        const where = jahr ? 'AND steuerjahr=?' : '';
+        const params = jahr ? [userId, jahr] : [userId];
+        return await this._database.query(
+            `SELECT * FROM steuer_altersvorsorge WHERE user_id=? ${where} ORDER BY steuerjahr DESC, id DESC`,
+            { replacements: params, type: Sequelize.QueryTypes.SELECT }
+        );
+    }
+    async addAltersvorsorge(userId, data) {
+        const { typ, bezeichnung, eigenbeitrag, ag_beitrag, zulage, steuerjahr } = data;
+        const r = await this._database.query(
+            `INSERT INTO steuer_altersvorsorge (user_id, typ, bezeichnung, eigenbeitrag, ag_beitrag, zulage, steuerjahr)
+             VALUES (?,?,?,?,?,?,?)`,
+            { replacements: [userId, typ||'riester', bezeichnung, eigenbeitrag||0, ag_beitrag||0, zulage||0, steuerjahr], type: Sequelize.QueryTypes.INSERT }
+        );
+        return r[0];
+    }
+    async updateAltersvorsorge(userId, id, data) {
+        const { typ, bezeichnung, eigenbeitrag, ag_beitrag, zulage, steuerjahr } = data;
+        await this._database.query(
+            `UPDATE steuer_altersvorsorge SET typ=?, bezeichnung=?, eigenbeitrag=?, ag_beitrag=?, zulage=?, steuerjahr=?
+             WHERE id=? AND user_id=?`,
+            { replacements: [typ||'riester', bezeichnung, eigenbeitrag||0, ag_beitrag||0, zulage||0, steuerjahr, id, userId], type: Sequelize.QueryTypes.UPDATE }
+        );
+    }
+    async deleteAltersvorsorge(userId, id) {
+        await this._database.query(
+            'DELETE FROM steuer_altersvorsorge WHERE id=? AND user_id=?',
+            { replacements: [id, userId], type: Sequelize.QueryTypes.DELETE }
+        );
+    }
+
     // ── Budget-Methoden ────────────────────────────────────────
 
     async getBudgets(userId) {
@@ -1605,18 +1771,18 @@ export default class Database {
         );
     }
 
-    async addSparziel(userId, name, zielbetrag, gespart, datum, farbe, accountId) {
+    async addSparziel(userId, name, zielbetrag, gespart, datum, farbe, accountId, typ) {
         const result = await this._database.query(
-            'INSERT INTO sparziele (user_id, name, zielbetrag, gespart, datum, farbe, account_id) VALUES (?,?,?,?,?,?,?)',
-            { replacements: [userId, name, zielbetrag, gespart || 0, datum || null, farbe || '#6358e6', accountId || null], type: Sequelize.QueryTypes.INSERT }
+            'INSERT INTO sparziele (user_id, name, zielbetrag, gespart, datum, farbe, account_id, typ) VALUES (?,?,?,?,?,?,?,?)',
+            { replacements: [userId, name, zielbetrag, gespart || 0, datum || null, farbe || '#6358e6', accountId || null, typ || 'sonstiges'], type: Sequelize.QueryTypes.INSERT }
         );
         return result[0];
     }
 
-    async updateSparziel(userId, id, name, zielbetrag, gespart, datum, farbe, accountId) {
+    async updateSparziel(userId, id, name, zielbetrag, gespart, datum, farbe, accountId, typ) {
         await this._database.query(
-            'UPDATE sparziele SET name=?, zielbetrag=?, gespart=?, datum=?, farbe=?, account_id=? WHERE id=? AND user_id=?',
-            { replacements: [name, zielbetrag, gespart, datum || null, farbe, accountId || null, id, userId], type: Sequelize.QueryTypes.UPDATE }
+            'UPDATE sparziele SET name=?, zielbetrag=?, gespart=?, datum=?, farbe=?, account_id=?, typ=? WHERE id=? AND user_id=?',
+            { replacements: [name, zielbetrag, gespart, datum || null, farbe, accountId || null, typ || 'sonstiges', id, userId], type: Sequelize.QueryTypes.UPDATE }
         );
     }
 
@@ -1659,6 +1825,89 @@ export default class Database {
                 sparziele: zugewiesene
             };
         }).filter(acc => acc.sparziele.length > 0 || acc.currentBalance > 0);
+    }
+
+    // ── Kategorisierungs-Regeln ────────────────────────────────────────────
+
+    async getRegeln(userId) {
+        return await this._database.query(
+            'SELECT * FROM kategorisierungs_regeln WHERE user_id=? ORDER BY id ASC',
+            { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
+        );
+    }
+
+    async addRegel(userId, bedingung_operator, bedingung_wert, aktion_kategorie, aktion_typ, modus) {
+        const result = await this._database.query(
+            'INSERT INTO kategorisierungs_regeln (user_id, bedingung_operator, bedingung_wert, aktion_kategorie, aktion_typ, modus) VALUES (?,?,?,?,?,?)',
+            { replacements: [userId, bedingung_operator, bedingung_wert, aktion_kategorie || null, aktion_typ || null, modus || 'beide'], type: Sequelize.QueryTypes.INSERT }
+        );
+        return result[0];
+    }
+
+    async updateRegel(userId, id, bedingung_operator, bedingung_wert, aktion_kategorie, aktion_typ, aktiv, modus) {
+        await this._database.query(
+            'UPDATE kategorisierungs_regeln SET bedingung_operator=?, bedingung_wert=?, aktion_kategorie=?, aktion_typ=?, aktiv=?, modus=? WHERE id=? AND user_id=?',
+            { replacements: [bedingung_operator, bedingung_wert, aktion_kategorie || null, aktion_typ || null, aktiv ? 1 : 0, modus || 'beide', id, userId], type: Sequelize.QueryTypes.UPDATE }
+        );
+    }
+
+    async deleteRegel(userId, id) {
+        await this._database.query(
+            'DELETE FROM kategorisierungs_regeln WHERE id=? AND user_id=?',
+            { replacements: [id, userId], type: Sequelize.QueryTypes.DELETE }
+        );
+    }
+
+    // Wendet alle aktiven Regeln auf einen Transaktionsnamen an.
+    // Gibt { category, type } mit ggf. überschriebenen Werten zurück.
+    async applyRegeln(userId, txName, category, type, modus = 'privat') {
+        const regeln = await this._database.query(
+            "SELECT * FROM kategorisierungs_regeln WHERE user_id=? AND aktiv=1 ORDER BY id ASC",
+            { replacements: [userId], type: Sequelize.QueryTypes.SELECT }
+        );
+        const nameLower = (txName || '').toLowerCase();
+        let result = { category, type };
+        for (const regel of regeln) {
+            const wert = (regel.bedingung_wert || '').toLowerCase();
+            let match = false;
+            switch (regel.bedingung_operator) {
+                case 'enthält':      match = nameLower.includes(wert); break;
+                case 'beginnt_mit':  match = nameLower.startsWith(wert); break;
+                case 'endet_mit':    match = nameLower.endsWith(wert); break;
+                case 'gleich':       match = nameLower === wert; break;
+            }
+            // Regel nur anwenden wenn modus passt
+            const regelModus = regel.modus || 'beide';
+            const modusMatch = regelModus === 'beide' || regelModus === modus;
+            if (match && modusMatch) {
+                if (regel.aktion_kategorie) result.category = regel.aktion_kategorie;
+                if (regel.aktion_typ)       result.type     = regel.aktion_typ;
+            }
+        }
+        return result;
+    }
+
+    // ── Activity Log ──────────────────────────────────────────────────────────
+
+    async logActivity(userId, aktion, entity, entityId, details) {
+        try {
+            await this._database.query(
+                'INSERT INTO activity_log (user_id, aktion, entity, entity_id, details) VALUES (?,?,?,?,?)',
+                { replacements: [userId, aktion, entity, entityId || null, details ? JSON.stringify(details) : null], type: Sequelize.QueryTypes.INSERT }
+            );
+        } catch (e) {
+            // Logging darf nie einen Request zum Absturz bringen
+            console.error('activity_log error:', e.message);
+        }
+    }
+
+    async getActivityLog(userId, { limit = 50, offset = 0, entity = null } = {}) {
+        const where = entity ? 'WHERE user_id=? AND entity=?' : 'WHERE user_id=?';
+        const replacements = entity ? [userId, entity] : [userId];
+        return await this._database.query(
+            `SELECT * FROM activity_log ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+            { replacements: [...replacements, limit, offset], type: Sequelize.QueryTypes.SELECT }
+        );
     }
 
     // ── Abonnements-Methoden (Legacy-Shims – schreiben jetzt in fixkosten) ──

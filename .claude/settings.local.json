@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.js$|\\\\.json$\")",
+      "Bash(grep -rn \"existiert bereits\\\\|already exists\\\\|haushalt.*konto\\\\|haushalt_konten\" 'C:\\\\Users\\\\max.delafuente\\\\Documents\\\\Eigene Projekte\\\\GoldenGoatCapital' --include=*.js --include=*.html -l)"
+    ]
+  }
+}

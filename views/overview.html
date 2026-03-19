@@ -132,6 +132,75 @@
         </div>
     </div>
 
+    <!-- ── Net-Worth Dashboard ──────────────────────────────── -->
+    <div id="widget-networth" style="margin-bottom:20px;">
+        <div class="card" style="padding:24px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:rgba(99,88,230,0.12);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">
+                        <i class="ri-scales-3-line"></i>
+                    </div>
+                    <div>
+                        <div style="font-size:0.75rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;">Netto-Vermögen</div>
+                        <div id="nwTotal" style="font-size:1.7rem;font-weight:800;line-height:1.2;color:var(--text-1);">€ 0,00</div>
+                    </div>
+                </div>
+                <div id="nwBadge" style="font-size:0.8rem;font-weight:600;padding:5px 12px;border-radius:20px;"></div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 220px;gap:28px;align-items:center;" class="nw-grid">
+                <!-- Breakdown -->
+                <div style="display:flex;flex-direction:column;gap:0;">
+                    <!-- Aktiva -->
+                    <div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:8px;">Aktiva</div>
+                    <div class="nw-row" id="nwRowCash">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div style="width:9px;height:9px;border-radius:50%;background:#3b82f6;flex-shrink:0;"></div>
+                            <span>Liquidität</span>
+                            <span style="font-size:0.72rem;color:var(--text-3);" id="nwCashSub"></span>
+                        </div>
+                        <span id="nwCash" style="font-weight:600;"></span>
+                    </div>
+                    <div class="nw-row" id="nwRowInvest">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div style="width:9px;height:9px;border-radius:50%;background:#8b5cf6;flex-shrink:0;"></div>
+                            <span>Investments / Depot</span>
+                        </div>
+                        <span id="nwInvest" style="font-weight:600;"></span>
+                    </div>
+                    <div class="nw-row nw-subtotal">
+                        <span>Bruttovermögen</span>
+                        <span id="nwGross" style="font-weight:700;"></span>
+                    </div>
+                    <!-- Passiva -->
+                    <div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:14px;margin-bottom:8px;">Passiva</div>
+                    <div class="nw-row" id="nwRowSchulden">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div style="width:9px;height:9px;border-radius:50%;background:#ef4444;flex-shrink:0;"></div>
+                            <span>Schulden</span>
+                        </div>
+                        <span id="nwDebt" style="font-weight:600;color:#ef4444;"></span>
+                    </div>
+                    <!-- Divider + Summe -->
+                    <div style="height:1px;background:var(--border);margin:12px 0;"></div>
+                    <div class="nw-row" style="font-size:0.95rem;">
+                        <span style="font-weight:700;">Netto-Vermögen</span>
+                        <span id="nwNet2" style="font-weight:800;"></span>
+                    </div>
+                </div>
+
+                <!-- Donut Chart -->
+                <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+                    <div style="position:relative;width:160px;height:160px;">
+                        <canvas id="nwDonutChart" width="160" height="160"></canvas>
+                        <div id="nwDonutCenter" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;text-align:center;"></div>
+                    </div>
+                    <div id="nwLegend" style="display:flex;flex-direction:column;gap:5px;width:100%;font-size:0.78rem;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ── Mittlere Zeile: Chart + Konten ───────────────────── -->
     <div class="ov-mid-row" id="widget-vermoegensverlauf">
         <div class="card ov-chart-card">
@@ -575,6 +644,31 @@
     .ov-stat-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
     .ov-stat-label { font-size: 0.75rem; color: var(--text-3); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ov-stat-value { font-size: 1.22rem; font-weight: 800; color: var(--text-1); }
+
+    /* ── Net-Worth Widget ─────────────────────────────────── */
+    .nw-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 7px 0;
+        font-size: 0.88rem;
+        color: var(--text-2);
+        border-bottom: 1px solid var(--border);
+        gap: 8px;
+    }
+    .nw-row:last-child { border-bottom: none; }
+    .nw-subtotal {
+        background: var(--surface-2);
+        margin: 4px -4px 0;
+        padding: 7px 4px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        color: var(--text-1);
+        border-bottom: none !important;
+    }
+    @media (max-width: 600px) {
+        .nw-grid { grid-template-columns: 1fr !important; }
+    }
 
     /* ── Mid Row ──────────────────────────────────────────── */
     .ov-mid-row {

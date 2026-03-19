@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Sektionen-Mapping ─────────────────────────────────────────
     const sectionMap = {
-        finanzSection: ['/meine-finanzen', '/ausgabentracker', '/budget', '/schulden'],
+        finanzSection: ['/meine-finanzen', '/ausgabentracker', '/import', '/budget', '/schulden', '/fixkosten', '/steuern', '/regeln', '/activity'],
         verwaltungSection: ['/versicherungen', '/dokumente'],
     };
 
@@ -341,4 +341,80 @@ function ggcConfirm(msg, onConfirm, opts = {}) {
     okBtn.onclick = () => { close(); onConfirm(); };
     document.getElementById('ggcConfirmCancel').onclick = close;
     overlay.onclick = (e) => { if (e.target === overlay) close(); };
+}
+
+// ── Undo-Toast ─────────────────────────────────────────────────
+// showUndoToast(msg, onUndo, timeout?)
+// Rufe NACH dem Löschen auf. Zeigt einen Toast mit "Rückgängig".
+// Wenn der User klickt, wird onUndo() aufgerufen (z.B. Item wiederherstellen).
+let _undoTimer   = null;
+let _undoAnim    = null;
+
+function showUndoToast(msg, onUndo, timeout = 5000) {
+    clearTimeout(_undoTimer);
+    cancelAnimationFrame(_undoAnim);
+
+    let el = document.getElementById('ggcUndoToast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'ggcUndoToast';
+        el.style.cssText = [
+            'position:fixed', 'bottom:28px', 'left:50%', 'transform:translateX(-50%) translateY(80px)',
+            'background:var(--surface,#1a1a2e)', 'border:1px solid var(--border,#2a2a3a)',
+            'border-radius:12px', 'padding:12px 16px',
+            'display:flex', 'align-items:center', 'gap:14px',
+            'font-family:\'Plus Jakarta Sans\',sans-serif', 'font-size:0.88rem',
+            'z-index:9998', 'box-shadow:0 8px 32px rgba(0,0,0,0.4)',
+            'min-width:280px', 'max-width:90vw',
+            'transition:transform 0.28s cubic-bezier(.34,1.56,.64,1), opacity 0.25s'
+        ].join(';');
+        el.innerHTML = `
+            <i class="ri-delete-bin-line" style="color:#ef4444;font-size:1rem;flex-shrink:0;"></i>
+            <span id="ggcUndoMsg" style="flex:1;color:var(--text-1,#fff);"></span>
+            <button id="ggcUndoBtn" style="
+                background:rgba(99,88,230,0.18);border:1px solid rgba(99,88,230,0.4);
+                color:var(--accent,#6358e6);padding:5px 13px;border-radius:8px;
+                cursor:pointer;font-size:0.82rem;font-weight:700;font-family:inherit;
+                flex-shrink:0;white-space:nowrap;">
+                Rückgängig
+            </button>
+            <div id="ggcUndoBar" style="
+                position:absolute;bottom:0;left:0;height:3px;border-radius:0 0 12px 12px;
+                background:var(--accent,#6358e6);width:100%;transform-origin:left;"></div>`;
+        document.body.appendChild(el);
+    }
+
+    document.getElementById('ggcUndoMsg').textContent = msg;
+
+    // Undo-Button Listener (einmalig, neu setzen)
+    const btn = document.getElementById('ggcUndoBtn');
+    btn.onclick = () => {
+        clearTimeout(_undoTimer);
+        cancelAnimationFrame(_undoAnim);
+        hide();
+        if (onUndo) onUndo();
+    };
+
+    // Einblenden
+    el.style.opacity = '1';
+    el.style.transform = 'translateX(-50%) translateY(0)';
+
+    // Progress-Bar-Animation
+    const bar   = document.getElementById('ggcUndoBar');
+    const start = performance.now();
+    function animBar(now) {
+        const elapsed = now - start;
+        const pct = Math.max(0, 1 - elapsed / timeout);
+        bar.style.transform = `scaleX(${pct})`;
+        if (pct > 0) _undoAnim = requestAnimationFrame(animBar);
+    }
+    _undoAnim = requestAnimationFrame(animBar);
+
+    // Auto-hide
+    _undoTimer = setTimeout(hide, timeout);
+
+    function hide() {
+        el.style.transform = 'translateX(-50%) translateY(80px)';
+        el.style.opacity   = '0';
+    }
 }

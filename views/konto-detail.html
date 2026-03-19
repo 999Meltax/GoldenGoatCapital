@@ -41,7 +41,7 @@
             const [accRes, txRes, fixRes] = await Promise.all([
                 fetch('/users/accounts'),
                 fetch(`/users/accounts/${accountId}/transactions`),
-                fetch('/users/fixkosten')
+                fetch('/users/fixkosten/list')
             ]);
             const accounts  = await accRes.json();
             const txs       = await txRes.json();

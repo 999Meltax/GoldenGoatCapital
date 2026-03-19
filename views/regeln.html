@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Regeln & Automationen – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header">
+        <div>
+            <h1>Regeln &amp; Automationen</h1>
+            <p>Transaktionen werden beim Speichern und beim CSV-Import automatisch kategorisiert</p>
+        </div>
+        <button class="btn-primary" onclick="openModal()">
+            <i class="ri-add-line"></i> Neue Regel
+        </button>
+    </div>
+
+    <!-- Info-Banner -->
+    <div style="background:rgba(99,88,230,0.08);border:1px solid rgba(99,88,230,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:flex-start;gap:12px;">
+        <i class="ri-magic-line" style="color:var(--accent);font-size:1.1rem;flex-shrink:0;margin-top:1px;"></i>
+        <div style="font-size:0.85rem;color:var(--text-2);line-height:1.6;">
+            Regeln werden <b>der Reihe nach</b> geprüft – spätere Regeln können frühere überschreiben.
+            Der Transaktionsname wird mit dem Bedingungswert verglichen (<b>Groß-/Kleinschreibung wird ignoriert</b>).
+            Mit <b>„Auf bestehende anwenden"</b> kannst du alle vorhandenen Transaktionen nachträglich kategorisieren.
+        </div>
+    </div>
+
+    <!-- Regeln-Liste -->
+    <div class="card" style="padding:0;overflow:hidden;">
+        <div id="regelnList">
+            <div style="text-align:center;padding:60px 24px;color:var(--text-3);">
+                <i class="ri-loader-4-line" style="font-size:1.5rem;display:block;margin-bottom:10px;"></i>
+                Lade Regeln…
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk-Aktion -->
+    <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+        <button class="btn-ghost" id="applyAllBtn" onclick="applyAll()" style="display:flex;align-items:center;gap:7px;font-size:0.85rem;">
+            <i class="ri-refresh-line"></i> Auf bestehende Transaktionen anwenden
+        </button>
+    </div>
+
+    <!-- Modal -->
+    <div id="regelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+        <div class="card" style="width:min(480px,92vw);padding:28px;">
+            <h3 style="margin:0 0 20px;" id="modalTitle">Neue Regel</h3>
+
+            <div style="display:flex;flex-direction:column;gap:16px;">
+                <!-- Bedingung -->
+                <div>
+                    <div style="font-size:0.75rem;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Wenn der Transaktionsname…</div>
+                    <div style="display:grid;grid-template-columns:160px 1fr;gap:10px;">
+                        <select id="mOperator" class="form-input" style="padding:9px 12px;">
+                            <option value="enthält">enthält</option>
+                            <option value="beginnt_mit">beginnt mit</option>
+                            <option value="endet_mit">endet mit</option>
+                            <option value="gleich">ist gleich</option>
+                        </select>
+                        <input type="text" id="mWert" class="form-input" placeholder='z.B. "REWE"'>
+                    </div>
+                </div>
+
+                <!-- Aktionen -->
+                <div>
+                    <div style="font-size:0.75rem;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Dann…</div>
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center;">
+                            <label style="font-size:0.85rem;color:var(--text-2);">Kategorie setzen auf:</label>
+                            <select id="mKategorie" class="form-input" style="padding:9px 12px;">
+                                <option value="">(nicht ändern)</option>
+                            </select>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center;">
+                            <label style="font-size:0.85rem;color:var(--text-2);">Typ setzen auf:</label>
+                            <select id="mTyp" class="form-input" style="padding:9px 12px;">
+                                <option value="">(nicht ändern)</option>
+                                <option value="Ausgaben">Ausgaben</option>
+                                <option value="Einnahmen">Einnahmen</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modus -->
+                <div>
+                    <div style="font-size:0.75rem;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Gilt für…</div>
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;" id="mModusGrid">
+                        <button type="button" data-modus="beide" onclick="selectModus('beide')"
+                            style="padding:8px 6px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);cursor:pointer;font-size:0.78rem;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;">
+                            <i class="ri-global-line" style="font-size:1rem;"></i> Beide
+                        </button>
+                        <button type="button" data-modus="privat" onclick="selectModus('privat')"
+                            style="padding:8px 6px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);cursor:pointer;font-size:0.78rem;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;">
+                            <i class="ri-user-line" style="font-size:1rem;"></i> Nur Privat
+                        </button>
+                        <button type="button" data-modus="haushalt" onclick="selectModus('haushalt')"
+                            style="padding:8px 6px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);cursor:pointer;font-size:0.78rem;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;">
+                            <i class="ri-home-heart-line" style="font-size:1rem;"></i> Nur Haushalt
+                        </button>
+                    </div>
+                    <input type="hidden" id="mModus" value="beide">
+                </div>
+
+                <input type="hidden" id="mEditId">
+
+                <div style="display:flex;gap:10px;margin-top:4px;">
+                    <button class="btn-primary" style="flex:1;justify-content:center;" onclick="saveRegel()">
+                        <i class="ri-save-line"></i> Speichern
+                    </button>
+                    <button class="btn-ghost" onclick="closeModal()">Abbrechen</button>
+                </div>
+                <div id="modalMsg" style="font-size:0.8rem;text-align:center;min-height:18px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+    <script src="/navheader.js"></script>
+    <script src="/regeln.js"></script>
+</body>
+</html>
