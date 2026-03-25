@@ -30,8 +30,8 @@
         girokonto:'Girokonto', sparkonto:'Sparkonto', haushaltskonto:'Haushaltskonto',
         bargeld:'Bargeld', depot:'Depot / Investments', sonstiges:'Sonstiges'
     };
-    const fmt     = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-    const fmtSign = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', signDisplay: 'always' });
+    const fmt     = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
+    const fmtSign = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR'), signDisplay: 'always' });
 
     const accountId = window.location.pathname.split('/').pop();
 
@@ -177,7 +177,14 @@
                         <div style="margin-left:auto;text-align:right;">
                             <div style="font-size:0.72rem;color:var(--text-3);">Aktueller Stand</div>
                             <div style="font-size:2rem;font-weight:800;color:${balance >= 0 ? '#22c55e' : '#ef4444'};">${fmt.format(balance)}</div>
-                            <div style="font-size:0.72rem;color:var(--text-3);">Startguthaben: ${fmt.format(acc.balance ?? 0)}</div>
+                            ${acc.reserved > 0 ? `
+                            <div style="font-size:0.72rem;color:var(--text-3);margin-top:4px;">
+                                Sparziele verplant: <span style="color:#f59e0b;">${fmt.format(acc.reserved)}</span>
+                            </div>
+                            <div style="font-size:0.8rem;font-weight:700;color:${acc.free < 0 ? '#ef4444' : '#22c55e'};">
+                                ${acc.free < 0 ? '⚠ ' : ''}Frei verfügbar: ${fmt.format(acc.free)}
+                            </div>` : ''}
+                            <div style="font-size:0.72rem;color:var(--text-3);margin-top:2px;">Startguthaben: ${fmt.format(acc.balance ?? 0)}</div>
                         </div>
                     </div>
                 </div>

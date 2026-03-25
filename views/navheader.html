@@ -1,3 +1,17 @@
+<!-- Globale Währungseinstellung (muss vor allen anderen Scripts laufen) -->
+<script>
+    window.GGC_CURRENCY = localStorage.getItem('ggc_currency') || 'EUR';
+    window.GGC_LOCALE   = window.GGC_CURRENCY === 'USD' ? 'en-US' : 'de-DE';
+</script>
+
+<!-- PWA: Manifest + Theme-Color (hier damit es auf jeder Seite automatisch vorhanden ist) -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#6358e6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GGC">
+<link rel="apple-touch-icon" href="/assets/goldengoat.png">
+
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
         <div class="sidebar-logo-inner">
@@ -24,132 +38,132 @@
     <!-- ── PRIVAT-NAV ─────────────────────────────────────────── -->
     <nav class="sidebar-nav" id="privatNav">
 
-        <div class="sidebar-section-label">Übersicht</div>
         <a href="/users/overview" class="sidebar-link">
             <i class="ri-dashboard-line"></i>
             Dashboard
         </a>
 
-        <button class="sidebar-link sidebar-dropdown-toggle" onclick="toggleSidebarSection('finanzSection', this)">
-            <i class="ri-wallet-3-line"></i>
-            Finanzen
+        <div class="sidebar-section-label">Finanzen</div>
+        <a href="/users/ausgabentracker" class="sidebar-link">
+            <i class="ri-exchange-dollar-line"></i>
+            Transaktionen
+        </a>
+        <a href="/users/konten" class="sidebar-link">
+            <i class="ri-bank-card-line"></i>
+            Konten
+        </a>
+        <a href="/users/ausgabentracker?typ=transfer" class="sidebar-link">
+            <i class="ri-arrow-left-right-line"></i>
+            Transfers
+        </a>
+        <a href="/users/import" class="sidebar-link">
+            <i class="ri-upload-cloud-2-line"></i>
+            CSV-Import
+        </a>
+        <a href="/users/regeln" class="sidebar-link">
+            <i class="ri-magic-line"></i>
+            Regeln &amp; Automationen
+        </a>
+
+        <div class="sidebar-section-label">Planung</div>
+        <a href="/users/budget" class="sidebar-link">
+            <i class="ri-pie-chart-2-line"></i>
+            Budget &amp; Sparziele
+        </a>
+        <a href="/users/fixkosten" class="sidebar-link">
+            <i class="ri-repeat-line"></i>
+            Fixkosten &amp; Abos
+        </a>
+        <a href="/users/schulden" class="sidebar-link">
+            <i class="ri-scales-line"></i>
+            Schulden
+        </a>
+
+        <div class="sidebar-divider"></div>
+
+        <button class="sidebar-link sidebar-secondary-toggle" onclick="toggleSidebarSection('mehrSection', this)">
+            <i class="ri-more-line"></i>
+            Mehr
+            <i class="ri-arrow-down-s-line sidebar-toggle-arrow" id="mehrArrow"></i>
         </button>
-        <div class="sidebar-dropdown-items" id="finanzSection">
-            <a href="/users/meine-finanzen" class="sidebar-link">
-                <i class="ri-pie-chart-2-line"></i>
-                Meine Finanzen
+        <div class="sidebar-dropdown-items sidebar-mehr-items" id="mehrSection">
+            <a href="/users/activity" class="sidebar-link sidebar-link-secondary">
+                <i class="ri-list-check-3"></i>
+                Aktivitätsprotokoll
             </a>
-            <a href="/users/ausgabentracker" class="sidebar-link">
-                <i class="ri-exchange-dollar-line"></i>
-                Ausgabentracker
+            <a href="/users/kalender" class="sidebar-link sidebar-link-secondary">
+                <i class="ri-calendar-event-line"></i>
+                Zahlungskalender
             </a>
-            <a href="/users/import" class="sidebar-link">
-                <i class="ri-upload-cloud-2-line"></i>
-                CSV-Import
-            </a>
-            <a href="/users/budget" class="sidebar-link">
-                <i class="ri-bar-chart-box-line"></i>
-                Budget & Sparziele
-            </a>
-            <a href="/users/fixkosten" class="sidebar-link">
-                <i class="ri-repeat-line"></i>
-                Fixkosten & Abos
-            </a>
-            <a href="/users/schulden" class="sidebar-link">
-                <i class="ri-scales-line"></i>
-                Schulden-Tracker
-            </a>
-            <a href="/users/steuern" class="sidebar-link">
+            <a href="/users/steuern" class="sidebar-link sidebar-link-secondary">
                 <i class="ri-government-line"></i>
                 Steuer-Modul
             </a>
-            <a href="/users/regeln" class="sidebar-link">
-                <i class="ri-magic-line"></i>
-                Regeln &amp; Automationen
-            </a>
-            <a href="/users/activity" class="sidebar-link">
-                <i class="ri-history-line"></i>
-                Aktivitätsprotokoll
-            </a>
-        </div>
-
-        <button class="sidebar-link sidebar-dropdown-toggle" onclick="toggleSidebarSection('verwaltungSection', this)">
-            <i class="ri-folder-shield-2-line"></i>
-            Verwaltung
-        </button>
-        <div class="sidebar-dropdown-items" id="verwaltungSection">
-            <a href="/users/versicherungen" class="sidebar-link">
+            <a href="/users/versicherungen" class="sidebar-link sidebar-link-secondary">
                 <i class="ri-shield-check-line"></i>
                 Versicherungen
             </a>
-            <a href="/users/dokumente" class="sidebar-link">
+            <a href="/users/dokumente" class="sidebar-link sidebar-link-secondary">
                 <i class="ri-folder-line"></i>
                 Dokumente
             </a>
+            <a href="/users/export" class="sidebar-link sidebar-link-secondary">
+                <i class="ri-download-2-line"></i>
+                Datenexport
+            </a>
         </div>
-
-        <a href="/users/todo" class="sidebar-link">
-            <i class="ri-list-check-2"></i>
-            To-do-Liste
-        </a>
-
-        <a href="/users/kalender" class="sidebar-link">
-            <i class="ri-calendar-line"></i>
-            Kalender
-        </a>
-
-        <a href="/users/zinseszinsrechner" class="sidebar-link">
-            <i class="ri-percent-line"></i>
-            Zinseszinsrechner
-        </a>
 
     </nav>
 
     <!-- ── HAUSHALT-NAV ───────────────────────────────────────── -->
     <nav class="sidebar-nav" id="haushaltNav" style="display:none;">
 
-        <div class="sidebar-section-label" style="color:var(--haus-accent);">Haushalt</div>
         <a href="/users/haushalt" class="sidebar-link sidebar-link-haus">
             <i class="ri-home-heart-line"></i>
             Dashboard
         </a>
 
+        <div class="sidebar-section-label" style="color:var(--haus-accent);">Finanzen</div>
         <a href="/users/haushalt/tracker" class="sidebar-link sidebar-link-haus">
             <i class="ri-exchange-2-line"></i>
             Transaktionen
         </a>
-
-        <a href="/users/haushalt/ausgaben" class="sidebar-link sidebar-link-haus">
-            <i class="ri-calculator-line"></i>
-            Fixkosten & Planung
-        </a>
-
         <a href="/users/haushalt/konto" class="sidebar-link sidebar-link-haus">
             <i class="ri-bank-card-line"></i>
-            Haushaltskonto
+            Konten
         </a>
 
+        <div class="sidebar-section-label" style="color:var(--haus-accent);">Planung</div>
+        <a href="/users/haushalt/ausgaben" class="sidebar-link sidebar-link-haus">
+            <i class="ri-calculator-line"></i>
+            Fixkosten &amp; Budget
+        </a>
+        <a href="/users/haushalt/ausgaben?tab=abrechnung" class="sidebar-link sidebar-link-haus">
+            <i class="ri-scales-line"></i>
+            Abrechnung
+        </a>
         <a href="/users/haushalt/todos" class="sidebar-link sidebar-link-haus">
             <i class="ri-checkbox-line"></i>
             Aufgaben
         </a>
 
-        <a href="/users/haushalt/dokumente" class="sidebar-link sidebar-link-haus">
+        <div class="sidebar-divider"></div>
+
+        <a href="/users/haushalt/import" class="sidebar-link sidebar-link-haus sidebar-link-secondary">
+            <i class="ri-file-upload-line"></i>
+            CSV-Import
+        </a>
+        <a href="/users/regeln" class="sidebar-link sidebar-link-haus sidebar-link-secondary">
+            <i class="ri-robot-line"></i>
+            Regeln &amp; Automationen
+        </a>
+        <a href="/users/haushalt/dokumente" class="sidebar-link sidebar-link-haus sidebar-link-secondary">
             <i class="ri-folder-2-line"></i>
             Dokumente
         </a>
-
-        <a href="/users/haushalt/einstellungen" class="sidebar-link sidebar-link-haus">
+        <a href="/users/haushalt/einstellungen" class="sidebar-link sidebar-link-haus sidebar-link-secondary">
             <i class="ri-settings-3-line"></i>
             Einstellungen
-        </a>
-        <a href="/users/regeln" class="sidebar-link sidebar-link-haus">
-            <i class="ri-magic-line"></i>
-            Regeln &amp; Automationen
-        </a>
-        <a href="/users/activity?filter=Haushalt-Transaktion" class="sidebar-link sidebar-link-haus">
-            <i class="ri-history-line"></i>
-            Aktivitätsprotokoll
         </a>
 
     </nav>
@@ -161,17 +175,9 @@
                 <span class="sidebar-plan-label">Tarif verwalten</span>
                 <i class="ri-arrow-right-s-line"></i>
             </a>
-            <a href="/users/profil" class="sidebar-link">
-                <i class="ri-user-line"></i>
-                Profil
-            </a>
-            <a href="/users/einstellungen" class="sidebar-link" style="margin-top: 4px;">
+            <a href="/users/konto" class="sidebar-link">
                 <i class="ri-settings-3-line"></i>
-                Einstellungen
-            </a>
-            <a href="/users/export" class="sidebar-link" style="margin-top: 4px;">
-                <i class="ri-download-2-line"></i>
-                Daten exportieren
+                Konto &amp; Einstellungen
             </a>
             <a href="/users/logout" class="sidebar-link" style="margin-top: 4px;">
                 <i class="ri-logout-box-line"></i>
@@ -190,16 +196,272 @@
     </div>
 </aside>
 
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
+
+<!-- ── Mobile Bottom Navigation ── -->
+<nav class="mobile-bottom-nav" id="mobileBottomNav">
+    <!-- Privat-Links -->
+    <div id="mbnPrivat" class="mbn-links">
+        <a href="/users/overview" class="mbn-item" data-path="/users/overview">
+            <i class="ri-home-5-line"></i>
+            <span>Dashboard</span>
+        </a>
+        <a href="/users/ausgabentracker" class="mbn-item" data-path="/users/ausgabentracker">
+            <i class="ri-receipt-line"></i>
+            <span>Ausgaben</span>
+        </a>
+        <button class="mbn-fab" onclick="mbnFabAction()" aria-label="Schnell-Eintrag">
+            <i class="ri-add-line"></i>
+        </button>
+        <a href="/users/budget" class="mbn-item" data-path="/users/budget">
+            <i class="ri-pie-chart-line"></i>
+            <span>Budget</span>
+        </a>
+        <a href="/users/konten" class="mbn-item" data-path="/users/konten">
+            <i class="ri-bank-card-line"></i>
+            <span>Konten</span>
+        </a>
+    </div>
+    <!-- Haushalt-Links -->
+    <div id="mbnHaushalt" class="mbn-links" style="display:none;">
+        <a href="/users/haushalt" class="mbn-item" data-path="/users/haushalt">
+            <i class="ri-home-heart-line"></i>
+            <span>Übersicht</span>
+        </a>
+        <a href="/users/haushalt/tracker" class="mbn-item" data-path="/users/haushalt/tracker">
+            <i class="ri-receipt-line"></i>
+            <span>Ausgaben</span>
+        </a>
+        <button class="mbn-fab" onclick="mbnFabAction()" aria-label="Schnell-Eintrag">
+            <i class="ri-add-line"></i>
+        </button>
+        <a href="/users/haushalt/ausgaben" class="mbn-item" data-path="/users/haushalt/ausgaben">
+            <i class="ri-calculator-line"></i>
+            <span>Planung</span>
+        </a>
+        <a href="/users/haushalt/todos" class="mbn-item" data-path="/users/haushalt/todos">
+            <i class="ri-checkbox-line"></i>
+            <span>Aufgaben</span>
+        </a>
+    </div>
+</nav>
+
 <div class="page-wrapper" id="pageWrapper">
 
-    <!-- ── Globale Suchleiste (Topbar) ── -->
-    <div class="ggc-searchbar-wrap" id="ggcSearchbarWrap">
-        <button class="ggc-searchbar-trigger" id="ggcSearchTrigger" onclick="openGgcSearch()" title="Suchen (Strg+K)">
-            <i class="ri-search-line"></i>
-            <span>Suchen…</span>
-            <kbd>Strg K</kbd>
+    <!-- ── Topbar: Suche + Notifications ── -->
+    <div class="ggc-topbar-wrap">
+        <!-- Hamburger für Mobile/Tablet -->
+        <button class="ggc-hamburger" id="ggcHamburger" onclick="toggleMobileSidebar()" aria-label="Menü öffnen">
+            <span></span><span></span><span></span>
         </button>
+        <div class="ggc-searchbar-wrap" id="ggcSearchbarWrap">
+            <button class="ggc-searchbar-trigger" id="ggcSearchTrigger" onclick="openGgcSearch()" title="Suchen (Strg+K)">
+                <i class="ri-search-line"></i>
+                <span>Suchen…</span>
+                <kbd>Strg K</kbd>
+            </button>
+        </div>
+
+        <%# Benachrichtigungs-Glocke deaktiviert bis echte Inhalte vorhanden sind %>
     </div>
+
+<style>
+.ggc-topbar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px 0;
+}
+.ggc-topbar-wrap .ggc-searchbar-wrap {
+    flex: 1;
+    margin: 0;
+    padding: 0;
+}
+/* Hamburger */
+.ggc-hamburger {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.ggc-hamburger span {
+    display: block;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--text-2);
+    transition: all 0.2s;
+}
+.ggc-hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.ggc-hamburger.open span:nth-child(2) { opacity: 0; }
+.ggc-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+@media (max-width: 768px) {
+    .ggc-hamburger { display: flex; }
+}
+/* Sidebar-Overlay für Mobile */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 99;
+    backdrop-filter: blur(2px);
+}
+.sidebar-overlay.open { display: block; }
+.ggc-notif-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+.ggc-notif-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--surface-2, rgba(255,255,255,0.05));
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    color: var(--text-2, #aaa);
+    cursor: pointer;
+    font-size: 1.15rem;
+    transition: background 0.15s, color 0.15s;
+}
+.ggc-notif-btn:hover, .ggc-notif-btn.open {
+    background: var(--surface-3, rgba(255,255,255,0.09));
+    color: var(--text-1, #fff);
+}
+.ggc-notif-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    padding: 0 3px;
+    pointer-events: none;
+}
+.ggc-notif-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 340px;
+    max-height: 420px;
+    background: var(--surface, #1a1a2e);
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    z-index: 1200;
+    overflow: hidden;
+    flex-direction: column;
+}
+.ggc-notif-panel.open {
+    display: flex;
+}
+.ggc-notif-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-1, #fff);
+    flex-shrink: 0;
+}
+.ggc-notif-read-all {
+    font-size: 0.75rem;
+    color: var(--accent, #6358e6);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 2px 6px;
+    border-radius: 6px;
+}
+.ggc-notif-read-all:hover { background: rgba(99,88,230,0.1); }
+.ggc-notif-list {
+    overflow-y: auto;
+    flex: 1;
+}
+.ggc-notif-empty {
+    padding: 30px 16px;
+    text-align: center;
+    color: var(--text-3, #666);
+    font-size: 0.83rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.ggc-notif-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border, rgba(255,255,255,0.04));
+    cursor: pointer;
+    transition: background 0.12s;
+    text-decoration: none;
+}
+.ggc-notif-item:hover { background: rgba(255,255,255,0.03); }
+.ggc-notif-item.unread { background: rgba(99,88,230,0.06); }
+.ggc-notif-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+.ggc-notif-icon.budget  { background: rgba(239,68,68,0.15);  color: #ef4444; }
+.ggc-notif-icon.unusual { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.ggc-notif-icon.fixkost { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.ggc-notif-body { flex: 1; min-width: 0; }
+.ggc-notif-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-1, #fff);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ggc-notif-msg {
+    font-size: 0.76rem;
+    color: var(--text-3, #888);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.ggc-notif-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent, #6358e6);
+    flex-shrink: 0;
+    margin-top: 5px;
+}
+.ggc-notif-item.read .ggc-notif-dot { background: transparent; }
+</style>
 
     <!-- ── Globales Such-Modal ── -->
     <div class="ggc-search-overlay" id="ggcSearchOverlay" onclick="closeGgcSearch(event)">

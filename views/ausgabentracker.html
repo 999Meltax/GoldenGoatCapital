@@ -64,7 +64,7 @@
 
             <!-- Balance -->
             <div class="transaction-header">
-                <h5>Gewinn / Verlust</h5>
+                <h5 id="balanceLabel">Gewinn / Verlust</h5>
                 <div class="balance-amount" id="balance">€ 0,00</div>
                 <div class="income-expense-row">
                     <div class="income-expense-box">
@@ -255,6 +255,14 @@
 
             <!-- Listenansicht -->
             <div id="viewList">
+                <!-- Transfer-Filter-Banner -->
+                <div id="transferFilterBanner" style="display:none;align-items:center;gap:10px;background:rgba(99,88,230,0.08);border:1px solid rgba(99,88,230,0.25);border-left:3px solid var(--accent,#6358e6);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:10px;font-size:0.85rem;">
+                    <i class="ri-arrow-left-right-line" style="color:var(--accent,#6358e6);"></i>
+                    <span>Gefiltert: nur <strong>Umbuchungen / Transfers</strong></span>
+                    <a href="/users/ausgabentracker" style="margin-left:auto;font-size:0.78rem;color:var(--accent,#6358e6);text-decoration:none;">Filter aufheben</a>
+                </div>
+                <!-- Pending-Delete-Bar -->
+                <div id="pendingDeleteBar" style="display:none;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-left:3px solid #ef4444;border-radius:var(--radius-md);padding:10px 14px;margin-bottom:10px;font-size:0.85rem;flex-wrap:wrap;"></div>
                 <!-- Sortier-Header -->
                 <div id="txSortHeader" class="tx-sort-header"></div>
                 <ul id="transactionList" class="transaction-list"></ul>
@@ -455,7 +463,7 @@
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                     <div class="form-group">
-                        <label class="form-label">Betrag (€)</label>
+                        <label class="form-label">Betrag</label>
                         <input type="number" id="transferAmount" class="form-input" placeholder="0,00" min="0.01" step="0.01" oninput="updateTransferPreview()">
                     </div>
                     <div class="form-group">
@@ -732,7 +740,7 @@
                             <select id="recurCategory"></select>
                         </div>
                         <div class="form-group" style="flex:1;">
-                            <label class="form-label">Betrag (€) *</label>
+                            <label class="form-label">Betrag *</label>
                             <input type="number" id="recurAmount" min="0.01" step="0.01" placeholder="0,00">
                         </div>
                     </div>
@@ -971,8 +979,8 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="/upgrade-modal.js"></script>
-    <script src="/ausgabentracker.js"></script>
-    <script src="/navheader.js"></script>
+    <script src="/ausgabentracker.js?v=5"></script>
+    <script src="/navheader.js?v=2"></script>
 </body>
 
 </html>

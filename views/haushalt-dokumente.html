@@ -17,7 +17,7 @@
             <p>Gemeinsame Dokumente, Rechnungen und Verträge des Haushalts</p>
         </div>
         <button onclick="showUpload()" class="btn-primary" id="uploadToggleBtn">
-            <i class="ri-upload-line"></i> Dokument hochladen
+            <i class="ri-add-line"></i> Dokument erfassen
         </button>
     </div>
 
@@ -51,7 +51,7 @@
         <!-- Rechnungs-Felder (nur bei Typ rechnung) -->
         <div id="rechnungFields" style="display:none;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
             <div class="form-group">
-                <label class="form-label">Betrag (€)</label>
+                <label class="form-label">Betrag</label>
                 <input type="number" id="upBetrag" step="0.01" placeholder="0,00">
             </div>
             <div class="form-group">
@@ -76,13 +76,14 @@
         </div>
 
         <div class="form-group" style="margin-bottom:16px;">
-            <label class="form-label">Datei (PDF oder Bild)</label>
-            <input type="file" id="upFile" accept=".pdf,.jpg,.jpeg,.png,.webp" style="color:var(--text-2);">
+            <label class="form-label">Ablageort</label>
+            <input type="text" id="upAblageort" placeholder="z.B. /Dokumente/Haushalt oder https://drive.google.com/…">
+            <div style="font-size:0.75rem;color:var(--text-3);margin-top:4px;">Wo liegt das Dokument? (Dateipfad, URL oder Freitext)</div>
         </div>
 
         <div style="display:flex;gap:8px;">
             <button onclick="uploadDokument()" class="btn-primary" id="uploadBtn">
-                <i class="ri-upload-line"></i> Hochladen
+                <i class="ri-save-line"></i> Speichern
             </button>
             <button onclick="hideUpload()" style="padding:10px 20px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
                 Abbrechen
@@ -256,8 +257,12 @@
                 (d.betrag ? '<span style="font-weight:800;font-size:0.95rem;">' + fmt.format(d.betrag) + '</span>' : '') +
             '</div>' +
             (d.faellig_datum && d.status !== 'bezahlt' ? renderFaellig(d.faellig_datum) : '') +
-            '<div style="font-size:0.72rem;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px;">' +
-                'Hochgeladen von ' + escHtml(hochladerName) +
+            '<div style="font-size:0.72rem;color:var(--text-3);border-top:1px solid var(--border);padding-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;">' +
+                '<span>Von ' + escHtml(hochladerName) + '</span>' +
+                (d.ablageort ? (d.ablageort.startsWith('http')
+                    ? '<a href="' + escHtml(d.ablageort) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--haus-accent);display:flex;align-items:center;gap:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;"><i class="ri-external-link-line"></i> Öffnen</a>'
+                    : '<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;" title="' + escHtml(d.ablageort) + '"><i class="ri-folder-line"></i> ' + escHtml(d.ablageort) + '</span>')
+                : '') +
             '</div>' +
         '</div>';
     }
@@ -301,29 +306,14 @@
         if (!name) { msg.style.color = '#ef4444'; msg.textContent = 'Bitte Bezeichnung eingeben.'; return; }
 
         btn.disabled = true;
-        btn.innerHTML = '<i class="ri-loader-4-line" style="animation:spin 1s linear infinite;"></i> Wird hochgeladen…';
-
-        const fileInput = document.getElementById('upFile');
-        let file_data = '', file_ext = '', file_mime = '';
-
-        if (fileInput.files && fileInput.files[0]) {
-            const file = fileInput.files[0];
-            file_ext = file.name.split('.').pop().toLowerCase();
-            file_mime = file.type;
-            file_data = await new Promise((res, rej) => {
-                const r = new FileReader();
-                r.onload = e => res(e.target.result);
-                r.onerror = () => rej(new Error('Lesefehler'));
-                r.readAsDataURL(file);
-            });
-        }
+        btn.innerHTML = '<i class="ri-loader-4-line" style="animation:spin 1s linear infinite;"></i> Wird gespeichert…';
 
         const payload = {
             typ, name,
             datum:        document.getElementById('upDatum').value || null,
             kategorie:    document.getElementById('upKategorie').value.trim(),
             notiz:        document.getElementById('upNotiz').value.trim(),
-            file_data, file_ext, file_mime,
+            ablageort:    document.getElementById('upAblageort').value.trim(),
             betrag:       typ === 'rechnung' ? (parseFloat(document.getElementById('upBetrag').value) || null) : null,
             faellig_datum:typ === 'rechnung' ? (document.getElementById('upFaellig').value || null) : null,
             aussteller:   typ === 'rechnung' ? document.getElementById('upAussteller').value.trim() : '',
@@ -336,15 +326,14 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            if (!res.ok) throw new Error('Fehler beim Hochladen');
+            if (!res.ok) throw new Error('Fehler beim Speichern');
             msg.style.color = '#10b981';
             msg.textContent = 'Dokument gespeichert!';
             // Formular zurücksetzen
-            ['upName','upDatum','upKategorie','upNotiz','upBetrag','upFaellig','upAussteller'].forEach(id => {
+            ['upName','upDatum','upKategorie','upNotiz','upBetrag','upFaellig','upAussteller','upAblageort'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.value = '';
             });
-            fileInput.value = '';
             document.getElementById('upTyp').value = 'sonstiges';
             updateUploadFields();
             await loadDokumente();
@@ -354,7 +343,7 @@
             msg.textContent = err.message;
         } finally {
             btn.disabled = false;
-            btn.innerHTML = '<i class="ri-upload-line"></i> Hochladen';
+            btn.innerHTML = '<i class="ri-save-line"></i> Speichern';
         }
     }
 

@@ -1,30 +1,19 @@
 const formatter = new Intl.NumberFormat("de-DE", {
     style: "currency",
-    currency: "EUR",
+    currency: (window.GGC_CURRENCY||'EUR'),
     signDisplay: "always",
 });
 
-// Standardkategorien – immer vorhanden, nicht löschbar
-const DEFAULT_CATEGORIES = [
-    "Essen & Trinken",
-    "Lebensmittel",
-    "Klamotten",
-    "Freizeit",
-    "Tanken",
-    "Wohnen",
-    "Transport",
-    "Gesundheit",
-    "Gehalt",
-    "Sonstiges"
-];
+// DEFAULT_CATEGORIES entfernt (Phase 1-E) — Kategorien kommen vollständig aus der DB
 
 let list, form, categoryForm, status, balance, income, expense,
     categorySelect, categoryInput, monthFilter, categoryFilter,
     actionModalCategory, modalContent;
-let transactions = [];
-let categories   = [];
-let allAccounts  = [];          // alle Konten vom Server
-let allRegeln    = [];          // Kategorisierungs-Regeln
+let transactions    = [];
+let categories      = [];
+let allAccounts     = [];          // alle Konten vom Server
+let allRegeln       = [];          // Kategorisierungs-Regeln
+let globalSettings  = { split_user1: 50, split_user2: 50 };
 let activeTab    = 'list';
 let chartInstance = null;
 
@@ -375,25 +364,33 @@ function setChartType(type) {
 
 async function loadData() {
     try {
-        const [txRes, catRes, accRes, regelRes] = await Promise.all([
+        const [txRes, catRes, accRes, regelRes, settingsRes] = await Promise.all([
             fetch('/users/haushalt/transaktionen'),
             fetch('/users/haushalt/tracker/categories'),
             fetch('/users/haushalt/tracker/accounts'),
-            fetch('/users/regeln/list')
+            fetch('/users/regeln/list'),
+            fetch('/users/haushalt/settings')
         ]);
         transactions = await txRes.json();
         const userCats = await catRes.json();
         allAccounts = await accRes.json();
         allRegeln   = regelRes.ok ? await regelRes.json() : [];
+        if (settingsRes.ok) {
+            globalSettings = await settingsRes.json();
+            // Sidebar-Formular Split-Slider auf globalen Default setzen
+            const formSplitEl = document.getElementById('formSplit');
+            if (formSplitEl) {
+                formSplitEl.value = globalSettings.split_user1 ?? 50;
+                if (typeof updateFormSplit === 'function') updateFormSplit();
+            }
+        }
 
-        // Neue Konten automatisch als aktiv markieren
+        // Neue Konten aktiv markieren + gelöschte Konto-IDs aus localStorage bereinigen
         const existingIds = getTrackerActiveIds();
         if (existingIds !== null) {
-            allAccounts.forEach(a => {
-                if (!existingIds.has(String(a.id))) {
-                    existingIds.add(String(a.id));
-                }
-            });
+            const validIds = new Set(allAccounts.map(a => String(a.id)));
+            allAccounts.forEach(a => { if (!existingIds.has(String(a.id))) existingIds.add(String(a.id)); });
+            for (const id of [...existingIds]) { if (!validIds.has(id)) existingIds.delete(id); }
             setTrackerActiveIds(existingIds);
         }
 
@@ -411,11 +408,8 @@ async function loadData() {
                 allAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
         }
 
-        // Merge Kategorien
-        categories = [
-            ...DEFAULT_CATEGORIES.map(name => ({ name, isDefault: true })),
-            ...userCats.filter(c => !DEFAULT_CATEGORIES.includes(c.name)).map(c => ({ ...c, isDefault: false }))
-        ];
+        // Kategorien aus DB — is_default kommt vom Server
+        categories = userCats.map(c => ({ ...c, isDefault: !!c.is_default }));
 
         buildTrackerFilterUI();
         populateMonthFilter();
@@ -428,6 +422,7 @@ async function loadData() {
         renderList();
         renderAccountCards();
         loadRecurring();
+        checkAndShowPendingBar();
     } catch (err) {
         console.error('Fehler beim Laden:', err);
         if (status) status.textContent = 'Fehler beim Laden der Daten';
@@ -465,7 +460,7 @@ async function addCategory(e) {
     e.preventDefault();
     const name = document.getElementById('categoryName').value.trim();
     if (!name) return;
-    if (DEFAULT_CATEGORIES.includes(name)) {
+    if (categories.find(c => c.name === name && c.isDefault)) {
         showStatus('Diese Kategorie existiert bereits als Standardkategorie.', true);
         return;
     }
@@ -572,6 +567,7 @@ function showEditTransactionModal(transaction) {
 
     const dateFormatted = new Date(transaction.date).toISOString().split('T')[0];
     const isIncome = transaction.type === 'Einnahmen';
+    const editA1 = transaction.anteil_user1 ?? globalSettings.split_user1 ?? 50;
 
     modalContent.innerHTML = `
         <span class="close" onclick="closeModal()">×</span>
@@ -611,9 +607,22 @@ function showEditTransactionModal(transaction) {
             </div>
         </div>
 
-        <div class="form-group" style="margin-bottom:20px;">
+        <div class="form-group" style="margin-bottom:16px;">
             <label class="form-label">Konto <span style="color:var(--text-3); font-weight:400;">(optional)</span></label>
             <select id="editAccountSelect"><option value="">Kein Konto</option></select>
+        </div>
+
+        <div class="form-group" style="margin-bottom:20px;">
+            <label class="form-label" style="display:flex;justify-content:space-between;">
+                <span>Kostenaufteilung</span>
+                <span id="editSplitInfo" style="color:var(--haus-accent);font-weight:700;">${editA1 === 50 ? 'gleich' : editA1 + ' / ' + (100-editA1)}</span>
+            </label>
+            <div class="split-slider-row">
+                <span class="split-label" id="editSplitLabel1">${editA1}%</span>
+                <input type="range" min="0" max="100" step="5" value="${editA1}" id="editSplit"
+                       class="split-slider" oninput="updateEditSplit()">
+                <span class="split-label" id="editSplitLabel2">${100-editA1}%</span>
+            </div>
         </div>
 
         <div style="display:flex; gap:8px;">
@@ -632,6 +641,16 @@ function showEditTransactionModal(transaction) {
     actionModalCategory.style.display = 'flex';
 }
 
+function updateEditSplit() {
+    const val = parseInt(document.getElementById('editSplit').value);
+    const l1 = document.getElementById('editSplitLabel1');
+    const l2 = document.getElementById('editSplitLabel2');
+    const info = document.getElementById('editSplitInfo');
+    if (l1) l1.textContent = val + '%';
+    if (l2) l2.textContent = (100 - val) + '%';
+    if (info) info.textContent = val === 50 ? 'gleich' : val + ' / ' + (100 - val);
+}
+
 async function confirmEditTransaction(id) {
     const name       = document.getElementById('editName').value.trim();
     const category   = document.getElementById('editCategory').value;
@@ -639,6 +658,7 @@ async function confirmEditTransaction(id) {
     const date       = document.getElementById('editDate').value;
     const type       = document.getElementById('editType').checked ? 'Einnahmen' : 'Ausgaben';
     const account_id = document.getElementById('editAccountSelect')?.value || null;
+    const anteil1    = parseInt(document.getElementById('editSplit')?.value ?? 50);
 
     if (!name || !category || isNaN(amount) || amount <= 0 || !date) {
         showStatus('Bitte alle Felder ausfüllen.', true);
@@ -648,7 +668,8 @@ async function confirmEditTransaction(id) {
         const res = await fetch(`/users/haushalt/transaktionen/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, category, amount, date, type, account_id })
+            body: JSON.stringify({ name, category, amount, date, type, account_id,
+                anteil_user1: anteil1, anteil_user2: 100 - anteil1 })
         });
         if (!res.ok) throw new Error((await res.json()).message || 'Fehler beim Speichern');
         showStatus('Transaktion gespeichert!', false);
@@ -666,13 +687,16 @@ async function addTransaction(e) {
     const formEl  = e.target;
     const formData = new FormData(formEl);
     const typeCheckbox = formEl.querySelector('#type');
+    const splitVal = parseInt(formEl.querySelector('#formSplit')?.value ?? globalSettings.split_user1 ?? 50);
     const tx = {
-        name:       formData.get("name")?.trim() || "",
-        amount:     parseFloat(formData.get("amount")) || 0,
-        date:       formData.get("date") || "",
-        type:       typeCheckbox && typeCheckbox.checked ? "Einnahmen" : "Ausgaben",
-        category:   formData.get("category")?.trim() || "",
-        account_id: formData.get("account_id") || null
+        name:         formData.get("name")?.trim() || "",
+        amount:       parseFloat(formData.get("amount")) || 0,
+        date:         formData.get("date") || "",
+        type:         typeCheckbox && typeCheckbox.checked ? "Einnahmen" : "Ausgaben",
+        category:     formData.get("category")?.trim() || "",
+        account_id:   formData.get("account_id") || null,
+        anteil_user1: splitVal,
+        anteil_user2: 100 - splitVal
     };
 
     if (!tx.name)       return showStatus('Bitte einen Namen eingeben.', true);
@@ -692,6 +716,9 @@ async function addTransaction(e) {
         categoryInput.value = '';
         const typeEl = formEl.querySelector('#type');
         if (typeEl) typeEl.checked = false;
+        // Reset split slider to global default
+        const splitEl = formEl.querySelector('#formSplit');
+        if (splitEl) { splitEl.value = globalSettings.split_user1 ?? 50; if (typeof updateFormSplit === 'function') updateFormSplit(); }
         showStatus('Transaktion hinzugefügt!', false);
         await loadData();
     } catch (err) {
@@ -701,6 +728,9 @@ async function addTransaction(e) {
 
 // ─── Transaktion löschen ──────────────────────────────────────
 
+let _pendingDelTimer = null;
+let _pendingDelAnim  = null;
+
 function deleteTransaction(id) {
     const tx = transactions.find(t => t.id === id);
     if (!tx) return;
@@ -708,26 +738,80 @@ function deleteTransaction(id) {
     transactions = transactions.filter(t => t.id !== id);
     renderList();
 
-    let deleteTimer = null;
+    fetch(`/users/haushalt/transaktionen/${id}/pending-delete`, { method: 'POST' }).catch(() => {});
+    showPendingDeleteBar(id, tx.name, 30000);
+}
 
-    function restoreTx() {
-        clearTimeout(deleteTimer);
-        transactions.push(tx);
-        transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-        renderList();
+function showPendingDeleteBar(txId, name, remainingMs) {
+    clearTimeout(_pendingDelTimer);
+    cancelAnimationFrame(_pendingDelAnim);
+
+    const bar = document.getElementById('pendingDeleteBar');
+    if (!bar) return;
+
+    bar.innerHTML = `
+        <i class="ri-delete-bin-line" style="color:#ef4444;font-size:1rem;flex-shrink:0;"></i>
+        <span style="flex:1;color:var(--text-1);">„<strong>${name.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</strong>" wird gelöscht</span>
+        <span id="pdCountdown" style="font-size:0.82rem;color:var(--text-3);min-width:2.5em;text-align:right;"></span>
+        <div style="flex:1;max-width:120px;height:4px;background:var(--surface-2);border-radius:4px;overflow:hidden;">
+            <div id="pdProgressBar" style="height:100%;background:#ef4444;transform-origin:left;transition:none;"></div>
+        </div>
+        <button onclick="undoPendingDelete(${txId})" style="
+            background:rgba(99,88,230,0.15);border:1px solid rgba(99,88,230,0.35);
+            color:var(--accent,#6358e6);padding:5px 14px;border-radius:8px;
+            cursor:pointer;font-size:0.82rem;font-weight:700;font-family:inherit;white-space:nowrap;">
+            ↩ Rückgängig
+        </button>`;
+    bar.style.display = 'flex';
+
+    const start = performance.now();
+    const prog  = document.getElementById('pdProgressBar');
+    const countdown = document.getElementById('pdCountdown');
+
+    function animBar(now) {
+        const elapsed = now - start;
+        const pct = Math.max(0, 1 - elapsed / remainingMs);
+        if (prog) prog.style.transform = `scaleX(${pct})`;
+        if (countdown) countdown.textContent = Math.ceil((remainingMs - elapsed) / 1000) + 's';
+        if (pct > 0) _pendingDelAnim = requestAnimationFrame(animBar);
     }
+    _pendingDelAnim = requestAnimationFrame(animBar);
 
-    showUndoToast(`„${tx.name}" gelöscht`, restoreTx);
-
-    deleteTimer = setTimeout(async () => {
+    _pendingDelTimer = setTimeout(async () => {
+        hidePendingDeleteBar();
         try {
-            const res = await fetch(`/users/haushalt/transaktionen/${id}`, { method: 'DELETE' });
+            const res = await fetch(`/users/haushalt/transaktionen/${txId}`, { method: 'DELETE' });
             if (!res.ok) throw new Error((await res.json()).message);
         } catch (err) {
             showStatus(err.message || 'Fehler beim Löschen.', true);
-            restoreTx();
+            await loadData();
         }
-    }, 5000);
+    }, remainingMs);
+}
+
+function hidePendingDeleteBar() {
+    cancelAnimationFrame(_pendingDelAnim);
+    const bar = document.getElementById('pendingDeleteBar');
+    if (bar) bar.style.display = 'none';
+}
+
+async function undoPendingDelete(txId) {
+    clearTimeout(_pendingDelTimer);
+    cancelAnimationFrame(_pendingDelAnim);
+    hidePendingDeleteBar();
+    await fetch(`/users/haushalt/transaktionen/${txId}/undo-delete`, { method: 'POST' }).catch(() => {});
+    await loadData();
+}
+
+async function checkAndShowPendingBar() {
+    try {
+        const res = await fetch('/users/haushalt/pending-deletes');
+        if (!res.ok) return;
+        const pending = await res.json();
+        if (!pending.length) return;
+        const p = pending[0];
+        if (p.remainingMs > 0) showPendingDeleteBar(p.id, p.name, p.remainingMs);
+    } catch {}
 }
 
 // ─── Account Filter UI ────────────────────────────────────────
@@ -750,7 +834,7 @@ function buildTrackerFilterUI() {
     if (wrap) wrap.style.display = '';
 
     const activeIds = getTrackerActiveIds();
-    const fmtLocal  = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtLocal  = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
     container.innerHTML = allAccounts.map(acc => {
         const isActive  = activeIds === null || activeIds.has(String(acc.id));
@@ -915,6 +999,8 @@ function renderSortHeader() {
     ];
     const header = document.getElementById('txSortHeader');
     if (!header) return;
+    // Haushalt has no checkbox column: 1fr name, 160px category, 100px date, 120px amount, 72px actions
+    header.style.gridTemplateColumns = '1fr 160px 100px 120px 72px';
     header.innerHTML = cols.map(c => {
         const active = sortField === c.key;
         const icon = active ? (sortDir === 'asc' ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line') : 'ri-arrow-up-down-line';
@@ -1028,12 +1114,19 @@ function renderList() {
             const isFixkost  = t.recurring_id != null;
             const li         = document.createElement("li");
             li.className     = "transaction";
+            const splitDefault = globalSettings.split_user1 ?? 50;
+            const a1 = t.anteil_user1 ?? 50;
+            const splitDiffers = Math.abs(a1 - splitDefault) >= 5;
+            const splitBadge = splitDiffers
+                ? ` <span class="split-badge">${a1}/${100-a1}</span>`
+                : (a1 !== 50 ? ` <span class="split-badge split-badge-dim">${a1}/${100-a1}</span>` : '');
             li.innerHTML = `
                 <div class="name">
-                    <h4>${t.name}${isFixkost ? ' <span class="fixkost-badge"><i class="ri-repeat-line"></i> Fixkosten</span>' : ''}</h4>
-                    <p>${new Date(t.date).toLocaleDateString('de-DE')}${t.account_id ? ' · ' + (allAccounts.find(x => String(x.id) === String(t.account_id))?.name || '') : ''}</p>
+                    <h4>${t.name}${isFixkost ? ' <span class="fixkost-badge"><i class="ri-repeat-line"></i> Fixkosten</span>' : ''}${splitBadge}</h4>
+                    ${t.account_id ? `<p>${allAccounts.find(x => String(x.id) === String(t.account_id))?.name || ''}</p>` : ''}
                 </div>
                 <div class="category"><h4>${t.category}</h4></div>
+                <div class="tx-date">${new Date(t.date).toLocaleDateString('de-DE')}</div>
                 <div class="amount ${isIncome ? 'income' : 'expense'}">
                     ${formatter.format(t.amount * sign)}
                 </div>
@@ -1164,7 +1257,7 @@ function renderChart() {
             legend: { labels: { color: 'rgba(255,255,255,0.8)', font: { family: 'Plus Jakarta Sans', size: 13 } } },
             tooltip: {
                 callbacks: {
-                    label: ctx => ' ' + new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(ctx.parsed.y ?? ctx.parsed)
+                    label: ctx => ' ' + new Intl.NumberFormat(window.GGC_LOCALE||'de-DE',{style:'currency',currency:(window.GGC_CURRENCY||'EUR')}).format(ctx.parsed.y ?? ctx.parsed)
                 }
             }
         }
@@ -1209,13 +1302,16 @@ function populateMonthFilter() {
 }
 
 function populateCategoryFilter() {
+    const current = categoryFilter.value;
     categoryFilter.innerHTML = '<option value="">Alle Kategorien</option>';
-    categories.forEach(c => {
+    const used = [...new Set(transactions.map(t => t.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
+    used.forEach(c => {
         const opt = document.createElement('option');
-        opt.value = c.name;
-        opt.textContent = c.name;
+        opt.value = c;
+        opt.textContent = c;
         categoryFilter.appendChild(opt);
     });
+    if (current) categoryFilter.value = current;
 }
 
 // ─── Hilfsfunktionen ──────────────────────────────────────────
@@ -1252,7 +1348,7 @@ function renderAccountCards() {
     }
     wrap.style.display = '';
 
-    const fmtLocal = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtLocal = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
     list.innerHTML = allAccounts.map(acc => {
         const bal      = acc.currentBalance ?? acc.balance ?? 0;
@@ -1590,7 +1686,7 @@ function renderReminderBar() {
 
     // Max 3 Quick-Book-Buttons zeigen
     const shown = faellige.slice(0, 3);
-    const fmt   = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmt   = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
     const isOverdue = r => r.naechste_faelligkeit < today;
 
     actEl.innerHTML = shown.map(r =>
@@ -1689,7 +1785,7 @@ function renderRecurringListe() {
     }
 
     const today  = new Date().toISOString().substring(0, 10);
-    const fmt    = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmt    = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
     // Sortieren: Überfällige zuerst
     const sorted = [...alleRecurring].sort((a, b) => {

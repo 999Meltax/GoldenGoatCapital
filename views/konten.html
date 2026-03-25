@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meine Finanzen – Golden Goat Capital</title>
+    <title>Konten – Golden Goat Capital</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
     <link rel="stylesheet" href="/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -14,7 +14,7 @@
 
     <div class="page-header" style="display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px;">
         <div>
-            <h1>Meine Finanzen</h1>
+            <h1>Konten</h1>
             <p>Alle deine Konten und Auswertungen auf einen Blick</p>
         </div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -50,6 +50,14 @@
 
     <!-- Konten-Grid -->
     <div class="accounts-grid" id="accountsGrid" style="display:none;"></div>
+
+    <!-- Archivierte Konten -->
+    <div id="archivedAccountsSection" style="display:none; margin-bottom:24px;">
+        <h3 style="font-size:0.95rem; color:var(--text-3); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+            <i class="ri-archive-line"></i> Archivierte Konten
+        </h3>
+        <div class="accounts-grid" id="archivedAccountsGrid"></div>
+    </div>
 
     <!-- Leerer Zustand -->
     <div id="emptyAccounts" class="card" style="text-align:center; padding:56px 24px; margin-bottom:24px;">

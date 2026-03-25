@@ -17,7 +17,7 @@
             <p>Verwalte deine Rechnungen, Gehaltsabrechnungen und Steuerdokumente</p>
         </div>
         <button class="btn-primary" onclick="openUploadModal()">
-            <i class="ri-upload-2-line"></i> Dokument hochladen
+            <i class="ri-add-line"></i> Dokument erfassen
         </button>
     </div>
 
@@ -131,7 +131,7 @@
         <h3>Keine Dokumente gefunden</h3>
         <p>Lade dein erstes Dokument hoch oder ändere die Filter.</p>
         <button class="btn-primary" onclick="openUploadModal()" style="margin-top:16px;">
-            <i class="ri-upload-2-line"></i> Jetzt hochladen
+            <i class="ri-add-line"></i> Jetzt erfassen
         </button>
     </div>
 
@@ -141,37 +141,10 @@
     <div class="dok-modal-overlay" id="uploadModal" onclick="closeUploadModal(event)">
         <div class="dok-modal" onclick="event.stopPropagation()">
             <div class="dok-modal-header">
-                <h3><i class="ri-upload-2-line"></i> Dokument hochladen</h3>
+                <h3><i class="ri-file-add-line"></i> Dokument erfassen</h3>
                 <button class="dok-modal-close" onclick="closeUploadModal()"><i class="ri-close-line"></i></button>
             </div>
             <div class="dok-modal-body">
-                <!-- Dropzone -->
-                <div class="dok-dropzone" id="dropzone"
-                     ondragover="event.preventDefault();this.classList.add('drag')"
-                     ondragleave="this.classList.remove('drag')"
-                     ondrop="handleDrop(event)">
-                    <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="display:none" onchange="handleFileSelect(event)">
-                    <i class="ri-cloud-upload-line" style="font-size:2.5rem;color:var(--accent-2);margin-bottom:12px;display:block;"></i>
-                    <div style="font-weight:600;margin-bottom:6px;">Datei hier ablegen</div>
-                    <div style="font-size:0.82rem;color:var(--text-3);margin-bottom:16px;">oder</div>
-                    <button class="btn-primary btn-sm" onclick="document.getElementById('fileInput').click()">
-                        <i class="ri-folder-open-line"></i> Datei auswählen
-                    </button>
-                    <div style="font-size:0.75rem;color:var(--text-3);margin-top:12px;">PDF, JPG, PNG, DOC bis 10 MB</div>
-                </div>
-
-                <!-- Datei-Vorschau -->
-                <div id="filePreview" style="display:none;" class="dok-file-preview">
-                    <div class="dok-file-preview-icon" id="previewIcon"><i class="ri-file-line"></i></div>
-                    <div>
-                        <div id="previewName" style="font-weight:600;font-size:0.9rem;"></div>
-                        <div id="previewSize" style="font-size:0.78rem;color:var(--text-3);margin-top:2px;"></div>
-                    </div>
-                    <button onclick="clearFile()" style="margin-left:auto;background:none;border:none;color:var(--text-3);cursor:pointer;font-size:1.1rem;padding:4px;">
-                        <i class="ri-close-line"></i>
-                    </button>
-                </div>
-
                 <!-- Metadaten-Formular -->
                 <div style="display:flex;flex-direction:column;gap:14px;margin-top:4px;">
                     <div class="form-group">
@@ -202,7 +175,7 @@
                     <div id="fieldsetRechnung" style="display:flex;flex-direction:column;gap:14px;">
                         <div class="form-row">
                             <div class="form-group">
-                                <label class="form-label">Betrag (€)</label>
+                                <label class="form-label">Betrag</label>
                                 <input type="number" id="uploadBetrag" placeholder="0,00" step="0.01" min="0">
                             </div>
                             <div class="form-group">
@@ -291,6 +264,28 @@
                     </div>
 
                     <div class="form-group">
+                        <label class="form-label">Datei hochladen (optional, max. 10 MB)</label>
+                        <div class="dok-file-drop" id="uploadFileDrop" onclick="document.getElementById('uploadFileInput').click()">
+                            <input type="file" id="uploadFileInput" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xlsx,.csv,.txt" style="display:none;" onchange="handleFileSelect(this)">
+                            <i class="ri-upload-cloud-2-line" style="font-size:1.6rem;color:var(--text-3);"></i>
+                            <div style="font-size:0.83rem;color:var(--text-3);margin-top:4px;">Klicken zum Auswählen</div>
+                            <div style="font-size:0.72rem;color:var(--text-3);">PDF, Bild oder Office-Dokument</div>
+                        </div>
+                        <div id="uploadFilePreview" style="display:none;" class="dok-file-preview">
+                            <div class="dok-file-preview-icon"><i class="ri-file-line"></i></div>
+                            <div style="flex:1;min-width:0;">
+                                <div id="uploadFileName" style="font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+                                <div id="uploadFileSize" style="font-size:0.75rem;color:var(--text-3);"></div>
+                            </div>
+                            <button type="button" onclick="clearFileSelection()" style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:1rem;"><i class="ri-close-line"></i></button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ablageort (alternativ)</label>
+                        <input type="text" id="uploadAblageort" placeholder="z.B. https://drive.google.com/… oder /Dokumente/Steuern">
+                        <div style="font-size:0.75rem;color:var(--text-3);margin-top:4px;">Falls keine Datei hochgeladen wird: URL oder Pfad angeben</div>
+                    </div>
+                    <div class="form-group">
                         <label class="form-label">Notiz</label>
                         <textarea id="uploadNotiz" placeholder="Optionale Notiz…" style="min-height:70px;"></textarea>
                     </div>
@@ -299,7 +294,7 @@
             <div class="dok-modal-footer">
                 <button class="btn-ghost" onclick="closeUploadModal()">Abbrechen</button>
                 <button class="btn-primary" id="uploadSubmitBtn" onclick="submitUpload()">
-                    <i class="ri-upload-2-line"></i> Hochladen
+                    <i class="ri-save-line"></i> Speichern
                 </button>
             </div>
         </div>
@@ -312,12 +307,7 @@
         <div class="dok-modal dok-modal-wide" onclick="event.stopPropagation()">
             <div class="dok-modal-header">
                 <h3 id="detailTitle">Dokument</h3>
-                <div style="display:flex;gap:8px;">
-                    <button class="btn-ghost btn-sm" id="detailDownloadBtn" onclick="downloadCurrentDoc()">
-                        <i class="ri-download-line"></i> Herunterladen
-                    </button>
-                    <button class="dok-modal-close" onclick="closeDetailModal()"><i class="ri-close-line"></i></button>
-                </div>
+                <button class="dok-modal-close" onclick="closeDetailModal()"><i class="ri-close-line"></i></button>
             </div>
             <div class="dok-modal-body" id="detailBody"></div>
         </div>
@@ -573,6 +563,21 @@
         margin-bottom: 20px;
     }
     .dok-dropzone.drag { border-color: var(--accent); background: var(--accent-glow); }
+
+    /* ── File-Upload Drop-Area ────────────────── */
+    .dok-file-drop {
+        border: 2px dashed var(--border);
+        border-radius: var(--radius-md);
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: var(--transition);
+        background: var(--bg-3);
+    }
+    .dok-file-drop:hover {
+        border-color: var(--accent);
+        background: var(--accent-glow);
+    }
 
     .dok-file-preview {
         display: flex; align-items: center; gap: 12px;

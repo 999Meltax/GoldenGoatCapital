@@ -1,22 +1,10 @@
 const formatter = new Intl.NumberFormat("de-DE", {
     style: "currency",
-    currency: "EUR",
+    currency: (window.GGC_CURRENCY||'EUR'),
     signDisplay: "always",
 });
 
-// Standardkategorien – immer vorhanden, nicht löschbar
-const DEFAULT_CATEGORIES = [
-    "Essen & Trinken",
-    "Lebensmittel",
-    "Klamotten",
-    "Freizeit",
-    "Tanken",
-    "Wohnen",
-    "Transport",
-    "Gesundheit",
-    "Gehalt",
-    "Sonstiges"
-];
+// DEFAULT_CATEGORIES entfernt (Phase 1-E) — Kategorien kommen vollständig aus der DB (categories-Tabelle, is_default-Flag)
 
 let list, form, categoryForm, status, balance, income, expense,
     categorySelect, categoryInput, monthFilter, categoryFilter,
@@ -136,6 +124,12 @@ let sortField  = 'date';   // 'date' | 'amount' | 'name' | 'category'
 let sortDir    = 'desc';   // 'asc' | 'desc'
 let currentPage = 1;
 const PAGE_SIZE = 20;
+
+// ─── Bulk-Auswahl ─────────────────────────────────────────────
+let selectedTxIds = new Set();
+
+// ─── Transfer-Only-Filter (via URL-Param ?typ=transfer) ───────
+let transferOnly = new URLSearchParams(window.location.search).get('typ') === 'transfer';
 
 // ─── Filter Panel ─────────────────────────────────────────────
 
@@ -300,6 +294,7 @@ function setChartType(type) {
 // ─── Daten laden ──────────────────────────────────────────────
 
 async function loadData() {
+    selectedTxIds.clear();
     try {
         const [txRes, catRes, accRes, regelRes] = await Promise.all([
             fetch('/users/getTransactions'),
@@ -312,14 +307,12 @@ async function loadData() {
         allAccounts = await accRes.json();
         allRegeln   = regelRes.ok ? await regelRes.json() : [];
 
-        // Neue Konten automatisch als aktiv markieren
+        // Neue Konten aktiv markieren + gelöschte Konto-IDs aus localStorage bereinigen
         const existingIds = getTrackerActiveIds();
         if (existingIds !== null) {
-            allAccounts.forEach(a => {
-                if (!existingIds.has(String(a.id))) {
-                    existingIds.add(String(a.id));
-                }
-            });
+            const validIds = new Set(allAccounts.map(a => String(a.id)));
+            allAccounts.forEach(a => { if (!existingIds.has(String(a.id))) existingIds.add(String(a.id)); });
+            for (const id of [...existingIds]) { if (!validIds.has(id)) existingIds.delete(id); }
             setTrackerActiveIds(existingIds);
         }
 
@@ -337,11 +330,8 @@ async function loadData() {
                 allAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
         }
 
-        // Merge Kategorien
-        categories = [
-            ...DEFAULT_CATEGORIES.map(name => ({ name, isDefault: true })),
-            ...userCats.filter(c => !DEFAULT_CATEGORIES.includes(c.name)).map(c => ({ ...c, isDefault: false }))
-        ];
+        // Kategorien aus DB — is_default kommt vom Server
+        categories = userCats.map(c => ({ ...c, isDefault: !!c.is_default }));
 
         buildTrackerFilterUI();
         renderAccountCards();
@@ -354,6 +344,7 @@ async function loadData() {
         updateFilterBadge();
         renderList();
         loadRecurring();
+        checkAndShowPendingBar();
     } catch (err) {
         console.error('Fehler beim Laden:', err);
         if (status) status.textContent = 'Fehler beim Laden der Daten';
@@ -461,7 +452,7 @@ async function addCategory(e) {
     e.preventDefault();
     const name = document.getElementById('categoryName').value.trim();
     if (!name) return;
-    if (DEFAULT_CATEGORIES.includes(name)) {
+    if (categories.find(c => c.name === name && c.isDefault)) {
         showStatus('Diese Kategorie existiert bereits als Standardkategorie.', true);
         return;
     }
@@ -697,35 +688,102 @@ async function addTransaction(e) {
 
 // ─── Transaktion löschen ──────────────────────────────────────
 
+async function toggleSteuerFlag(id, btn) {
+    try {
+        const res  = await fetch(`/users/transactions/${id}/steuer-flag`, { method: 'PATCH' });
+        const data = await res.json();
+        if (!res.ok) return;
+        const tx = transactions.find(t => t.id === id);
+        if (tx) tx.steuer_relevant = data.steuer_relevant;
+        btn.classList.toggle('active', !!data.steuer_relevant);
+        btn.title = data.steuer_relevant ? 'Steuer-Markierung entfernen' : 'Als steuerrelevant markieren';
+    } catch (e) {}
+}
+
+let _pendingDelTimer = null;
+let _pendingDelAnim  = null;
+
 function deleteTransaction(id) {
     const tx = transactions.find(t => t.id === id);
     if (!tx) return;
 
-    // Optimistisch aus Liste entfernen
     transactions = transactions.filter(t => t.id !== id);
     renderList();
 
-    let deleteTimer = null;
+    fetch(`/users/transactions/${id}/pending-delete`, { method: 'POST' }).catch(() => {});
+    showPendingDeleteBar(id, tx.name, 30000);
+}
 
-    function restoreTx() {
-        clearTimeout(deleteTimer);
-        transactions.push(tx);
-        transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-        renderList();
+function showPendingDeleteBar(txId, name, remainingMs) {
+    clearTimeout(_pendingDelTimer);
+    cancelAnimationFrame(_pendingDelAnim);
+
+    let bar = document.getElementById('pendingDeleteBar');
+    if (!bar) return;
+
+    bar.innerHTML = `
+        <i class="ri-delete-bin-line" style="color:#ef4444;font-size:1rem;flex-shrink:0;"></i>
+        <span style="flex:1;color:var(--text-1);">„<strong>${name.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</strong>" wird gelöscht</span>
+        <span id="pdCountdown" style="font-size:0.82rem;color:var(--text-3);min-width:2.5em;text-align:right;"></span>
+        <div style="flex:1;max-width:120px;height:4px;background:var(--surface-2);border-radius:4px;overflow:hidden;">
+            <div id="pdProgressBar" style="height:100%;background:#ef4444;transform-origin:left;transition:none;"></div>
+        </div>
+        <button onclick="undoPendingDelete(${txId})" style="
+            background:rgba(99,88,230,0.15);border:1px solid rgba(99,88,230,0.35);
+            color:var(--accent,#6358e6);padding:5px 14px;border-radius:8px;
+            cursor:pointer;font-size:0.82rem;font-weight:700;font-family:inherit;white-space:nowrap;">
+            ↩ Rückgängig
+        </button>`;
+    bar.style.display = 'flex';
+
+    const start = performance.now();
+    const prog  = document.getElementById('pdProgressBar');
+    const countdown = document.getElementById('pdCountdown');
+
+    function animBar(now) {
+        const elapsed = now - start;
+        const pct = Math.max(0, 1 - elapsed / remainingMs);
+        if (prog) prog.style.transform = `scaleX(${pct})`;
+        if (countdown) countdown.textContent = Math.ceil((remainingMs - elapsed) / 1000) + 's';
+        if (pct > 0) _pendingDelAnim = requestAnimationFrame(animBar);
     }
+    _pendingDelAnim = requestAnimationFrame(animBar);
 
-    showUndoToast(`„${tx.name}" gelöscht`, restoreTx);
-
-    // Nach 5 Sekunden wirklich löschen (wenn kein Undo)
-    deleteTimer = setTimeout(async () => {
+    _pendingDelTimer = setTimeout(async () => {
+        hidePendingDeleteBar();
         try {
-            const res = await fetch(`/users/deleteTransaction/${id}`, { method: 'DELETE' });
+            const res = await fetch(`/users/deleteTransaction/${txId}`, { method: 'DELETE' });
             if (!res.ok) throw new Error();
         } catch {
             showStatus('Fehler beim Löschen.', true);
-            restoreTx();
+            await loadData();
         }
-    }, 5000);
+    }, remainingMs);
+}
+
+function hidePendingDeleteBar() {
+    cancelAnimationFrame(_pendingDelAnim);
+    const bar = document.getElementById('pendingDeleteBar');
+    if (bar) bar.style.display = 'none';
+}
+
+async function undoPendingDelete(txId) {
+    clearTimeout(_pendingDelTimer);
+    cancelAnimationFrame(_pendingDelAnim);
+    hidePendingDeleteBar();
+    await fetch(`/users/transactions/${txId}/undo-delete`, { method: 'POST' }).catch(() => {});
+    await loadData();
+}
+
+async function checkAndShowPendingBar() {
+    try {
+        const res = await fetch('/users/pending-deletes');
+        if (!res.ok) return;
+        const pending = await res.json();
+        if (!pending.length) return;
+        const p = pending[0];
+        if (p.remainingMs > 0) showPendingDeleteBar(p.id, p.name, p.remainingMs);
+    } catch {}
 }
 
 // ─── Account Filter UI ────────────────────────────────────────
@@ -748,7 +806,7 @@ function buildTrackerFilterUI() {
     if (wrap) wrap.style.display = '';
 
     const activeIds = getTrackerActiveIds();
-    const fmtLocal  = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtLocal  = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
     container.innerHTML = allAccounts.map(acc => {
         const isActive  = activeIds === null || activeIds.has(String(acc.id));
@@ -863,7 +921,7 @@ function renderAccountCards() {
     }
     wrap.style.display = '';
 
-    const fmtLocal = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtLocal = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
     list.innerHTML = allAccounts.map(acc => {
         const bal       = acc.currentBalance ?? acc.balance ?? 0;
@@ -896,7 +954,7 @@ function openAbgleichModal(accountId) {
     if (!acc) return;
     _abgleichAccountId = accountId;
 
-    const fmtLocal = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtLocal = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
     const bal      = acc.currentBalance ?? acc.balance ?? 0;
 
     document.getElementById('abgleichKontoName').textContent = acc.name + ' · ' + (ACCOUNT_TYPE_LABELS_CARDS[acc.type] || acc.type);
@@ -926,7 +984,7 @@ function updateAbgleichDiff() {
         diffBox.style.display = 'none';
         return;
     }
-    const fmtLocal = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtLocal = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
     const berechnet = acc.currentBalance ?? acc.balance ?? 0;
     const diff = parseFloat((echt - berechnet).toFixed(2));
 
@@ -1008,9 +1066,10 @@ function getFiltered() {
             dateMatch = selectedWeeks.has(getWeekKey(new Date(dateStr)));
         }
 
-        const catMatch = !selCat || selCat === t.category;
-        const accMatch = activeIds === null || !t.account_id || activeIds.has(String(t.account_id));
-        return dateMatch && catMatch && accMatch;
+        const catMatch      = !selCat || selCat === t.category;
+        const accMatch      = activeIds === null || !t.account_id || activeIds.has(String(t.account_id));
+        const transferMatch = !transferOnly || t.category === 'Umbuchung';
+        return dateMatch && catMatch && accMatch && transferMatch;
     });
 }
 
@@ -1056,7 +1115,18 @@ function renderSortHeader() {
     ];
     const header = document.getElementById('txSortHeader');
     if (!header) return;
-    header.innerHTML = cols.map(c => {
+    const filtered  = getFiltered();
+    const pageStart = (currentPage - 1) * PAGE_SIZE;
+    const pageIds   = getSorted(filtered).slice(pageStart, pageStart + PAGE_SIZE).map(t => t.id);
+    const allChecked = pageIds.length > 0 && pageIds.every(id => selectedTxIds.has(id));
+    const someChecked = !allChecked && pageIds.some(id => selectedTxIds.has(id));
+
+    const cbHtml = `<span class="tx-sort-col tx-sort-cb-col" style="cursor:default;pointer-events:none;">
+        <input type="checkbox" class="tx-select-all-cb" ${allChecked ? 'checked' : ''} ${someChecked ? 'style="opacity:0.6;"' : ''}
+            onclick="toggleSelectAll(this.checked)" style="pointer-events:auto;cursor:pointer;width:15px;height:15px;accent-color:var(--accent);">
+    </span>`;
+
+    header.innerHTML = cbHtml + cols.map(c => {
         const active = sortField === c.key;
         const icon = active ? (sortDir === 'asc' ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line') : 'ri-arrow-up-down-line';
         return `<span class="tx-sort-col${active ? ' active' : ''}" onclick="setSort('${c.key}')" title="Nach ${c.label} sortieren">
@@ -1148,6 +1218,11 @@ function renderList() {
     const page  = sorted.slice(start, start + PAGE_SIZE);
 
     list.innerHTML = "";
+
+    // Transfer-Filter-Banner
+    const transferBannerEl = document.getElementById('transferFilterBanner');
+    if (transferBannerEl) transferBannerEl.style.display = transferOnly ? '' : 'none';
+
     renderSortHeader();
 
     let incomeTotal = 0, expenseTotal = 0;
@@ -1158,10 +1233,28 @@ function renderList() {
     });
 
     if (page.length === 0) {
-        list.innerHTML = `<li style="text-align:center;padding:40px 0;color:var(--text-3);list-style:none;">
-            <i class="ri-inbox-line" style="font-size:2rem;display:block;margin-bottom:8px;"></i>
-            Keine Transaktionen gefunden.
-        </li>`;
+        const isCompletelyEmpty = transactions.length === 0;
+        list.innerHTML = isCompletelyEmpty
+            ? `<li style="list-style:none;text-align:center;padding:56px 24px;">
+                <i class="ri-receipt-line" style="font-size:3rem;display:block;margin-bottom:14px;color:var(--text-3);opacity:0.4;"></i>
+                <div style="font-weight:700;font-size:1.05rem;margin-bottom:8px;color:var(--text-1);">Noch keine Transaktionen</div>
+                <div style="color:var(--text-3);font-size:0.875rem;max-width:360px;margin:0 auto 20px;line-height:1.6;">
+                    Importiere deinen Kontoauszug per CSV oder erfasse eine erste Transaktion manuell.
+                </div>
+                <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+                    <a href="/users/import" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;background:var(--accent,#6c63ff);color:#fff;border-radius:8px;font-size:0.875rem;font-weight:600;text-decoration:none;">
+                        <i class="ri-file-upload-line"></i> CSV importieren
+                    </a>
+                    <button onclick="document.getElementById('openAddModal')?.click()||document.querySelector('.add-tx-btn')?.click()" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;background:var(--surface-2,rgba(255,255,255,0.06));color:var(--text-1);border:1px solid var(--border);border-radius:8px;font-size:0.875rem;font-weight:600;cursor:pointer;font-family:inherit;">
+                        <i class="ri-add-line"></i> Manuell erfassen
+                    </button>
+                </div>
+               </li>`
+            : `<li style="text-align:center;padding:48px 0;color:var(--text-3);list-style:none;">
+                <i class="ri-filter-line" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.4;"></i>
+                <div style="font-weight:600;margin-bottom:6px;">Keine Transaktionen gefunden</div>
+                <div style="font-size:0.82rem;">Passe die Filter oder den Suchbegriff an.</div>
+               </li>`;
     } else {
         page.forEach(t => {
             const isIncome    = t.type === "Einnahmen";
@@ -1182,16 +1275,30 @@ function renderList() {
                 ? ` <span class="tx-transfer-badge"><i class="ri-arrow-left-right-line"></i> Umbuchung${transferInfo}</span>`
                 : '';
 
+            const isSelected = selectedTxIds.has(t.id);
+            if (isSelected) li.classList.add('tx-selected');
+
             li.innerHTML = `
+                <div class="tx-cb-col">
+                    <input type="checkbox" class="tx-select-cb" data-id="${t.id}" ${isSelected ? 'checked' : ''}
+                        onclick="toggleTxSelect(${t.id}, this.checked)"
+                        style="width:15px;height:15px;cursor:pointer;accent-color:var(--accent);">
+                </div>
                 <div class="name">
                     <h4>${t.name}${isFixkost ? ' <span class="fixkost-badge"><i class="ri-repeat-line"></i> Fixkosten</span>' : ''}${isKorrektur ? ' <span class="tx-korrektur-badge"><i class="ri-scales-3-line"></i> Korrektur</span>' : ''}${transferBadge}</h4>
-                    <p>${new Date(t.date).toLocaleDateString('de-DE')}${t.account_id ? ' · ' + (allAccounts.find(x => String(x.id) === String(t.account_id))?.name || '') : ''}</p>
+                    ${t.account_id ? `<p>${allAccounts.find(x => String(x.id) === String(t.account_id))?.name || ''}</p>` : ''}
                 </div>
                 <div class="category"><h4>${t.category}</h4></div>
+                <div class="tx-date">${new Date(t.date).toLocaleDateString('de-DE')}</div>
                 <div class="amount ${isIncome ? 'income' : 'expense'}">
                     ${formatter.format(t.amount * sign)}
                 </div>
                 <div class="transaction-actions">
+                    <button class="steuer-flag-btn ${t.steuer_relevant ? 'active' : ''}"
+                        onclick="toggleSteuerFlag(${t.id}, this)"
+                        title="${t.steuer_relevant ? 'Steuer-Markierung entfernen' : 'Als steuerrelevant markieren'}">
+                        <i class="ri-government-line"></i>
+                    </button>
                     ${isFixkost ? `<span class="fixkost-lock-icon" title="Automatisch eingetragene Fixkosten können nicht bearbeitet werden"><i class="ri-lock-line"></i></span>` : `
                     <button class="edit-transaction-btn"
                         onclick="${isTransfer ? '' : `openEditById(${t.id})`}"
@@ -1208,6 +1315,7 @@ function renderList() {
     }
 
     renderPagination(sorted.length);
+    updateBulkBar();
 
     // Gewinn/Verlust = Einnahmen − Ausgaben (aus ALLEN gefilterten Transaktionen)
     const netBalance = incomeTotal - expenseTotal;
@@ -1217,6 +1325,200 @@ function renderList() {
     expense.textContent = formatter.format(expenseTotal);
     balance.style.color = netBalance > 0 ? 'var(--green)' : netBalance < 0 ? 'var(--red)' : '#fff';
     fitBalanceText(balance);
+
+    // Kontextabhängige Label für Gewinn/Verlust
+    const labelEl = document.getElementById('balanceLabel');
+    if (labelEl) {
+        const fmtMonth = m => {
+            const [y, mo] = m.split('-');
+            return new Date(+y, +mo - 1, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+        };
+        let label = 'Gewinn / Verlust';
+        if (filterMode === 'range' && (rangeFrom || rangeTo)) {
+            const from = rangeFrom ? new Date(rangeFrom).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '…';
+            const to   = rangeTo   ? new Date(rangeTo).toLocaleDateString('de-DE',   { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'heute';
+            label = `Gewinn / Verlust ${from} – ${to}`;
+        } else if (filterMode === 'weeks' && selectedWeeks.size > 0) {
+            label = `Gewinn / Verlust (${selectedWeeks.size} Woche${selectedWeeks.size > 1 ? 'n' : ''})`;
+        } else if (filterMode === 'months') {
+            if (selectedMonths.size === 0) {
+                label = 'Gewinn / Verlust seit Aufzeichnung';
+            } else if (selectedMonths.size === 1) {
+                label = `Gewinn / Verlust ${fmtMonth([...selectedMonths][0])}`;
+            } else {
+                const sorted2 = [...selectedMonths].sort();
+                label = `Gewinn / Verlust ${fmtMonth(sorted2[0])} – ${fmtMonth(sorted2[sorted2.length - 1])}`;
+            }
+        }
+        labelEl.textContent = label;
+    }
+}
+
+// ─── Bulk-Auswahl Funktionen ──────────────────────────────────
+
+function toggleTxSelect(id, checked) {
+    if (checked) selectedTxIds.add(id);
+    else         selectedTxIds.delete(id);
+    updateBulkBar();
+    renderSortHeader();
+}
+
+function toggleSelectAll(checked) {
+    const filtered  = getFiltered();
+    const pageStart = (currentPage - 1) * PAGE_SIZE;
+    const pageIds   = getSorted(filtered).slice(pageStart, pageStart + PAGE_SIZE).map(t => t.id);
+    pageIds.forEach(id => {
+        if (checked) selectedTxIds.add(id);
+        else         selectedTxIds.delete(id);
+    });
+    renderList();
+}
+
+function clearSelection() {
+    selectedTxIds.clear();
+    renderList();
+}
+
+function updateBulkBar() {
+    let bar = document.getElementById('txBulkBar');
+    if (selectedTxIds.size === 0) {
+        if (bar) bar.style.display = 'none';
+        return;
+    }
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'txBulkBar';
+        bar.style.cssText = [
+            'position:fixed','bottom:24px','left:50%','transform:translateX(-50%)',
+            'background:var(--surface,#1a1a2e)','border:1px solid var(--border,rgba(255,255,255,0.1))',
+            'border-radius:14px','padding:10px 16px','display:flex','align-items:center',
+            'gap:10px','z-index:1100','box-shadow:0 8px 32px rgba(0,0,0,0.5)',
+            'font-family:\'Plus Jakarta Sans\',sans-serif','font-size:0.85rem',
+            'min-width:320px','max-width:90vw'
+        ].join(';');
+        bar.innerHTML = `
+            <span id="txBulkCount" style="font-weight:600;color:var(--text-1,#fff);white-space:nowrap;"></span>
+            <div style="flex:1;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+                <div style="position:relative;display:inline-block;" id="txBulkCatWrap">
+                    <button onclick="toggleBulkCatPicker()" style="
+                        padding:6px 14px;border-radius:9px;background:rgba(99,88,230,0.15);
+                        border:1px solid rgba(99,88,230,0.4);color:var(--accent,#6358e6);
+                        font-size:0.82rem;cursor:pointer;font-family:inherit;font-weight:600;
+                        display:flex;align-items:center;gap:6px;">
+                        <i class="ri-price-tag-3-line"></i> Kategorie
+                    </button>
+                    <div id="txBulkCatDropdown" style="
+                        display:none;position:absolute;bottom:calc(100% + 6px);left:0;
+                        background:var(--surface,#1a1a2e);border:1px solid var(--border,rgba(255,255,255,0.08));
+                        border-radius:12px;min-width:200px;max-height:240px;overflow-y:auto;
+                        box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:1101;padding:6px;">
+                    </div>
+                </div>
+                <button onclick="bulkDelete()" style="
+                    padding:6px 14px;border-radius:9px;background:rgba(239,68,68,0.15);
+                    border:1px solid rgba(239,68,68,0.4);color:#ef4444;
+                    font-size:0.82rem;cursor:pointer;font-family:inherit;font-weight:600;
+                    display:flex;align-items:center;gap:6px;">
+                    <i class="ri-delete-bin-line"></i> Löschen
+                </button>
+                <button onclick="clearSelection()" style="
+                    padding:6px 12px;border-radius:9px;background:transparent;
+                    border:1px solid var(--border,rgba(255,255,255,0.1));color:var(--text-3,#888);
+                    font-size:0.82rem;cursor:pointer;font-family:inherit;font-weight:600;">
+                    ✕
+                </button>
+            </div>`;
+        document.body.appendChild(bar);
+
+        // Close cat dropdown on outside click
+        document.addEventListener('click', e => {
+            const wrap = document.getElementById('txBulkCatWrap');
+            if (wrap && !wrap.contains(e.target)) {
+                const dd = document.getElementById('txBulkCatDropdown');
+                if (dd) dd.style.display = 'none';
+            }
+        });
+    }
+
+    document.getElementById('txBulkCount').textContent = `${selectedTxIds.size} ausgewählt`;
+    bar.style.display = 'flex';
+}
+
+function toggleBulkCatPicker() {
+    const dd = document.getElementById('txBulkCatDropdown');
+    if (!dd) return;
+    const isOpen = dd.style.display !== 'none';
+    if (!isOpen) {
+        dd.style.display = 'block';
+        dd.innerHTML = categories.map(c =>
+            `<div onclick="bulkCategorize('${c.name.replace(/'/g,"\\'")}')" style="
+                padding:8px 12px;border-radius:8px;cursor:pointer;
+                font-size:0.82rem;color:var(--text-1,#fff);
+                transition:background 0.1s;white-space:nowrap;"
+                onmouseover="this.style.background='rgba(255,255,255,0.05)'"
+                onmouseout="this.style.background=''">
+                ${c.name}
+            </div>`
+        ).join('');
+    } else {
+        dd.style.display = 'none';
+    }
+}
+
+async function bulkCategorize(category) {
+    const dd = document.getElementById('txBulkCatDropdown');
+    if (dd) dd.style.display = 'none';
+    const ids = [...selectedTxIds];
+    try {
+        const res = await fetch('/users/transactions/bulk-categorize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids, category })
+        });
+        const r = await res.json();
+        if (!res.ok) throw new Error(r.message);
+        selectedTxIds.clear();
+        showStatus(`${r.updated} Transaktion(en) kategorisiert.`, false);
+        await loadData();
+    } catch (err) {
+        showStatus(err.message || 'Fehler', true);
+    }
+}
+
+async function bulkDelete() {
+    const ids = [...selectedTxIds];
+    if (ids.length === 0) return;
+
+    // Optimistisch entfernen
+    const removed = transactions.filter(t => ids.includes(t.id));
+    transactions = transactions.filter(t => !ids.includes(t.id));
+    selectedTxIds.clear();
+    renderList();
+
+    let deleteTimer = null;
+
+    function restoreAll() {
+        clearTimeout(deleteTimer);
+        transactions.push(...removed);
+        transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+        renderList();
+    }
+
+    showUndoToast(`${removed.length} Transaktion(en) gelöscht`, restoreAll);
+
+    deleteTimer = setTimeout(async () => {
+        try {
+            const res = await fetch('/users/transactions/bulk-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids })
+            });
+            if (!res.ok) throw new Error();
+        } catch {
+            showStatus('Fehler beim Löschen.', true);
+            restoreAll();
+        }
+    }, 5000);
 }
 
 // ─── Diagramm rendern ─────────────────────────────────────────
@@ -1318,7 +1620,7 @@ function renderChart() {
             legend: { labels: { color: 'rgba(255,255,255,0.8)', font: { family: 'Plus Jakarta Sans', size: 13 } } },
             tooltip: {
                 callbacks: {
-                    label: ctx => ' ' + new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(ctx.parsed.y ?? ctx.parsed)
+                    label: ctx => ' ' + new Intl.NumberFormat(window.GGC_LOCALE||'de-DE',{style:'currency',currency:(window.GGC_CURRENCY||'EUR')}).format(ctx.parsed.y ?? ctx.parsed)
                 }
             }
         }
@@ -1363,13 +1665,16 @@ function populateMonthFilter() {
 }
 
 function populateCategoryFilter() {
+    const current = categoryFilter.value;
     categoryFilter.innerHTML = '<option value="">Alle Kategorien</option>';
-    categories.forEach(c => {
+    const used = [...new Set(transactions.map(t => t.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
+    used.forEach(c => {
         const opt = document.createElement('option');
-        opt.value = c.name;
-        opt.textContent = c.name;
+        opt.value = c;
+        opt.textContent = c;
         categoryFilter.appendChild(opt);
     });
+    if (current) categoryFilter.value = current;
 }
 
 // ─── Hilfsfunktionen ──────────────────────────────────────────
@@ -1710,7 +2015,7 @@ function renderReminderBar() {
 
     // Max 3 Quick-Book-Buttons zeigen
     const shown = faellige.slice(0, 3);
-    const fmt   = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmt   = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
     const isOverdue = r => r.naechste_faelligkeit < today;
 
     actEl.innerHTML = shown.map(r =>
@@ -1809,7 +2114,7 @@ function renderRecurringListe() {
     }
 
     const today  = new Date().toISOString().substring(0, 10);
-    const fmt    = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmt    = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
     // Sortieren: Überfällige zuerst
     const sorted = [...alleRecurring].sort((a, b) => {
@@ -2062,7 +2367,7 @@ function updateTransferPreview() {
         return;
     }
 
-    const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmt = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
     const fromLabel = from.id ? `<span style="font-weight:700;">${escRec(from.name)}</span>${from.source === 'haushalt' ? ' <span style="font-size:0.7rem;color:#10b981;">(Haushalt)</span>' : ''}` : '<span style="color:var(--text-3);">Extern</span>';
     const toLabel   = to.id   ? `<span style="font-weight:700;">${escRec(to.name)}</span>${to.source === 'haushalt'   ? ' <span style="font-size:0.7rem;color:#10b981;">(Haushalt)</span>' : ''}` : '<span style="color:var(--text-3);">Extern</span>';
 
