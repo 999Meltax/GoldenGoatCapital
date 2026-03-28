@@ -12,8 +12,18 @@
     <%- include('navheader.html') %>
 
     <div class="page-header">
-        <h1>Einstellungen</h1>
-        <p>Passe Golden Goat Capital nach deinen Wünschen an</p>
+        <h1>Konto &amp; Einstellungen</h1>
+        <p>Persönliche Daten, Sicherheit und App-Konfiguration</p>
+    </div>
+
+    <!-- Konto-Tabs -->
+    <div class="konto-tabs" style="display:flex;gap:4px;margin-bottom:24px;background:var(--surface-2);border-radius:12px;padding:4px;width:fit-content;">
+        <a href="/users/profil" class="konto-tab" style="display:inline-flex;align-items:center;gap:7px;padding:8px 18px;border-radius:9px;font-size:0.85rem;font-weight:600;text-decoration:none;color:var(--text-3);">
+            <i class="ri-user-line"></i> Profil
+        </a>
+        <a href="/users/einstellungen" class="konto-tab konto-tab--active" style="display:inline-flex;align-items:center;gap:7px;padding:8px 18px;border-radius:9px;font-size:0.85rem;font-weight:600;text-decoration:none;background:var(--surface);color:var(--text-1);border:1px solid var(--border);">
+            <i class="ri-settings-3-line"></i> Einstellungen
+        </a>
     </div>
 
     <!-- Toast -->
@@ -64,7 +74,7 @@
                             </div>
                         </div>
 
-                        <div class="einstell-theme-card" id="theme-light" onclick="selectTheme('light')">
+                        <div class="einstell-theme-card" id="theme-light" style="opacity:0.5;cursor:not-allowed;pointer-events:none;">
                             <div class="einstell-theme-preview light-preview">
                                 <div class="theme-prev-sidebar light"></div>
                                 <div class="theme-prev-content light">
@@ -80,6 +90,7 @@
                     </div>
                 </div>
 
+
                 <div class="einstell-group">
                     <div class="einstell-group-label">Währung</div>
                     <div class="einstell-row">
@@ -90,9 +101,6 @@
                         <select id="currencySelect" class="einstell-select">
                             <option value="EUR">€ Euro (EUR)</option>
                             <option value="USD">$ US-Dollar (USD)</option>
-                            <option value="GBP">£ Britisches Pfund (GBP)</option>
-                            <option value="CHF">₣ Schweizer Franken (CHF)</option>
-                            <option value="JPY">¥ Japanischer Yen (JPY)</option>
                         </select>
                     </div>
                 </div>
@@ -128,21 +136,15 @@
                             <div class="einstell-row-title">App-Sprache</div>
                             <div class="einstell-row-desc">Sprache der Benutzeroberfläche (weitere Sprachen folgen)</div>
                         </div>
-                        <select id="languageSelect" class="einstell-select">
+                        <select id="languageSelect" class="einstell-select" disabled>
                             <option value="de">🇩🇪 Deutsch</option>
-                            <option value="en">🇬🇧 English</option>
-                            <option value="fr">🇫🇷 Français</option>
-                            <option value="es">🇪🇸 Español</option>
-                            <option value="it">🇮🇹 Italiano</option>
-                            <option value="pl">🇵🇱 Polski</option>
-                            <option value="tr">🇹🇷 Türkçe</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="einstell-info-banner">
                     <i class="ri-information-line"></i>
-                    <span>Die vollständige Mehrsprachigkeit wird in einer zukünftigen Version umgesetzt. Deine Auswahl wird bereits gespeichert.</span>
+                    <span>Weitere Sprachen folgen in einer zukünftigen Version.</span>
                 </div>
 
                 <button class="btn-primary" onclick="saveSettings()" style="margin-top:8px;">
@@ -169,16 +171,6 @@
                         </label>
                     </div>
 
-                    <div class="einstell-toggle-row">
-                        <div>
-                            <div class="einstell-row-title"><i class="ri-computer-line" style="margin-right:6px;color:var(--accent);"></i>Browser-Benachrichtigungen</div>
-                            <div class="einstell-row-desc">Push-Benachrichtigungen direkt im Browser für Kalender-Erinnerungen</div>
-                        </div>
-                        <label class="einstell-toggle">
-                            <input type="checkbox" id="notifBrowser">
-                            <span class="einstell-toggle-slider"></span>
-                        </label>
-                    </div>
                 </div>
 
                 <!-- Erinnerungs-Typen (nur sichtbar wenn E-Mail aktiv) -->
@@ -273,6 +265,12 @@
             <!-- ── Sicherheit ── -->
             <div id="section-sicherheit" class="einstell-section" style="display:none;">
                 <h3 class="einstell-section-title"><i class="ri-shield-check-line"></i> Sicherheit</h3>
+
+                <!-- Passwort-Hinweis -->
+                <div class="einstell-info-banner" style="margin-bottom:16px;">
+                    <i class="ri-lock-password-line"></i>
+                    <span>Passwort ändern? Das geht unter <a href="/users/profil" style="color:var(--accent);text-decoration:none;font-weight:600;">Profil <i class="ri-arrow-right-line"></i></a></span>
+                </div>
 
                 <!-- ── 2FA ── -->
                 <div class="einstell-group">
@@ -685,7 +683,11 @@
             if (lang) lang.value = data.language || 'de';
 
             const currency = document.getElementById('currencySelect');
-            if (currency) currency.value = data.currency || 'EUR';
+            if (currency) {
+                currency.value = data.currency || 'EUR';
+                // localStorage synchron halten damit alle anderen Seiten korrekte Währung nutzen
+                localStorage.setItem('ggc_currency', data.currency || 'EUR');
+            }
 
             const dateFormat = document.getElementById('dateFormatSelect');
             if (dateFormat) dateFormat.value = data.date_format || 'DD.MM.YYYY';
@@ -737,7 +739,16 @@
                 body: JSON.stringify(payload)
             });
             if (!res.ok) throw new Error();
-            showToast('Einstellungen gespeichert!', 'success');
+            // Währung in localStorage speichern damit alle Seiten sie sofort nutzen
+            const newCurrency = payload.currency || 'EUR';
+            const currencyChanged = localStorage.getItem('ggc_currency') !== newCurrency;
+            localStorage.setItem('ggc_currency', newCurrency);
+            if (currencyChanged) {
+                showToast('Einstellungen gespeichert! Seite wird neu geladen…', 'success');
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                showToast('Einstellungen gespeichert!', 'success');
+            }
         } catch {
             showToast('Fehler beim Speichern', 'error');
         }
@@ -930,7 +941,17 @@
         document.getElementById('twoFaDisable').style.display = 'none';
     }
 
-    document.addEventListener('DOMContentLoaded', () => { loadSettings(); load2FaStatus(); });
+    document.addEventListener('DOMContentLoaded', () => {
+        loadSettings();
+        load2FaStatus();
+        // URL-Param ?section=X direkt zur Sektion springen
+        const section = new URLSearchParams(window.location.search).get('section');
+        if (section) {
+            const btn = [...document.querySelectorAll('.einstell-nav-btn')]
+                .find(b => b.getAttribute('onclick')?.includes(`'${section}'`));
+            if (btn) btn.click();
+        }
+    });
     </script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>

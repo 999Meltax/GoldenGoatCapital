@@ -1,0 +1,26 @@
+{
+    "name": "Golden Goat Capital",
+    "short_name": "GGC",
+    "description": "Persönliches Finanz-Tool für Konten, Budgets, Ausgaben und mehr.",
+    "start_url": "/users/overview",
+    "display": "standalone",
+    "orientation": "portrait-primary",
+    "background_color": "#0f0f12",
+    "theme_color": "#6358e6",
+    "icons": [
+        {
+            "src": "/assets/goldengoat.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/assets/goldengoat.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": ["finance", "productivity"],
+    "lang": "de"
+}

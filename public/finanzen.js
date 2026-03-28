@@ -1,8 +1,8 @@
 // =====================================================
 // FORMATTER & KONSTANTEN
 // =====================================================
-const fmt     = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-const fmtSign = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', signDisplay: 'always' });
+const fmt     = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
+const fmtSign = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR'), signDisplay: 'always' });
 
 const ACCOUNT_ICONS = {
     girokonto:      'ri-bank-line',
@@ -14,7 +14,6 @@ const ACCOUNT_ICONS = {
 };
 const ACCOUNT_LABELS = {
     girokonto:      'Girokonto',
-    sparkont:       'Sparkonto',
     sparkonto:      'Sparkonto',
     haushaltskonto: 'Haushaltskonto',
     bargeld:        'Bargeld',
@@ -33,6 +32,7 @@ let fixkosten           = [];
 let initialwerte        = {};
 let manuelle            = [];
 let accounts            = [];
+let archivedAccounts    = [];
 let transactions        = [];
 let selectedColor       = '#6358e6';
 
@@ -126,7 +126,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // =====================================================
 async function loadAllData() {
     const [accRes, zusRes, ausRes, invRes, catRes, fixRes, initRes, manRes, txRes] = await Promise.all([
-        fetch('/users/accounts'),
+        fetch('/users/accounts?showArchived=true'),
         fetch('/users/finanzen/zusammenfassung'),
         fetch('/users/finanzen/ausgaben'),
         fetch('/users/finanzen/investments'),
@@ -137,7 +137,9 @@ async function loadAllData() {
         fetch('/users/getTransactions')
     ]);
 
-    accounts            = await accRes.json();
+    const allAccounts   = await accRes.json();
+    accounts            = allAccounts.filter(a => !a.archived);
+    archivedAccounts    = allAccounts.filter(a => a.archived);
     zusammenfassungData = await zusRes.json();
     ausgabenData        = await ausRes.json();
     investmentsData     = await invRes.json();
@@ -149,6 +151,7 @@ async function loadAllData() {
 
     ensureNewAccountsActive();
     renderAccounts();
+    renderArchivedAccounts();
     buildFinanzenFilterUI();
     buildZusFilterUI();
     buildAusFilterUI();
@@ -361,11 +364,78 @@ async function saveAccount() {
     await loadAllData();
 }
 async function confirmDeleteAccount(id, name) {
-    ggcConfirm(`Konto „${name}" wirklich löschen? Transaktionen bleiben erhalten, werden aber keinem Konto mehr zugewiesen.`, async () => {
+    // Erst prüfen ob Transaktionen vorhanden
+    const res = await fetch(`/users/accounts/${id}`, { method: 'DELETE' });
+    if (res.status === 409) {
+        const data = await res.json();
+        // Konto hat Transaktionen → Archivieren anbieten
+        ggcConfirm(`Konto „${name}" hat verknüpfte Transaktionen und kann nicht endgültig gelöscht werden.\n\nMöchtest du es stattdessen archivieren? Archivierte Konten werden ausgeblendet, Transaktionen bleiben erhalten.`, async () => {
+            await fetch(`/users/accounts/${id}/archive`, { method: 'PATCH' });
+            await loadAllData();
+        }, { confirmLabel: 'Archivieren', danger: false });
+        return;
+    }
+    if (res.ok) {
         const ids = getFinanzenActiveIds();
         if (ids) { ids.delete(String(id)); setFinanzenActiveIds(ids); }
-        await fetch(`/users/accounts/${id}`, { method: 'DELETE' });
         await loadAllData();
+    }
+}
+
+async function renderArchivedAccounts() {
+    const container = document.getElementById('archivedAccountsSection');
+    if (!container) return;
+    if (archivedAccounts.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+    container.style.display = '';
+    const grid = container.querySelector('#archivedAccountsGrid');
+    if (!grid) return;
+    grid.innerHTML = archivedAccounts.map(acc => {
+        const icon  = ACCOUNT_ICONS[acc.type] || 'ri-wallet-3-line';
+        const label = ACCOUNT_LABELS[acc.type] || acc.type;
+        const balance = acc.currentBalance ?? acc.balance ?? 0;
+        const safeName = acc.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `
+        <div class="account-card account-card-dimmed" style="--acc-color:#94a3b8;">
+            <div class="account-card-top">
+                <div class="account-icon-wrap" style="background:#94a3b822; color:#94a3b8;">
+                    <i class="${icon}"></i>
+                </div>
+                <div class="account-card-actions">
+                    <button onclick="unarchiveAccount(${acc.id})" title="Wiederherstellen" style="color:var(--accent);">
+                        <i class="ri-inbox-unarchive-line"></i>
+                    </button>
+                    <button onclick="confirmForceDeleteAccount(${acc.id}, '${safeName}')" title="Endgültig löschen" style="color:#ef4444;">
+                        <i class="ri-delete-bin-line"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="account-card-type">${label}</div>
+            <div class="account-card-name">${acc.name}</div>
+            <div class="account-card-balance">${fmt.format(balance)}</div>
+            <div class="account-card-accent" style="background:#94a3b8;"></div>
+            <div class="account-card-hidden-badge"><i class="ri-archive-line"></i> Archiviert</div>
+        </div>`;
+    }).join('');
+}
+
+async function unarchiveAccount(id) {
+    await fetch(`/users/accounts/${id}/unarchive`, { method: 'PATCH' });
+    await loadAllData();
+}
+
+async function confirmForceDeleteAccount(id, name) {
+    ggcConfirm(`Konto „${name}" endgültig löschen? Alle Transaktions-Zuordnungen zu diesem Konto werden entfernt. Diese Aktion kann nicht rückgängig gemacht werden.`, async () => {
+        // Zuerst alle Transaktionen dieses Kontos NULL setzen via Backend-Direktlöschung
+        // Wir senden einen force-Parameter mit
+        const res = await fetch(`/users/accounts/${id}?force=true`, { method: 'DELETE' });
+        if (res.ok) {
+            const ids = getFinanzenActiveIds();
+            if (ids) { ids.delete(String(id)); setFinanzenActiveIds(ids); }
+            await loadAllData();
+        }
     });
 }
 

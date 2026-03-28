@@ -17,13 +17,12 @@ const STEUER_CHECKLISTE = [
     { key: 'werbungskosten',          label: 'Werbungskosten-Beleg' },
 ];
 
-const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+const fmt = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
 let allDokumente  = [];
 let activeTab     = 'alle';
 let currentView   = 'grid';
 let currentDocId  = null;
-let selectedFile  = null;
 let ctxMenu       = null;
 
 // ── Init ─────────────────────────────────────────────────────
@@ -219,6 +218,7 @@ function renderGridCard(d) {
     const statusLabel = { offen: 'Offen', bezahlt: 'Bezahlt', ueberfaellig: 'Überfällig' };
     const showStatus = d.typ === 'rechnungen';
 
+    const hasFile = !!(d.file_data && d.file_data.startsWith('uploads/'));
     return '<div class="dok-card" data-typ="' + d.typ + '" onclick="openDetail(' + d.id + ')">' +
         '<div class="dok-card-top">' +
             '<div class="dok-card-icon" style="background:' + cfg.bg + ';color:' + cfg.color + ';">' +
@@ -234,6 +234,7 @@ function renderGridCard(d) {
                 cfg.label +
                 (d.aussteller ? ' · ' + escHtml(d.aussteller) : '') +
                 (d.arbeitgeber ? ' · ' + escHtml(d.arbeitgeber) : '') +
+                (hasFile ? ' <i class="ri-attachment-2" style="font-size:0.7rem;color:var(--accent);margin-left:4px;" title="Datei angehängt"></i>' : '') +
             '</div>' +
         '</div>' +
         '<div class="dok-card-meta">' +
@@ -282,18 +283,40 @@ function openUploadModal() {
 function closeUploadModal(e) {
     if (e && e.target !== document.getElementById('uploadModal')) return;
     document.getElementById('uploadModal').classList.remove('active');
-    clearFile();
     clearUploadForm();
 }
 
 function clearUploadForm() {
     ['uploadName','uploadBetrag','uploadFaellig','uploadAussteller','uploadNotiz',
-     'uploadBrutto','uploadNetto','uploadArbeitgeber'].forEach(id => {
+     'uploadBrutto','uploadNetto','uploadArbeitgeber','uploadAblageort'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
     const uploadStatus = document.getElementById('uploadStatus');
     if (uploadStatus) uploadStatus.value = 'offen';
+    clearFileSelection();
+}
+
+function handleFileSelect(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const drop    = document.getElementById('uploadFileDrop');
+    const preview = document.getElementById('uploadFilePreview');
+    const nameEl  = document.getElementById('uploadFileName');
+    const sizeEl  = document.getElementById('uploadFileSize');
+    if (drop)    drop.style.display    = 'none';
+    if (preview) preview.style.display = 'flex';
+    if (nameEl)  nameEl.textContent    = file.name;
+    if (sizeEl)  sizeEl.textContent    = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function clearFileSelection() {
+    const input   = document.getElementById('uploadFileInput');
+    const drop    = document.getElementById('uploadFileDrop');
+    const preview = document.getElementById('uploadFilePreview');
+    if (input)   { input.value = ''; }
+    if (drop)    drop.style.display    = '';
+    if (preview) preview.style.display = 'none';
 }
 
 function updateFormFields() {
@@ -307,47 +330,7 @@ function updateFormFields() {
     if (statusFilter) statusFilter.style.display = (activeTab === 'rechnungen' || activeTab === 'alle') ? '' : 'none';
 }
 
-// ── Datei-Handling ───────────────────────────────────────────
-function handleDrop(e) {
-    e.preventDefault();
-    document.getElementById('dropzone').classList.remove('drag');
-    const file = e.dataTransfer.files[0];
-    if (file) processFile(file);
-}
-
-function handleFileSelect(e) {
-    const file = e.target.files[0];
-    if (file) processFile(file);
-}
-
-function processFile(file) {
-    if (file.size > 10 * 1024 * 1024) { ggcToast('Datei zu groß. Max. 10 MB.', true); return; }
-    selectedFile = file;
-
-    // Icons je Dateityp
-    const ext = file.name.split('.').pop().toLowerCase();
-    const iconMap = { pdf: 'ri-file-pdf-line', jpg: 'ri-image-line', jpeg: 'ri-image-line', png: 'ri-image-line', doc: 'ri-file-word-line', docx: 'ri-file-word-line' };
-
-    document.getElementById('previewIcon').innerHTML = '<i class="' + (iconMap[ext] || 'ri-file-line') + '"></i>';
-    document.getElementById('previewName').textContent = file.name;
-    document.getElementById('previewSize').textContent = formatBytes(file.size);
-    document.getElementById('filePreview').style.display = 'flex';
-    document.getElementById('dropzone').style.display = 'none';
-
-    // Namen vorausfüllen
-    if (!document.getElementById('uploadName').value) {
-        document.getElementById('uploadName').value = file.name.replace(/\.[^/.]+$/, '');
-    }
-}
-
-function clearFile() {
-    selectedFile = null;
-    document.getElementById('fileInput').value = '';
-    document.getElementById('filePreview').style.display = 'none';
-    document.getElementById('dropzone').style.display = '';
-}
-
-// ── Upload speichern ─────────────────────────────────────────
+// ── Dokument speichern ────────────────────────────────────────
 async function submitUpload() {
     const btn  = document.getElementById('uploadSubmitBtn');
     const name = document.getElementById('uploadName').value.trim();
@@ -358,71 +341,50 @@ async function submitUpload() {
     if (!datum) { ggcToast('Bitte ein Datum wählen.', true); return; }
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="ri-loader-4-line" style="animation:spin 1s linear infinite;"></i> Wird hochgeladen…';
+    btn.innerHTML = '<i class="ri-loader-4-line" style="animation:spin 1s linear infinite;"></i> Wird gespeichert…';
 
     try {
-        let fileData = null;
-        let fileExt  = null;
-        let fileMime = null;
-
-        if (selectedFile) {
-            fileData = await toBase64(selectedFile);
-            fileExt  = selectedFile.name.split('.').pop().toLowerCase();
-            fileMime = selectedFile.type;
-        }
-
-        const payload = {
-            typ, name, datum,
-            jahr:        datum ? parseInt(datum.split('-')[0]) : null,
-            notiz:       document.getElementById('uploadNotiz')?.value.trim() || '',
-            file_data:   fileData,
-            file_ext:    fileExt,
-            file_mime:   fileMime,
-        };
+        const fd = new FormData();
+        fd.append('typ',  typ);
+        fd.append('name', name);
+        fd.append('datum', datum);
+        fd.append('jahr',  datum ? parseInt(datum.split('-')[0]) : '');
+        fd.append('ablageort', document.getElementById('uploadAblageort')?.value.trim() || '');
+        fd.append('notiz',     document.getElementById('uploadNotiz')?.value.trim() || '');
 
         if (typ === 'rechnungen') {
-            payload.betrag       = parseFloat(document.getElementById('uploadBetrag')?.value) || null;
-            payload.faellig_datum = document.getElementById('uploadFaellig')?.value || null;
-            payload.aussteller   = document.getElementById('uploadAussteller')?.value.trim() || '';
-            payload.status       = document.getElementById('uploadStatus')?.value || 'offen';
-            payload.kategorie    = document.getElementById('uploadKategorie')?.value || '';
+            fd.append('betrag',        document.getElementById('uploadBetrag')?.value || '');
+            fd.append('faellig_datum', document.getElementById('uploadFaellig')?.value || '');
+            fd.append('aussteller',    document.getElementById('uploadAussteller')?.value.trim() || '');
+            fd.append('status',        document.getElementById('uploadStatus')?.value || 'offen');
+            fd.append('kategorie',     document.getElementById('uploadKategorie')?.value || '');
         }
         if (typ === 'gehalt') {
-            payload.brutto       = parseFloat(document.getElementById('uploadBrutto')?.value) || null;
-            payload.netto        = parseFloat(document.getElementById('uploadNetto')?.value) || null;
-            payload.arbeitgeber  = document.getElementById('uploadArbeitgeber')?.value.trim() || '';
-            payload.monat        = document.getElementById('uploadMonat')?.value || '';
+            fd.append('brutto',      document.getElementById('uploadBrutto')?.value || '');
+            fd.append('netto',       document.getElementById('uploadNetto')?.value || '');
+            fd.append('arbeitgeber', document.getElementById('uploadArbeitgeber')?.value.trim() || '');
+            fd.append('monat',       document.getElementById('uploadMonat')?.value || '');
         }
         if (typ === 'steuer') {
-            payload.steuer_art   = document.getElementById('uploadSteuerArt')?.value || '';
-            payload.steuerjahr   = parseInt(document.getElementById('uploadSteuerjahr')?.value) || null;
+            fd.append('steuer_art', document.getElementById('uploadSteuerArt')?.value || '');
+            fd.append('steuerjahr', document.getElementById('uploadSteuerjahr')?.value || '');
         }
 
-        const res = await fetch('/users/dokumente/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        const fileInput = document.getElementById('uploadFileInput');
+        if (fileInput?.files?.[0]) fd.append('file', fileInput.files[0]);
+
+        const res = await fetch('/users/dokumente/add', { method: 'POST', body: fd });
         if (!res.ok) throw new Error((await res.json()).message || 'Fehler');
 
         closeUploadModal();
         clearUploadForm();
         await loadDokumente();
     } catch (err) {
-        ggcToast('Fehler beim Hochladen: ' + err.message, true);
+        ggcToast('Fehler beim Speichern: ' + err.message, true);
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="ri-upload-2-line"></i> Hochladen';
+        btn.innerHTML = '<i class="ri-save-line"></i> Speichern';
     }
-}
-
-function toBase64(file) {
-    return new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload  = () => res(r.result);
-        r.onerror = rej;
-        r.readAsDataURL(file);
-    });
 }
 
 // ── Detail: Navigation zur Detailseite ───────────────────────
@@ -452,9 +414,6 @@ function openCtxMenu(e, id) {
     ctxMenu.style.top  = e.pageY + 'px';
 
     let html = '<button class="dok-ctx-item" onclick="openDetail(' + id + ');removeCtxMenu()"><i class="ri-eye-line"></i> Details</button>';
-    if (d.file_data) {
-        html += '<button class="dok-ctx-item" onclick="downloadDoc(' + id + ');removeCtxMenu()"><i class="ri-download-line"></i> Herunterladen</button>';
-    }
     if (d.typ === 'rechnungen' && status !== 'bezahlt') {
         html += '<button class="dok-ctx-item" onclick="markBezahlt(' + id + ');removeCtxMenu()"><i class="ri-checkbox-circle-line"></i> Als bezahlt</button>';
     }
@@ -474,15 +433,6 @@ function openCtxMenu(e, id) {
 
 function removeCtxMenu() {
     if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; }
-}
-
-function downloadDoc(id) {
-    const d = allDokumente.find(x => x.id === id);
-    if (!d || !d.file_data) return;
-    const a = document.createElement('a');
-    a.href = d.file_data;
-    a.download = d.name + '.' + (d.file_ext || 'pdf');
-    a.click();
 }
 
 // ── CRUD-Aktionen ────────────────────────────────────────────
@@ -515,12 +465,6 @@ async function deleteDokument(id) {
 // ── Hilfsfunktionen ──────────────────────────────────────────
 function escHtml(str) {
     return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function formatBytes(bytes) {
-    if (bytes < 1024)         return bytes + ' B';
-    if (bytes < 1024 * 1024)  return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 function monatName(m) {

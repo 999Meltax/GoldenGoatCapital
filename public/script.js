@@ -181,7 +181,7 @@ function updateChart() {
 // Ausgabetracker
 const formatter = new Intl.NumberFormat("de-DE", {
     style: "currency",
-    currency: "EUR",
+    currency: (window.GGC_CURRENCY||'EUR'),
     signDisplay: "always",
 });
 

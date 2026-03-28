@@ -505,30 +505,30 @@
                 <p style="font-size:0.82rem;color:var(--text-muted,#8892a4);text-align:center;margin-bottom:1rem;">Was möchtest du als nächstes tun?</p>
 
                 <div class="ob-nextsteps">
-                    <a href="/users/overview" class="ob-nextstep" onclick="finishOnboarding()">
+                    <div class="ob-nextstep" onclick="finishOnboarding('/users/overview')">
                         <i class="ri-dashboard-line"></i>
                         <div class="ob-nextstep-title">Dashboard</div>
                         <div class="ob-nextstep-desc">Überblick über alles</div>
-                    </a>
-                    <a href="/users/import" class="ob-nextstep" onclick="finishOnboarding()">
+                    </div>
+                    <div class="ob-nextstep" onclick="finishOnboarding('/users/import')">
                         <i class="ri-file-upload-line"></i>
                         <div class="ob-nextstep-title">CSV importieren</div>
                         <div class="ob-nextstep-desc">Kontoauszug einlesen</div>
-                    </a>
-                    <a href="/users/budget" class="ob-nextstep" onclick="finishOnboarding()">
+                    </div>
+                    <div class="ob-nextstep" onclick="finishOnboarding('/users/budget')">
                         <i class="ri-pie-chart-2-line"></i>
                         <div class="ob-nextstep-title">Budget anlegen</div>
                         <div class="ob-nextstep-desc">Ausgabenlimits setzen</div>
-                    </a>
-                    <a href="/users/haushalt" class="ob-nextstep" onclick="finishOnboarding()">
+                    </div>
+                    <div class="ob-nextstep" onclick="finishOnboarding('/users/haushalt')">
                         <i class="ri-home-heart-line"></i>
                         <div class="ob-nextstep-title">Haushalt einrichten</div>
                         <div class="ob-nextstep-desc">Partner einladen</div>
-                    </a>
+                    </div>
                 </div>
 
                 <div class="ob-btn-row" style="justify-content:center;">
-                    <button class="ob-btn-primary" onclick="finishOnboarding()" style="max-width:280px;">
+                    <button class="ob-btn-primary" onclick="finishOnboarding('/users/overview')" style="max-width:280px;">
                         <i class="ri-dashboard-line"></i> Zum Dashboard
                     </button>
                 </div>
@@ -724,8 +724,9 @@
         }
 
         // ── Finish ────────────────────────────────────────────────────
-        async function finishOnboarding() {
+        async function finishOnboarding(dest) {
             try { await fetch('/users/onboarding/complete', { method: 'POST' }); } catch (e) {}
+            window.location.href = dest || '/users/overview';
         }
 
         // ── Helpers ───────────────────────────────────────────────────

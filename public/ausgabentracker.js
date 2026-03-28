@@ -126,7 +126,8 @@ let currentPage = 1;
 const PAGE_SIZE = 20;
 
 // ─── Bulk-Auswahl ─────────────────────────────────────────────
-let selectedTxIds = new Set();
+let selectedTxIds  = new Set();
+let bulkSelectMode = false;
 
 // ─── Transfer-Only-Filter (via URL-Param ?typ=transfer) ───────
 let transferOnly = new URLSearchParams(window.location.search).get('typ') === 'transfer';
@@ -295,6 +296,13 @@ function setChartType(type) {
 
 async function loadData() {
     selectedTxIds.clear();
+    if (bulkSelectMode) {
+        bulkSelectMode = false;
+        const btn = document.getElementById('bulkToggleBtn');
+        if (btn) { btn.innerHTML = '<i class="ri-checkbox-multiple-line"></i> Auswählen'; btn.style.background = btn.style.borderColor = btn.style.color = ''; }
+        const saBtn = document.getElementById('bulkSelectAllBtn');
+        if (saBtn) saBtn.style.display = 'none';
+    }
     try {
         const [txRes, catRes, accRes, regelRes] = await Promise.all([
             fetch('/users/getTransactions'),
@@ -587,6 +595,24 @@ function showEditTransactionModal(transaction) {
             <select id="editCategory">${catOptions}</select>
         </div>
 
+        <div class="form-group" style="margin-bottom:16px;">
+            <label class="form-label">Anwenden auf</label>
+            <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400;">
+                    <input type="radio" name="categoryScope" value="single" checked/>
+                    Nur diese Transaktion
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400;">
+                    <input type="radio" name="categoryScope" value="all"/>
+                    Alle Transaktionen mit dem Namen „${transaction.name.replace(/"/g, '&quot;')}"
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400;">
+                    <input type="radio" name="categoryScope" value="all_and_rule"/>
+                    Alle + als Regel für zukünftige Transaktionen
+                </label>
+            </div>
+        </div>
+
         <div class="form-row" style="margin-bottom:20px;">
             <div class="form-group">
                 <label class="form-label">Betrag</label>
@@ -626,19 +652,53 @@ async function confirmEditTransaction(id) {
     const date       = document.getElementById('editDate').value;
     const type       = document.getElementById('editType').checked ? 'Einnahmen' : 'Ausgaben';
     const account_id = document.getElementById('editAccountSelect')?.value || null;
+    const scopeEl    = document.querySelector('input[name="categoryScope"]:checked');
+    const scope      = scopeEl ? scopeEl.value : 'single';
 
     if (!name || !category || isNaN(amount) || amount <= 0 || !date) {
         showStatus('Bitte alle Felder ausfüllen.', true);
         return;
     }
     try {
+        // Save this transaction
         const res = await fetch(`/users/updateTransaction/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, category, amount, date, type, account_id })
         });
         if (!res.ok) throw new Error((await res.json()).message || 'Fehler beim Speichern');
-        showStatus('Transaktion gespeichert!', false);
+
+        // Apply to all transactions with the same name
+        if (scope === 'all' || scope === 'all_and_rule') {
+            await fetch('/users/transactions/categorize-by-name', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, category })
+            });
+        }
+
+        // Also create an automation rule for future transactions
+        if (scope === 'all_and_rule') {
+            await fetch('/users/regeln/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bedingung_operator: 'enthält',
+                    bedingung_wert: name,
+                    aktion_kategorie: category,
+                    aktion_typ: null,
+                    modus: 'beide',
+                    priority: 0
+                })
+            });
+        }
+
+        const msg = scope === 'all_and_rule'
+            ? 'Kategorie gespeichert, alle Transaktionen aktualisiert und Regel erstellt!'
+            : scope === 'all'
+                ? 'Kategorie gespeichert und auf alle gleichnamigen Transaktionen angewendet!'
+                : 'Transaktion gespeichert!';
+        showStatus(msg, false);
         await loadData();
         closeModal();
     } catch (err) {
@@ -1115,18 +1175,12 @@ function renderSortHeader() {
     ];
     const header = document.getElementById('txSortHeader');
     if (!header) return;
-    const filtered  = getFiltered();
-    const pageStart = (currentPage - 1) * PAGE_SIZE;
-    const pageIds   = getSorted(filtered).slice(pageStart, pageStart + PAGE_SIZE).map(t => t.id);
-    const allChecked = pageIds.length > 0 && pageIds.every(id => selectedTxIds.has(id));
-    const someChecked = !allChecked && pageIds.some(id => selectedTxIds.has(id));
-
-    const cbHtml = `<span class="tx-sort-col tx-sort-cb-col" style="cursor:default;pointer-events:none;">
-        <input type="checkbox" class="tx-select-all-cb" ${allChecked ? 'checked' : ''} ${someChecked ? 'style="opacity:0.6;"' : ''}
-            onclick="toggleSelectAll(this.checked)" style="pointer-events:auto;cursor:pointer;width:15px;height:15px;accent-color:var(--accent);">
-    </span>`;
-
-    header.innerHTML = cbHtml + cols.map(c => {
+    // Adjust grid columns based on bulk mode (first 28px col only in bulk mode)
+    header.style.gridTemplateColumns = bulkSelectMode
+        ? '28px 1fr 160px 100px 120px 72px'
+        : '1fr 160px 100px 120px 72px';
+    const cbCol = bulkSelectMode ? '<span class="tx-sort-col tx-sort-cb-col" style="cursor:default;pointer-events:none;"></span>' : '';
+    header.innerHTML = cbCol + cols.map(c => {
         const active = sortField === c.key;
         const icon = active ? (sortDir === 'asc' ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line') : 'ri-arrow-up-down-line';
         return `<span class="tx-sort-col${active ? ' active' : ''}" onclick="setSort('${c.key}')" title="Nach ${c.label} sortieren">
@@ -1275,15 +1329,18 @@ function renderList() {
                 ? ` <span class="tx-transfer-badge"><i class="ri-arrow-left-right-line"></i> Umbuchung${transferInfo}</span>`
                 : '';
 
+            li.dataset.id = t.id;
             const isSelected = selectedTxIds.has(t.id);
             if (isSelected) li.classList.add('tx-selected');
 
-            li.innerHTML = `
+            const cbHtml = bulkSelectMode ? `
                 <div class="tx-cb-col">
                     <input type="checkbox" class="tx-select-cb" data-id="${t.id}" ${isSelected ? 'checked' : ''}
                         onclick="toggleTxSelect(${t.id}, this.checked)"
                         style="width:15px;height:15px;cursor:pointer;accent-color:var(--accent);">
-                </div>
+                </div>` : '';
+
+            li.innerHTML = cbHtml + `
                 <div class="name">
                     <h4>${t.name}${isFixkost ? ' <span class="fixkost-badge"><i class="ri-repeat-line"></i> Fixkosten</span>' : ''}${isKorrektur ? ' <span class="tx-korrektur-badge"><i class="ri-scales-3-line"></i> Korrektur</span>' : ''}${transferBadge}</h4>
                     ${t.account_id ? `<p>${allAccounts.find(x => String(x.id) === String(t.account_id))?.name || ''}</p>` : ''}
@@ -1359,126 +1416,129 @@ function renderList() {
 function toggleTxSelect(id, checked) {
     if (checked) selectedTxIds.add(id);
     else         selectedTxIds.delete(id);
+    const li = document.querySelector(`#transactionList li[data-id="${id}"]`);
+    if (li) li.classList.toggle('tx-selected', checked);
+    const selectAllBtn = document.getElementById('bulkSelectAllBtn');
+    if (selectAllBtn && bulkSelectMode) {
+        const filtered = getFiltered();
+        const nowAll = filtered.length > 0 && filtered.every(t => selectedTxIds.has(t.id));
+        selectAllBtn.innerHTML = nowAll
+            ? '<i class="ri-checkbox-indeterminate-line"></i> Alle abwählen'
+            : '<i class="ri-checkbox-line"></i> Alle auswählen';
+    }
     updateBulkBar();
-    renderSortHeader();
 }
 
-function toggleSelectAll(checked) {
-    const filtered  = getFiltered();
-    const pageStart = (currentPage - 1) * PAGE_SIZE;
-    const pageIds   = getSorted(filtered).slice(pageStart, pageStart + PAGE_SIZE).map(t => t.id);
-    pageIds.forEach(id => {
-        if (checked) selectedTxIds.add(id);
-        else         selectedTxIds.delete(id);
-    });
+function toggleBulkMode() {
+    bulkSelectMode = !bulkSelectMode;
+    selectedTxIds.clear();
+    const btn = document.getElementById('bulkToggleBtn');
+    if (btn) {
+        if (bulkSelectMode) {
+            btn.innerHTML = '<i class="ri-close-line"></i> Abbrechen';
+            btn.style.background    = 'rgba(99,88,230,0.12)';
+            btn.style.borderColor   = 'rgba(99,88,230,0.4)';
+            btn.style.color         = 'var(--accent,#6358e6)';
+        } else {
+            btn.innerHTML = '<i class="ri-checkbox-multiple-line"></i> Auswählen';
+            btn.style.background = btn.style.borderColor = btn.style.color = '';
+        }
+    }
+    const selectAllBtn = document.getElementById('bulkSelectAllBtn');
+    if (selectAllBtn) selectAllBtn.style.display = bulkSelectMode ? 'inline-flex' : 'none';
+    // Reset selects so they repopulate on next open
+    const kontoSel = document.getElementById('bulkKonto');
+    if (kontoSel) kontoSel.innerHTML = '<option value="__none__">Konto…</option><option value="">Kein Konto</option>';
+    const catSel = document.getElementById('bulkCategory');
+    if (catSel) catSel.innerHTML = '<option value="">Kategorie…</option>';
+    updateBulkBar();
     renderList();
+}
+
+function toggleSelectAll() {
+    const filtered = getFiltered();
+    const allSelected = filtered.length > 0 && filtered.every(t => selectedTxIds.has(t.id));
+    if (allSelected) { filtered.forEach(t => selectedTxIds.delete(t.id)); }
+    else             { filtered.forEach(t => selectedTxIds.add(t.id)); }
+    const btn = document.getElementById('bulkSelectAllBtn');
+    if (btn) {
+        const nowAll = filtered.length > 0 && filtered.every(t => selectedTxIds.has(t.id));
+        btn.innerHTML = nowAll
+            ? '<i class="ri-checkbox-indeterminate-line"></i> Alle abwählen'
+            : '<i class="ri-checkbox-line"></i> Alle auswählen';
+    }
+    // Update checkboxes in DOM
+    document.querySelectorAll('#transactionList li.transaction').forEach(li => {
+        const id = parseInt(li.dataset.id);
+        if (!id) return;
+        const cb = li.querySelector('.tx-select-cb');
+        if (cb) cb.checked = selectedTxIds.has(id);
+        li.classList.toggle('tx-selected', selectedTxIds.has(id));
+    });
+    updateBulkBar();
 }
 
 function clearSelection() {
     selectedTxIds.clear();
+    bulkSelectMode = false;
+    const btn = document.getElementById('bulkToggleBtn');
+    if (btn) { btn.innerHTML = '<i class="ri-checkbox-multiple-line"></i> Auswählen'; btn.style.background = btn.style.borderColor = btn.style.color = ''; }
+    const selectAllBtn = document.getElementById('bulkSelectAllBtn');
+    if (selectAllBtn) selectAllBtn.style.display = 'none';
     renderList();
 }
 
 function updateBulkBar() {
-    let bar = document.getElementById('txBulkBar');
-    if (selectedTxIds.size === 0) {
-        if (bar) bar.style.display = 'none';
+    const bar   = document.getElementById('bulkActionBar');
+    const count = document.getElementById('bulkCount');
+    if (!bar) return;
+    if (bulkSelectMode && selectedTxIds.size > 0) {
+        bar.style.display = 'flex';
+        if (count) count.textContent = selectedTxIds.size + ' ausgewählt';
+        const catSel = document.getElementById('bulkCategory');
+        if (catSel && catSel.options.length <= 1) {
+            catSel.innerHTML = '<option value="">Kategorie…</option>' +
+                categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+        }
+        const kontoSel = document.getElementById('bulkKonto');
+        if (kontoSel && kontoSel.options.length <= 2) {
+            kontoSel.innerHTML = '<option value="__none__">Konto…</option><option value="">Kein Konto</option>' +
+                allAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+        }
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+async function applyBulkUpdate() {
+    const catSel   = document.getElementById('bulkCategory');
+    const kontoSel = document.getElementById('bulkKonto');
+    const typeSel  = document.getElementById('bulkType');
+
+    const category  = catSel?.value   || null;
+    const kontoVal  = kontoSel?.value;
+    const type      = typeSel?.value  || null;
+
+    const payload = { ids: [...selectedTxIds] };
+    if (category)              payload.category   = category;
+    if (kontoVal !== '__none__') payload.account_id = kontoVal || null;
+    if (type)                  payload.type       = type;
+
+    if (!payload.category && kontoVal === '__none__' && !payload.type) {
+        showStatus('Bitte mindestens ein Feld zum Ändern auswählen.', true);
         return;
     }
-    if (!bar) {
-        bar = document.createElement('div');
-        bar.id = 'txBulkBar';
-        bar.style.cssText = [
-            'position:fixed','bottom:24px','left:50%','transform:translateX(-50%)',
-            'background:var(--surface,#1a1a2e)','border:1px solid var(--border,rgba(255,255,255,0.1))',
-            'border-radius:14px','padding:10px 16px','display:flex','align-items:center',
-            'gap:10px','z-index:1100','box-shadow:0 8px 32px rgba(0,0,0,0.5)',
-            'font-family:\'Plus Jakarta Sans\',sans-serif','font-size:0.85rem',
-            'min-width:320px','max-width:90vw'
-        ].join(';');
-        bar.innerHTML = `
-            <span id="txBulkCount" style="font-weight:600;color:var(--text-1,#fff);white-space:nowrap;"></span>
-            <div style="flex:1;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
-                <div style="position:relative;display:inline-block;" id="txBulkCatWrap">
-                    <button onclick="toggleBulkCatPicker()" style="
-                        padding:6px 14px;border-radius:9px;background:rgba(99,88,230,0.15);
-                        border:1px solid rgba(99,88,230,0.4);color:var(--accent,#6358e6);
-                        font-size:0.82rem;cursor:pointer;font-family:inherit;font-weight:600;
-                        display:flex;align-items:center;gap:6px;">
-                        <i class="ri-price-tag-3-line"></i> Kategorie
-                    </button>
-                    <div id="txBulkCatDropdown" style="
-                        display:none;position:absolute;bottom:calc(100% + 6px);left:0;
-                        background:var(--surface,#1a1a2e);border:1px solid var(--border,rgba(255,255,255,0.08));
-                        border-radius:12px;min-width:200px;max-height:240px;overflow-y:auto;
-                        box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:1101;padding:6px;">
-                    </div>
-                </div>
-                <button onclick="bulkDelete()" style="
-                    padding:6px 14px;border-radius:9px;background:rgba(239,68,68,0.15);
-                    border:1px solid rgba(239,68,68,0.4);color:#ef4444;
-                    font-size:0.82rem;cursor:pointer;font-family:inherit;font-weight:600;
-                    display:flex;align-items:center;gap:6px;">
-                    <i class="ri-delete-bin-line"></i> Löschen
-                </button>
-                <button onclick="clearSelection()" style="
-                    padding:6px 12px;border-radius:9px;background:transparent;
-                    border:1px solid var(--border,rgba(255,255,255,0.1));color:var(--text-3,#888);
-                    font-size:0.82rem;cursor:pointer;font-family:inherit;font-weight:600;">
-                    ✕
-                </button>
-            </div>`;
-        document.body.appendChild(bar);
 
-        // Close cat dropdown on outside click
-        document.addEventListener('click', e => {
-            const wrap = document.getElementById('txBulkCatWrap');
-            if (wrap && !wrap.contains(e.target)) {
-                const dd = document.getElementById('txBulkCatDropdown');
-                if (dd) dd.style.display = 'none';
-            }
-        });
-    }
-
-    document.getElementById('txBulkCount').textContent = `${selectedTxIds.size} ausgewählt`;
-    bar.style.display = 'flex';
-}
-
-function toggleBulkCatPicker() {
-    const dd = document.getElementById('txBulkCatDropdown');
-    if (!dd) return;
-    const isOpen = dd.style.display !== 'none';
-    if (!isOpen) {
-        dd.style.display = 'block';
-        dd.innerHTML = categories.map(c =>
-            `<div onclick="bulkCategorize('${c.name.replace(/'/g,"\\'")}')" style="
-                padding:8px 12px;border-radius:8px;cursor:pointer;
-                font-size:0.82rem;color:var(--text-1,#fff);
-                transition:background 0.1s;white-space:nowrap;"
-                onmouseover="this.style.background='rgba(255,255,255,0.05)'"
-                onmouseout="this.style.background=''">
-                ${c.name}
-            </div>`
-        ).join('');
-    } else {
-        dd.style.display = 'none';
-    }
-}
-
-async function bulkCategorize(category) {
-    const dd = document.getElementById('txBulkCatDropdown');
-    if (dd) dd.style.display = 'none';
-    const ids = [...selectedTxIds];
     try {
-        const res = await fetch('/users/transactions/bulk-categorize', {
+        const res = await fetch('/users/transactions/bulk-update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids, category })
+            body: JSON.stringify(payload)
         });
         const r = await res.json();
         if (!res.ok) throw new Error(r.message);
-        selectedTxIds.clear();
-        showStatus(`${r.updated} Transaktion(en) kategorisiert.`, false);
+        showStatus(`${r.updated} Transaktion(en) aktualisiert.`, false);
+        clearSelection();
         await loadData();
     } catch (err) {
         showStatus(err.message || 'Fehler', true);
@@ -1492,8 +1552,7 @@ async function bulkDelete() {
     // Optimistisch entfernen
     const removed = transactions.filter(t => ids.includes(t.id));
     transactions = transactions.filter(t => !ids.includes(t.id));
-    selectedTxIds.clear();
-    renderList();
+    clearSelection();
 
     let deleteTimer = null;
 

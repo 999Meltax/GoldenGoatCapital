@@ -26,6 +26,7 @@
             <% } else { %>
             <form method="POST" action="/users/check_login" class="auth-form" id="loginForm" style="display:none;">
             <% } %>
+                <% if (typeof redirectUrl !== 'undefined' && redirectUrl) { %><input type="hidden" name="redirect" value="<%= redirectUrl %>"><% } %>
                 <div class="form-group">
                     <label class="form-label">E-Mail</label>
                     <input type="email" name="user" id="inputName" placeholder="deine@email.de" required>

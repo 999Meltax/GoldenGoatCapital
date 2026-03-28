@@ -1,5 +1,5 @@
 # GoldenGoat Capital – Technisches Handbuch
-**Stand: März 2026 | Version 2.0**
+**Stand: März 2026 | Version 3.1**
 
 ---
 
@@ -22,14 +22,15 @@
 15. [Haushalt-Modus](#15-haushalt-modus)
 16. [Dashboard & Übersichten](#16-dashboard--übersichten)
 17. [Kalender](#17-kalender)
-18. [To-do-Liste](#18-to-do-liste)
+18. [In-App Notifications](#18-in-app-notifications)
 19. [Dokumente](#19-dokumente)
 20. [Versicherungen](#20-versicherungen)
 21. [Globale Suche](#21-globale-suche)
 22. [Datenexport](#22-datenexport)
 23. [Einstellungen & Profil](#23-einstellungen--profil)
 24. [Feature-Interaktionen (Gesamtbild)](#24-feature-interaktionen-gesamtbild)
-25. [Bekannte Schwachstellen & Verbesserungspotenziale](#25-bekannte-schwachstellen--verbesserungspotenziale)
+25. [PWA (Progressive Web App)](#25-pwa-progressive-web-app)
+26. [Bekannte Schwachstellen & Verbesserungspotenziale](#26-bekannte-schwachstellen--verbesserungspotenziale)
 
 ---
 
@@ -40,7 +41,7 @@ GoldenGoat Capital ist eine persönliche Finanzverwaltungsanwendung, die lokal a
 - **Privat-Modus**: Individuelle Finanzverwaltung für einen einzelnen Nutzer (Transaktionen, Konten, Budgets, Sparziele, Schulden, Steuern etc.)
 - **Haushalt-Modus**: Gemeinsame Finanzverwaltung für zwei Personen mit Kostenaufteilung, gemeinsamen Konten und gemeinsamer Aufgabenverwaltung
 
-Der Moduswechsel erfolgt über den Sidebar-Toggle oben links. Der gewählte Modus wird im **localStorage** des Browsers gespeichert (`sidebar_mode: 'privat'` oder `'haushalt'`), nicht in der Session – das bedeutet, zwei offene Browser-Tabs können unterschiedliche Modi anzeigen.
+Der Moduswechsel erfolgt über den Sidebar-Toggle. Der gewählte Modus wird sowohl im **localStorage** als auch in der **Server-Session** (`req.session.sidebar_mode`) gespeichert. `navheader.js` rendert sofort aus localStorage (kein Flash), gleicht dann mit dem Server ab. Haushalt-Seiten aktualisieren die Session automatisch.
 
 ---
 
@@ -70,7 +71,7 @@ modules/
   database.js          → Singleton: alle DB-Tabellen + Methoden
   mailer.js            → E-Mail-Versand (Nodemailer)
   reminder.js          → Cron-Jobs für Erinnerungen
-  profil.js            → Profilhilfs­funktionen
+  profil.js            → Profilhilfsfunktionen
 routes/
   users.js             → Alle Auth- + Nutzer-API-Routen
   Startseite.js        → Landingpage
@@ -79,13 +80,13 @@ public/                → Statische Assets, Client-JS, styles.css
 ```
 
 ### Initialisierung der Datenbank
-`database.js` wird als **Singleton** via `Database.getInstance()` verwendet. Beim ersten Aufruf werden alle Tabellen per `CREATE TABLE IF NOT EXISTS` angelegt und fehlende Spalten via `try { ALTER TABLE ... } catch(e) {}` nachgerüstet. Das ermöglicht Zero-Downtime-Migrationen.
+`database.js` wird als **Singleton** via `Database.getInstance()` verwendet. Beim ersten Aufruf werden alle Tabellen per `CREATE TABLE IF NOT EXISTS` angelegt und fehlende Spalten via `try { ALTER TABLE ... } catch(e) {}` nachgerüstet. Migrations laufen automatisch beim Start. Das ermöglicht Zero-Downtime-Migrationen.
 
 ### Route-Konvention
 - **Spezifische Routen** müssen immer **vor** parametrisierten Routen stehen:
   `GET /fixkosten/list` vor `GET /fixkosten/:id`
 - **API-Routen** geben JSON zurück, **Seiten-Routen** rendern HTML – niemals mischen
-- `requireLogin`-Middleware muss vor allen geschützten Routen definiert sein
+- `requireLogin`-Middleware ist bei Zeile ~722 in `routes/users.js` definiert – alle Routen die sie nutzen müssen **danach** stehen
 
 ---
 
@@ -96,7 +97,8 @@ public/                → Statische Assets, Client-JS, styles.css
 users (id, username, email, password [bcrypt-Hash], created_at)
 user_profiles (user_id PK, display_name, avatar_url, tarif ['basis'|'pro'])
 user_settings (user_id PK, language, theme ['dark'|'light'], currency,
-               date_format, notifications_email, notifications_browser, two_factor)
+               date_format, notifications_email, notifications_browser, two_factor,
+               reminder_rechnungen, reminder_budget, reminder_sparziele)
 totp_secrets (user_id PK, secret, enabled [0|1])
 ```
 
@@ -113,9 +115,12 @@ totp_secrets (user_id PK, secret, enabled [0|1])
 - Bei Login: TOTP-Code wird mit `totp.verify()` geprüft (30-Sekunden-Fenster)
 - Deaktivierung setzt `enabled = 0`
 
-### E-Mail-Verifikation & Passwort-Reset
-- Passwort-Reset per E-Mail-Link (Token-basiert, zeitlich begrenzt)
-- Willkommens-E-Mail bei Registrierung (Nodemailer)
+### Sidebar-Modus (serverseitig)
+```
+GET  /users/me/mode   → { mode: 'privat' | 'haushalt' }
+POST /users/me/mode   → Body: { mode } → speichert in req.session.sidebar_mode
+```
+`navheader.js` liest den Modus sofort aus localStorage (Flash-free), gleicht dann asynchron mit dem Server ab. Haushalt-Seiten senden beim Laden automatisch `POST /me/mode` mit `'haushalt'`.
 
 ---
 
@@ -149,40 +154,27 @@ accounts (
 )
 ```
 
-### Kontostand-Berechnung (getAccountsWithBalance)
-Der angezeigte **aktuelle Kontostand** wird nicht aus `accounts.balance` gelesen, sondern dynamisch berechnet:
+### Kontostand-Berechnung
+Der angezeigte **aktuelle Kontostand** wird dynamisch berechnet:
 ```
 currentBalance = accounts.balance
               + SUM(Einnahmen-Transaktionen für dieses Konto)
               - SUM(Ausgaben-Transaktionen für dieses Konto)
 ```
-Das bedeutet: `accounts.balance` ist der **Startbetrag** (oder der Betrag zum Zeitpunkt des letzten manuellen Abgleichs). Alle danach erfassten Transaktionen mit `account_id` werden addiert/subtrahiert.
+`accounts.balance` ist der **Startbetrag**. Alle danach erfassten Transaktionen mit `account_id` werden addiert/subtrahiert.
 
 ### Kontostand-Abgleich
-Über den „Abgleich"-Button kann der Nutzer den tatsächlichen Kontostand eingeben. Der Server berechnet dann die **Differenz** zwischen gemeldetem und berechnetem Stand und erstellt eine Ausgleichs-Transaktion (Kategorie: „Kontostand-Abgleich"), damit die Geschichte erhalten bleibt. `accounts.balance` wird **nicht** direkt überschrieben.
-
-### Konten anlegen
-- Basis-Tarif: Prüfung ob bereits 3 Konten vorhanden → 409-Fehler wenn ja
-- Pro-Tarif: unbegrenzt
+Der Nutzer gibt den tatsächlichen Kontostand ein. Der Server berechnet die **Differenz** und erstellt eine Ausgleichs-Transaktion (Kategorie: „Kontostandskorrektur"). `accounts.balance` wird **nicht** überschrieben – die Geschichte bleibt erhalten.
 
 ### API-Endpunkte
 | Methode | Route | Funktion |
 |---------|-------|----------|
 | GET | `/accounts` | Alle Konten mit currentBalance |
-| GET | `/accounts/all` | Privat + Haushalt-Konten kombiniert (für Transfer-Dropdowns) |
+| GET | `/accounts/all` | Privat + Haushalt-Konten kombiniert |
 | POST | `/accounts/add` | Neues Konto erstellen |
 | PUT | `/accounts/:id` | Konto bearbeiten |
 | DELETE | `/accounts/:id` | Konto löschen |
-| GET | `/accounts/:id/transactions` | Transaktionen eines Kontos |
 | POST | `/accounts/:id/abgleich` | Kontostand-Abgleich |
-
-### Interaktion mit anderen Features
-- **Transaktionen**: Transaktionen können optional einer `account_id` zugewiesen werden. Ist keine angegeben, fließen sie in keine Kontostandsberechnung ein.
-- **Sparziele**: Ein Sparziel kann einem Konto zugewiesen sein (`sparziele.account_id`). Die Konto-Aufteilungs-Visualisierung auf der Budget-Seite zeigt an, wie viel des Kontostands für Sparziele „reserviert" ist.
-- **Transfers**: Transfers zwischen zwei Konten erzeugen je eine Einnahme- und eine Ausgabe-Transaktion mit `transfer_pair_id` und `transfer_to_account_id`.
-- **Fixkosten**: Beim Buchen einer Fixkost kann ein Konto angegeben werden, dem die Ausgabe zugeordnet wird.
-- **Schulden-Zahlungen**: Zahlungen können einem Konto zugewiesen werden (`schulden_zahlungen.account_id`).
-- **CSV-Import**: Importierte Transaktionen können einem Konto zugewiesen werden.
 
 ---
 
@@ -192,8 +184,9 @@ Das bedeutet: `accounts.balance` ist der **Startbetrag** (oder der Betrag zum Ze
 ```sql
 ausgabenDB (
     id, user_id,
-    name TEXT,                    -- Bezeichnung
-    category TEXT,                -- Kategorie (frei wählbar)
+    name TEXT,
+    category TEXT,                -- Freitext (Rückwärtskompatibilität)
+    category_id INTEGER,          -- FK auf categories.id (normalisiert, seit v3.0)
     date TEXT,                    -- ISO-Format: YYYY-MM-DD
     amount REAL,                  -- immer positiv
     type TEXT,                    -- 'Einnahmen' | 'Ausgaben'
@@ -201,161 +194,158 @@ ausgabenDB (
     recurring_id INTEGER,         -- gesetzt wenn von Fixkost gebucht
     transfer_to_account_id INT,   -- gesetzt bei Transfers
     transfer_pair_id INTEGER,     -- ID der Gegentransaktion bei Transfers
-    notes TEXT                    -- optionale Notiz
+    sparziel_id INTEGER           -- gesetzt wenn von Sparziel-Einzahlung
 )
 ```
 
-### Transaktionen erfassen
-- Formular: Name, Betrag, Typ (Einnahmen/Ausgaben), Kategorie, Datum, Konto (optional), Notiz (optional)
-- **Live-Regelanwendung**: Während der Namens-Eingabe (250ms Debounce) werden Regeln geprüft. Passt eine Regel, werden Kategorie und/oder Typ automatisch gesetzt und ein Hinweis-Badge zeigt welche Regel griff (`Regel angewendet: …`).
-- Nach dem Speichern wird die Transaktion optimistisch in der UI angezeigt und ein Activity-Log-Eintrag geschrieben.
+### Kategorien-Normalisierung (seit v3.0)
+Kategorien sind in einer eigenen Tabelle verwaltet:
 
-### Ansichten & Filter
-- **Listenansicht**: Alle Transaktionen, nach Datum absteigend sortiert
-- **Filter**: Typ (Alle/Einnahmen/Ausgaben), Kategorie, Suchbegriff, Konto, Zeitraum
-- **Konto-Tab**: Wenn ein Konto-Filter aktiv ist, werden nur Transaktionen dieses Kontos angezeigt
+```sql
+categories (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER,
+    name TEXT,
+    icon TEXT DEFAULT '',    -- RemixIcon-Klasse (optional)
+    color TEXT DEFAULT '',   -- Hex-Farbe (optional)
+    is_deleted INTEGER DEFAULT 0
+)
+```
+
+**Migration (automatisch beim Start):**
+1. `ALTER TABLE categories ADD COLUMN icon/color`
+2. `ALTER TABLE ausgabenDB ADD COLUMN category_id`
+3. Batch-Migration: alle `(user_id, category)`-Kombinationen → `categories` einfügen → `category_id` in `ausgabenDB` setzen
+
+**`upsertCategory(userId, name)`** — sucht oder erstellt Kategorie, gibt `id` zurück. Wird von `createTransaction()` und `updateTransaction()` intern aufgerufen.
+
+`GET /users/categories` gibt volle Objekte zurück: `{ id, name, icon, color, is_deleted }`. Clients mergen mit `DEFAULT_CATEGORIES` (lokale Standard-Liste) und filtern Duplikate.
+
+`category TEXT` bleibt vorerst parallel gepflegt (für Rückwärtskompatibilität). Ziel: Entfernen nach stabilem Betrieb.
+
+### Transaktionsliste
+
+Die Tabelle hat **5 Spalten** (Sort-Header mit Klick):
+| Spalte | Sortierbar | Anmerkung |
+|--------|-----------|-----------|
+| Checkbox | — | Select-All für Bulk-Aktionen |
+| Bezeichnung | ja | Name + Konto-Name als Untertitel |
+| Kategorie | ja | Icon + Kategoriename |
+| Datum | ja | Sichtbar als eigene Spalte (seit v3.1) |
+| Betrag | ja | **Einnahmen grün**, **Ausgaben rot** (seit v3.1) |
+| Aktionen | — | Bearbeiten / Löschen |
+
+**Kategorie-Filter-Dropdown**: Zeigt nur Kategorien, die in den aktuell geladenen Transaktionen tatsächlich vorkommen — keine leeren Einträge (seit v3.1).
+
+### Transaktionen erfassen
+- Formular: Name, Betrag, Typ, Kategorie, Datum, Konto (optional)
+- **Live-Regelanwendung**: 250ms Debounce auf das Namensfeld → Kategorie + Typ werden automatisch gesetzt
+- `createTransaction()` in `database.js` ruft intern `upsertCategory()` auf → `category_id` wird immer gesetzt
 
 ### Transaktionen bearbeiten
-- Inline-Bearbeitung via Edit-Modal
-- Transaktionen mit `recurring_id ≠ null` werden mit einem **Schloss-Symbol** markiert und können **nicht bearbeitet** werden (sie sind von einer Fixkost gebucht)
-- Transfer-Transaktionen haben ein eigenes Icon
+- Edit-Modal mit allen Feldern
+- Transaktionen mit `recurring_id ≠ null` sind mit Schloss-Symbol markiert und **nicht editierbar**
+- Transfer-Transaktionen: nicht editierbar, Löschen über eigene `deleteTransfer`-Logik
+- Jede Bearbeitung schreibt Vorher/Nachher-Werte ins Activity-Log
 
 ### Transaktionen löschen (Undo-System)
-Das Löschen erfolgt **optimistisch**:
-1. Transaktion wird sofort aus dem Client-Array entfernt und die Liste neu gerendert
-2. Ein Toast erscheint unten: „Transaktion gelöscht – Rückgängig"
-3. Nach **5 Sekunden** wird der DELETE-Request an den Server gesendet
-4. Klick auf „Rückgängig" innerhalb von 5 Sekunden: `clearTimeout()` verhindert den Server-Aufruf, die Transaktion wird wieder ins Array eingefügt
+Optimistisches Löschen:
+1. Sofort aus Client-Array entfernen + UI neu rendern
+2. Toast: „Rückgängig" (5 Sekunden)
+3. Nach 5s: `DELETE /deleteTransaction/:id` an Server
+4. Undo: `clearTimeout()` + Transaktion zurück ins Array
 
-**Wichtig**: Bei Transfers (erkennbar an `transfer_pair_id`) werden **beide** Transaktionen des Paares gleichzeitig entfernt und nach 5 Sekunden beide serverseitig gelöscht.
+Bei Transfers: beide Transaktionen des Paares werden clientseitig entfernt, serverseitig über `DELETE /transfer/:id` gelöscht (bidirektional).
 
-### Kategorien
-- Kategorien sind **frei wählbar** – kein festes Schema
-- Der Nutzer kann eigene Kategorien anlegen (`/users/categories/add`), die dann in Dropdowns vorgeschlagen werden
-- Tabelle: `custom_categories (id, user_id, name)`
-- Standard-Kategorien sind clientseitig hardcodiert: `['Essen & Trinken', 'Lebensmittel', 'Klamotten', 'Freizeit', 'Tanken', 'Wohnen', 'Transport', 'Gesundheit', 'Gehalt', 'Sonstiges']`
-- **Kritisch**: Budget-Kategorien und Transaktions-Kategorien sind durch denselben Freitext-Mechanismus verknüpft. Tippfehler führen zu Nicht-Übereinstimmungen.
+### Bulk-Auswahl & Massenaktionen (seit v3.0)
+Jede Transaktionszeile hat eine **Checkbox**. Der Sort-Header hat eine Select-All-Checkbox (nur aktuelle Seite).
+
+Sobald ≥ 1 Transaktion ausgewählt ist, erscheint eine **floating Action Bar** am unteren Bildschirmrand:
+- Zeigt Anzahl der ausgewählten Transaktionen
+- **Kategorie setzen**: Dropdown mit allen Kategorien → wendet sofort an
+- **Löschen**: optimistisch mit 5s Undo-Toast für alle gewählten
+- **✕**: Auswahl aufheben
+
+Ausgewählte Zeilen werden blau hinterlegt. Auswahl wird bei jedem `loadData()` zurückgesetzt.
+
+**API-Endpunkte für Bulk-Aktionen:**
+| Methode | Route | Body | Funktion |
+|---------|-------|------|----------|
+| POST | `/transactions/bulk-delete` | `{ ids: [...] }` | Mehrere Transaktionen löschen |
+| POST | `/transactions/bulk-categorize` | `{ ids: [...], category }` | Kategorie für mehrere setzen |
 
 ### API-Endpunkte
 | Methode | Route | Funktion |
 |---------|-------|----------|
 | GET | `/getTransactions` | Alle Transaktionen des Nutzers |
-| POST | `/addTransaction` | Transaktion hinzufügen (wendet Regeln an) |
-| PUT | `/updateTransaction/:id` | Transaktion bearbeiten |
-| DELETE | `/deleteTransaction/:id` | Transaktion löschen |
-| GET | `/categories` | Alle (Standard + eigene) Kategorien |
-| POST | `/categories/add` | Eigene Kategorie hinzufügen |
-| DELETE | `/categories/:id` | Eigene Kategorie löschen |
+| POST | `/addTransaction` | Transaktion hinzufügen (Regeln + upsertCategory) |
+| PUT | `/updateTransaction/:id` | Bearbeiten (loggt Vorher/Nachher) |
+| DELETE | `/deleteTransaction/:id` | Löschen |
+| GET | `/categories` | Kategorien als volle Objekte `{id, name, icon, color}` |
+| POST | `/categories/add` | Neue Kategorie anlegen |
+| DELETE | `/categories/delete/:name` | Kategorie löschen |
+| PUT | `/categories/update` | Kategorie umbenennen (synct `category` in ausgabenDB) |
+| POST | `/transactions/bulk-delete` | Mehrere löschen |
+| POST | `/transactions/bulk-categorize` | Kategorisieren |
 
 ---
 
 ## 7. Konto-zu-Konto-Transfers
 
 ### Konzept
-Ein Transfer ist eine **bidirektionale Umbuchung** zwischen zwei Konten. Er erzeugt immer **zwei verknüpfte Transaktionen**:
-- Eine **Ausgabe** auf dem Quellkonto (Typ: Ausgaben, `account_id` = Quelle)
-- Eine **Einnahme** auf dem Zielkonto (Typ: Einnahmen, `account_id` = Ziel)
+Ein Transfer erzeugt immer **zwei verknüpfte Transaktionen**:
+- Eine **Ausgabe** auf dem Quellkonto
+- Eine **Einnahme** auf dem Zielkonto
 
-Beide Transaktionen referenzieren sich gegenseitig über `transfer_pair_id`.
+Beide referenzieren sich gegenseitig über `transfer_pair_id`.
 
 ### Transfer-Typen
 1. **Privat → Privat**: Zwischen zwei eigenen Konten
 2. **Privat → Haushalt**: Vom Privatkonto auf ein Haushaltskonto
-3. **Haushalt → Privat**: Vom Haushaltskonto zurück auf ein Privatkonto
+3. **Haushalt → Privat**: Vom Haushaltskonto zurück
 
-Die Konten-Auswahl im Transfer-Formular nutzt `/accounts/all`, das sowohl private als auch Haushalt-Konten zurückgibt.
-
-### Technische Details
-```sql
--- Quell-Transaktion (Ausgabe auf Konto A):
-INSERT INTO ausgabenDB (..., transfer_to_account_id=B_id, transfer_pair_id=NULL)
-→ gibt ID zurück: pair_id
-
--- Ziel-Transaktion (Einnahme auf Konto B):
-INSERT INTO ausgabenDB (..., transfer_to_account_id=A_id, transfer_pair_id=pair_id)
-→ UPDATE erste Transaktion: SET transfer_pair_id = neue_ID
-```
-
-### Transfer löschen
-Beim Löschen eines Transfers (`DELETE /transfer/:id`) werden **beide** Transaktionen des Paares gelöscht. Der Server erkennt die Gegenseite anhand von `transfer_pair_id`.
-
-### Anzeige im Tracker
-Transfer-Transaktionen werden mit einem speziellen Icon (`ri-exchange-2-line`) angezeigt. Das Löschen über das Undo-System entfernt clientseitig beide Transaktionen (`transfer_pair_id`), dann serverseitig nach 5 Sekunden.
+### Transfer löschen (bidirektional, seit v3.0)
+`DELETE /transfer/:id` löscht **beide** Transaktionen des Paares. Die Suche nach der Gegenseite erfolgt bidirektional:
+- Primär: `WHERE id = transfer_pair_id`
+- Fallback Reverse-Lookup: `WHERE transfer_pair_id = id` (verhindert Halb-Waisen bei inkonsistenten Paaren)
 
 ---
 
 ## 8. CSV-Import
 
-### Zugang
-Sidebar → Finanzen → CSV-Import (`/users/import`)
-
 ### 3-Schritt-Wizard
+**Schritt 1: Upload** — Drag & Drop, max. 5 MB, Bank-Presets: Auto, GoldenGoat, DKB, ING, Sparkasse, N26, Eigenes Format
 
-#### Schritt 1: Datei hochladen
-- Drag & Drop oder Klick-Upload
-- Akzeptiert `.csv` und `.txt`, max. 5 MB
-- **Encoding**: UTF-8 (deutsche Umlaute werden korrekt gelesen)
-- **Bank-Voreinstellungen** wählbar:
-  - `Auto-Erkennung`: analysiert Spaltennamen und wählt Mapping automatisch
-  - `GoldenGoat CSV`: eigenes Exportformat
-  - `DKB`: Spalten Buchungsdatum, Zahlungspflichtige\*r, Betrag (€)
-  - `ING`: Spalten Buchung, Auftraggeber/Empfänger, Betrag
-  - `Sparkasse`: Buchungstag, Beguenstigter, Betrag
-  - `N26`: Datum, Empfänger, Betrag (EUR)
-  - `Eigenes Format`: manuelles Mapping
+**Schritt 2: Spalten-Mapping** — Pflicht: Datum, Bezeichnung, Betrag; Optional: Typ, Kategorie
 
-**CSV-Parser** (clientseitig in `import.js`):
-- Erkennt Trennzeichen automatisch (`;`, `,`, `\t`, `|`) durch Spaltenanzahl-Vergleich
-- Unterstützt quoted fields: `"Feld mit, Komma"`
-- Escaped quotes: `""` innerhalb von Feldern
-- Überspringt Metadaten-Zeilen vor dem Header (z.B. DKB hat mehrere Informationszeilen oben)
+**Schritt 3: Vorschau & Import**
+- Import-Button steht **oben** (sichtbar ohne Scrollen)
+- Editierbare Tabelle (Name, Typ, Kategorie, Konto pro Zeile)
+- Auto-Kategorisierung via lokale Regeln (`applyRegelLocal`)
+- **Duplikat-Check** (seit v3.1): Hash aus `name|date|amount.toFixed(2)|notes.trim()`. Wird **immer** serverseitig geprüft — keine Checkbox mehr. Duplikate werden sowohl gegen bestehende DB-Transaktionen als auch gegen den aktuellen Import-Batch geprüft. Server gibt `{ imported, skipped }` zurück.
 
-#### Schritt 2: Spalten zuordnen
-- Pflichtfelder: **Datum**, **Bezeichnung**, **Betrag**
-- Optionale Felder: Typ, Kategorie, Bezeichnung 2 (wird an Bezeichnung angehängt mit ` · `)
-- Vorschau der ersten 3 Datenzeilen im Original-Format
-- Mapping per Dropdown (jede CSV-Spalte wählbar)
-
-**Auto-Erkennung** (bei `auto`-Preset):
-Die Spaltennamen werden case-insensitiv gegen Regex-Muster geprüft:
-- Datum: `/datum|date|buchung|valuta/`
-- Name: `/empfänger|auftraggeber|name|zahlungspflichtige|beguenstigt/`
-- Betrag: `/betrag|amount|umsatz|wert|summe/`
-- Typ: `/typ|type|art\b/`
-- Kategorie: `/kategorie|category/`
-
-#### Schritt 3: Vorschau & Import
-**Datum-Parsing** (mehrere Formate unterstützt):
-- `DD.MM.YYYY` oder `DD.MM.YY` → `YYYY-MM-DD`
-- `YYYY-MM-DD` → direkt übernommen
-- `MM/DD/YYYY` → umgewandelt
-- 2-stellige Jahre: <50 → 20xx, ≥50 → 19xx
-
-**Betrags-Parsing** (deutsche Notation):
-- Entfernt `€`, `EUR`, Leerzeichen
-- Erkennt deutsche Notation: `1.234,56` → `1234.56`
-- Erkennt englische Notation: `1,234.56` → `1234.56`
-- Betrag wird immer als Absolutwert gespeichert (`Math.abs()`)
-
-**Typ-Erkennung** (Einnahmen vs. Ausgaben):
-1. Typ-Spalte vorhanden → Schlüsselwörter: `einnahm/income/credit/gutschr/haben` → Einnahmen; `ausgab/expens/debit/soll` → Ausgaben
-2. Explizites `+` am Anfang des Betrags → Einnahmen
-3. Fallback: Ausgaben
-
-**Auto-Kategorisierung via Regeln**:
-Nach dem Mapping wird für jede Zeile `applyRegelLocal(name)` aufgerufen (clientseitig). Diese Funktion filtert Regeln mit `modus !== 'haushalt'` und wendet Bedingungen gegen den Transaktionsnamen an. Passende Regeln setzen Kategorie und/oder Typ. Ein Badge zeigt welche Regel griff.
-
-**Editierbare Vorschau-Tabelle**:
-- Jede Zeile: Checkbox (inkludieren/exkludieren), Name (editierbar), Betrag, Typ-Dropdown, Kategorie (editierbar), Konto-Dropdown
-- „Alle aktivieren" / „Alle deaktivieren"
-- Live-Zusammenfassung: Anzahl, Einnahmen, Ausgaben, Saldo
-- Banner zeigt Anzahl automatisch kategorisierter Transaktionen
+**Zusammenfassungs-Leiste** (Schritt 3):
+- Einnahmen, Ausgaben, Netto (Saldo des Imports), Anzahl Transaktionen
+- Bei erkanntem Saldo-Wert (ING-Format): Stat „Ziel-Kontostand" wird eingeblendet
 
 **Import-Endpunkt**: `POST /import/transactions`
-- Nimmt Array von `{name, amount, type, category, date, account_id}` entgegen
-- Schreibt jede gültige Transaktion per `saveTransaction()` in `ausgabenDB`
-- Loggt einen Activity-Log-Eintrag mit `bulk_import: N`
-- Gibt `{ imported: N }` zurück
+- Gibt `{ imported: N, skipped: M }` zurück
+- Loggt Activity-Log-Eintrag mit `bulk_import: N`
+
+### Saldo-Erkennung (ING und ähnliche Banken)
+
+Manche Banken liefern in ihrer CSV eine Spalte mit dem Kontostand nach der letzten Transaktion. Der Import-Wizard erkennt diesen Wert automatisch und zeigt ihn in der Zusammenfassungs-Leiste an.
+
+**Saldo-Modus-Auswahl** (erscheint nur wenn Saldo erkannt):
+| Option | Verhalten |
+|--------|-----------|
+| Auf `X,XX €` setzen (Zielkontostand) | Setzt `accounts.balance` so, dass der aktuelle Kontostand nach dem Import exakt dem erkannten Zielwert entspricht. |
+| Nicht anpassen | Transaktionen werden importiert, Kontostand bleibt unverändert. |
+
+**Technischer Ablauf bei „Zielkontostand":**
+1. Server berechnet: `newStartBalance = targetBalance − (currentBalance − balance)`
+2. `accounts.balance` wird aktualisiert (kein separater Abgleichs-Datensatz)
+3. Erst **nach** dem Kontostand-Update wird Schritt 4 (Erfolgsmeldung) angezeigt — verhindert Race-Condition wenn Nutzer schnell navigiert
 
 ---
 
@@ -369,130 +359,73 @@ budgets (id, user_id, kategorie TEXT UNIQUE per user, betrag REAL)
 ```
 
 #### Funktionsweise
-- Jede Kategorie kann ein **monatliches Budget** erhalten
-- Der Verbrauch wird aus `ausgabenDB` (Typ: Ausgaben, aktiver Monat, passende Kategorie) summiert
-- **Farbampel**: grün < 70%, orange 70–90%, rot > 90% des Budgets
-- **Prognose** (ab Tag 3 des Monats): Bisherige Ausgaben ÷ vergangene Tage × Monatstage
-  - Zeigt eine vertikale Markierungslinie auf dem Balken
-  - Warnung wenn Prognose > Budget: globales Warning-Banner mit betroffenen Kategorien
-- **Donut-Chart**: Top-8 Kategorien nach Ausgaben (restliche in „Sonstiges")
-
-#### Budgets anlegen/bearbeiten
-- Werden per Kategoriename identifiziert (UNIQUE constraint per Nutzer)
-- Kein Budget für eine Kategorie → Ausgaben trotzdem sichtbar als „kein Budget gesetzt"
-- Löschen mit Undo-Toast (5 Sekunden)
+- Monatliches Budget pro Kategorie
+- Verbrauch aus `ausgabenDB` (Typ: Ausgaben, aktiver Monat, passende Kategorie)
+- **Farbampel**: grün < 70%, orange 70–90%, rot > 90%
+- **Prognose** (ab Tag 3): bisherige Ausgaben ÷ vergangene Tage × Monatstage → Warnung wenn Prognose > Budget
+- **Donut-Chart**: Top-8 Kategorien
 
 ---
 
-### Sparziele (Finanzziele)
+### Sparziele
 
 #### Tabelle
 ```sql
 sparziele (
     id, user_id,
-    name TEXT,
-    zielbetrag REAL,
-    gespart REAL,            -- aktuell angespartes Kapital
-    datum TEXT,              -- optionales Zieldatum (ISO)
-    farbe TEXT,              -- Hex-Farbe
-    typ TEXT,                -- Zieltyp (s.u.)
-    account_id INTEGER       -- optionales verknüpftes Konto
+    name TEXT, zielbetrag REAL, gespart REAL,
+    datum TEXT,     -- Zieldatum (ISO)
+    farbe TEXT,     -- Hex-Farbe
+    typ TEXT,       -- 'notgroschen'|'urlaub'|'auto'|'haus'|'rente'|...
+    account_id INTEGER
 )
 ```
 
-#### Zieltypen
-`notgroschen`, `urlaub`, `auto`, `haus`, `rente`, `ausbildung`, `hochzeit`, `elektronik`, `sonstiges`
-
-Jeder Typ hat ein eigenes Icon und eine passende Monatsspar-Berechnung.
-
-#### Fortschrittsanzeige
-- Prozentbalken mit aktuellem Fortschritt
-- **Benötigte monatliche Sparrate**: `(zielbetrag - gespart) / MoNate bis Datum`
-- **Status-Badge**:
-  - „Auf Kurs" wenn tatsächlicher Fortschritt ≥ Soll-Fortschritt − 5%
-  - „Hinter Plan" bei mehr als 5% Rückstand
-  - „Erreicht" bei 100%
-- Ohne Datum: Prognose auf Basis der durchschnittlichen Sparrate der letzten 3 Monate (aus Transaktionen der Kategorie „Sparziele" ermittelt)
-
 #### Einzahlungen
-Über den „Einzahlen"-Button öffnet sich ein Modal mit:
-1. Betrag-Eingabe
-2. Checkbox: **„Als Ausgabe im Ausgabentracker erfassen"** (Standard: aktiviert)
-
-Bei Bestätigung:
-- `POST /sparziele/:id/add` → erhöht `gespart` (maximal `zielbetrag`)
-- Wenn Checkbox aktiv: erstellt eine Transaktion in `ausgabenDB`:
-  - Name: `Sparziel: [Name des Ziels]`
-  - Kategorie: `Sparziele`
-  - Typ: `Ausgaben`
-  - Konto: das verknüpfte Konto des Sparziels (falls vorhanden)
-  - Datum: aktueller Tag
-
-**Initiale Einzahlung**: Wird bei `POST /sparziele/add` mit `gespart > 0` ebenfalls automatisch eine Transaktion erstellt.
-
-**Achtung**: Wenn `gespart` direkt über `PUT /sparziele/:id` (Edit-Formular) geändert wird, wird **keine** Transaktion erstellt. Diese Route ist für reine Metadaten-Änderungen gedacht, aber es gibt keine clientseitige Unterscheidung.
+`POST /sparziele/:id/add` erhöht `gespart` und erstellt optional eine Transaktion (Kategorie: „Sparziele"). `PUT /sparziele/:id` (Edit) darf `gespart` ändern **ohne** Transaktion – das ist korrekt so.
 
 #### Konto-Aufteilung
-Auf der Budget-Seite gibt es eine visuelle Aufteilung aller verknüpften Konten:
-- Zeigt für jedes Konto: Gesamtstand, davon für Sparziele reserviert, freier Rest
-- Warnung wenn die Summe aller Sparziele eines Kontos den Kontostand übersteigt
+Auf der Budget-Seite: Warnung wenn `SUM(sparziele.gespart WHERE account_id=X) > accounts.currentBalance`.
 
 ---
 
 ## 10. Fixkosten & Abos
 
-### Tabelle
+### Tabelle (unified)
 ```sql
-recurring_transactions (
+fixkosten (
     id, user_id,
-    name TEXT,
-    category TEXT,
-    amount REAL,
-    type TEXT,               -- 'Einnahmen' | 'Ausgaben'
+    name TEXT, betrag REAL,
+    datum_tag INTEGER,          -- Tag des Monats (Fallback wenn kein naechste_faelligkeit)
+    haeufigkeit TEXT,           -- 'wöchentlich'|'monatlich'|'vierteljährlich'|...
+    kategorie TEXT,
     account_id INTEGER,
-    rhythmus TEXT,           -- 'wöchentlich'|'monatlich'|'vierteljährlich'|'halbjährlich'|'jährlich'
-    naechste_faelligkeit TEXT, -- ISO-Datum des nächsten Termins
-    aktiv INTEGER DEFAULT 1, -- 1 = aktiv, 0 = pausiert
+    subtyp TEXT,                -- 'fixkosten' | 'abo' | 'recurring'
     notiz TEXT,
-    subtyp TEXT,             -- 'fixkosten' | 'abo' | 'recurring'
-    icon TEXT                -- RemixIcon-Klasse
+    naechste_faelligkeit TEXT,  -- ISO-Datum (bevorzugt gegenüber datum_tag)
+    aktiv INTEGER DEFAULT 1,
+    icon TEXT,
+    farbe TEXT,
+    tx_type TEXT DEFAULT 'Ausgaben',
+    transfer_to_account_id INT,
+    transfer_to_source TEXT,
+    transfer_to_haushalt_id INT
 )
 ```
 
-### Unified-System
-Fixkosten, Abos und wiederkehrende Transaktionen sind in einer einzigen Tabelle vereint. Die Unterscheidung erfolgt über `subtyp`:
-- `fixkosten`: Regelmäßige Kosten (Miete, Strom)
-- `abo`: Abonnements (Netflix, Spotify)
-- `recurring`: Sonstige wiederkehrende Buchungen
+Fixkosten, Abos und recurring_transactions sind **in einer Tabelle vereint** (`subtyp`). Migration läuft automatisch beim Start.
 
-### Erinnerungs-Leiste
-Auf der Ausgabentracker-Seite erscheint am oberen Rand eine farbige Leiste, wenn Fixkosten fällig sind (`naechste_faelligkeit ≤ heute`). Sie zeigt bis zu 3 überfällige Positionen mit einem Quick-Book-Button.
-
-### Buchen einer Fälligkeit
-`POST /fixkosten/unified/:id/book`:
-1. Erstellt eine neue Transaktion in `ausgabenDB` mit `recurring_id = fixkost.id`
-2. Berechnet das nächste Fälligkeitsdatum basierend auf `rhythmus`
-3. Aktualisiert `naechste_faelligkeit` in der Tabelle
-4. Gibt das neue Datum zurück (für die Client-Aktualisierung)
-
-**Nächste-Fälligkeit-Berechnung**:
-- Monatlich: +1 Monat (gleicher Tag)
-- Wöchentlich: +7 Tage
-- Vierteljährlich: +3 Monate
-- Halbjährlich: +6 Monate
-- Jährlich: +1 Jahr
-
-### Gebuchte Transaktionen
-Transaktionen mit `recurring_id ≠ null` werden im Ausgabentracker mit einem Schloss-Icon angezeigt und sind **nicht editierbar** (verhindert inkonsistente Zustände).
+### Konto-Pflicht beim Buchen (seit v3.0)
+`bookFixkostUnified()` wirft `KEIN_KONTO`, wenn kein Konto gesetzt ist (bei Nicht-Transfer-Fixkosten). Die Route gibt 400 zurück. Das UI zeigt eine Warnung im Buchungsmodal.
 
 ### API-Endpunkte
 | Methode | Route | Funktion |
 |---------|-------|----------|
-| GET | `/fixkosten/unified` | Alle wiederkehrenden Vorlagen |
+| GET | `/fixkosten/unified` | Alle Fixkosten |
 | POST | `/fixkosten/unified/add` | Neue Vorlage |
-| PUT | `/fixkosten/unified/:id` | Vorlage bearbeiten |
-| DELETE | `/fixkosten/unified/:id` | Vorlage löschen |
-| POST | `/fixkosten/unified/:id/book` | Buchen + Fälligkeit vorschreiben |
+| PUT | `/fixkosten/unified/:id` | Bearbeiten |
+| DELETE | `/fixkosten/unified/:id` | Löschen |
+| POST | `/fixkosten/unified/:id/book` | Buchen + nächste Fälligkeit setzen |
 
 ---
 
@@ -500,44 +433,15 @@ Transaktionen mit `recurring_id ≠ null` werden im Ausgabentracker mit einem Sc
 
 ### Tabellen
 ```sql
-schulden (
-    id, user_id,
-    kreditor TEXT,           -- Gläubiger
-    betrag REAL,             -- ursprünglicher Schuldbetrag
-    ausgezahlt REAL,         -- erhaltener Betrag (bei Krediten < Schuldbetrag möglich)
-    zinssatz REAL,           -- jährlicher Zinssatz in %
-    monatlich REAL,          -- monatliche Rate
-    laufzeit_jahre REAL,
-    datum_start TEXT,
-    notiz TEXT,
-    gesamt_gezahlt REAL      -- Summe aller erfassten Zahlungen
-)
+schulden (id, user_id, kreditor, betrag, zinssatz, monatlich,
+          laufzeit_jahre, datum_start, notiz, gesamt_gezahlt, faelligkeitstag)
 
-schulden_zahlungen (
-    id, schulden_id,
-    user_id INTEGER,
-    betrag REAL,
-    datum TEXT,
-    notiz TEXT,
-    transaction_id INTEGER,  -- optional: verknüpfte Transaktion in ausgabenDB
-    account_id INTEGER       -- optional: verwendetes Konto
-)
+schulden_zahlungen (id, schulden_id, user_id, betrag, datum, notiz,
+                    transaction_id, account_id)
 ```
 
-### Schulden erfassen
-- Felder: Gläubiger, Schuldbetrag, monatliche Rate, Zinssatz, Startdatum, Notiz
-- Dashboard zeigt: Restschuld (`betrag - gesamt_gezahlt`), gezahlte Summe, Fortschrittsbalken, nächste Rate
-
-### Zahlungen erfassen
-`POST /schulden/:id/zahlungen`:
-- Erhöht `gesamt_gezahlt` um den Zahlungsbetrag
-- Erstellt optional eine Transaktion in `ausgabenDB` (Typ: Ausgaben, Kategorie: „Schulden")
-- `transaction_id` in `schulden_zahlungen` verweist auf die erstellte Transaktion
-
-**Undo beim Löschen**: Zahlungen können mit Undo-Toast gelöscht werden. Achtung: Die verknüpfte Transaktion wird beim Löschen der Zahlung **nicht** automatisch mitgelöscht.
-
-### Interaktion mit Transaktionen
-Schulden-Zahlungen können optionale Transaktionen erzeugen. Die Verknüpfung ist einseitig: `schulden_zahlungen.transaction_id` zeigt auf `ausgabenDB.id`, aber nicht umgekehrt. Das bedeutet: Wird die Transaktion direkt gelöscht, bleibt die Zahlung bestehen (mit verwaister `transaction_id`).
+### Zahlungen löschen (seit v3.0)
+`DELETE /schulden/zahlungen/:id` löscht **sowohl die Zahlung als auch die verknüpfte Transaktion** in `ausgabenDB` (via `transaction_id`). Wird ins Activity-Log geschrieben.
 
 ---
 
@@ -547,55 +451,45 @@ Schulden-Zahlungen können optionale Transaktionen erzeugen. Die Verknüpfung is
 ```sql
 kategorisierungs_regeln (
     id, user_id,
-    bedingung_operator TEXT,  -- 'enthält' | 'beginnt_mit' | 'endet_mit' | 'gleich'
-    bedingung_wert TEXT,      -- Suchtext (case-insensitiv geprüft)
-    aktion_kategorie TEXT,    -- zu setzende Kategorie (optional)
-    aktion_typ TEXT,          -- zu setzender Typ: 'Einnahmen' | 'Ausgaben' (optional)
+    bedingung_operator TEXT,  -- 'enthält'|'beginnt_mit'|'endet_mit'|'gleich'
+    bedingung_wert TEXT,
+    aktion_kategorie TEXT,
+    aktion_typ TEXT,
     aktiv INTEGER DEFAULT 1,
-    modus TEXT DEFAULT 'beide'-- 'beide' | 'privat' | 'haushalt'
+    modus TEXT DEFAULT 'beide', -- 'beide'|'privat'|'haushalt'
+    priority INTEGER DEFAULT 0  -- höhere Zahl = höhere Priorität (seit v3.0)
 )
 ```
 
-### Bedingungsoperatoren
-| Operator | Beschreibung |
-|----------|-------------|
-| `enthält` | Transaktionsname enthält den Wert |
-| `beginnt_mit` | Transaktionsname beginnt mit dem Wert |
-| `endet_mit` | Transaktionsname endet mit dem Wert |
-| `gleich` | Transaktionsname ist exakt gleich dem Wert |
-
-Der Vergleich erfolgt immer **case-insensitiv** (beide Seiten `.toLowerCase()`).
-
-### Modi
-| Modus | Wird angewendet in |
-|-------|-------------------|
-| `beide` | Privaten Transaktionen + Haushalt-Transaktionen |
-| `privat` | Nur privaten Transaktionen |
-| `haushalt` | Nur Haushalt-Transaktionen |
+### Prioritätssystem (seit v3.0)
+Regeln werden nach `priority DESC, id ASC` sortiert. Höhere Priorität gewinnt. Priorität einstellbar von -99 bis +99 im Modal. Farbige Badge in der Regelliste zeigt die Priorität an. `toggleAktiv` behält `priority` bei.
 
 ### Anwendungspunkte
-Regeln werden an **drei Stellen** angewendet:
+1. **Live bei Eingabe** (Client, 250ms Debounce)
+2. **Beim Speichern** (Server, `POST /addTransaction`)
+3. **CSV-Import** (Client, nach Mapping; Haushalt-Import: serverseitig via `applyRegeln` mit `modus='haushalt'`)
+4. **Apply-All** — getrennt für Privat und Haushalt (seit v3.1)
 
-**1. Live während Eingabe (clientseitig)**
-Beim Tippen des Transaktionsnamens im Ausgabentracker oder Haushalt-Tracker (Debounce: 250ms) wird `applyRegelLocal()` aufgerufen. Die erste passende Regel setzt Kategorie und/oder Typ im Formular und zeigt einen Hinweis-Badge. Im Haushalt-Tracker werden nur Regeln mit `modus = 'beide'` oder `modus = 'haushalt'` berücksichtigt; im Privat-Tracker nur `'beide'` oder `'privat'`.
+### Apply-All mit „nur leere Felder"-Option (seit v3.0)
+Backend-Flag `onlyEmpty`. Wenn aktiv: Regel wird nur auf Transaktionen angewendet, die noch keine Kategorie haben. Frontend-Checkbox „Nur Transaktionen ohne Kategorie" in der Apply-All-Funktion.
 
-**2. Beim Speichern (serverseitig)**
-`POST /addTransaction` ruft `db.applyRegeln(userId, name, category, type, 'privat')` auf. Nur wenn die Regel passt und `modus` `'beide'` oder `'privat'` ist, wird sie angewendet. Serverseitig überschreibt die Regel die client-seitig gesetzten Werte (falls vom Client kein Wert mitgegeben wurde).
+### Apply-All für Haushalt (seit v3.1)
+Auf der Regeln-Seite gibt es zwei separate Buttons:
+- **„Auf Haushalt-Transaktionen anwenden"** → `POST /haushalt/regeln/apply-all`
+- **„Auf Privat-Transaktionen anwenden"** → `POST /regeln/apply-all`
 
-**3. Beim CSV-Import (clientseitig)**
-Nach dem Spalten-Mapping wendet `import.js` Regeln auf alle importierten Zeilen an. Nur Regeln mit `modus !== 'haushalt'` werden berücksichtigt.
+`POST /haushalt/regeln/apply-all` iteriert über alle `haushalt_transaktionen` des Haushalts und wendet `applyRegeln(userId, ..., 'haushalt')` an. Gibt `{ updated: N }` zurück.
 
-**4. Batch-Anwendung**
-`POST /regeln/apply-all` wendet alle aktiven Regeln rückwirkend auf **alle bestehenden Transaktionen** des Nutzers an. Nur die erste passende Regel pro Transaktion wird angewendet. Transaktionen mit bereits gesetzter Kategorie werden **überschrieben**.
-
-### Regelreihenfolge
-Die Regeln werden in der Reihenfolge ihrer Erstellung (nach ID) geprüft. **Die erste passende Regel gewinnt** – es gibt kein Prioritätssystem. Werden Regeln bearbeitet, ändert sich ihre Reihenfolge nicht.
-
-### Aktion
-Jede Regel kann eine oder beide Aktionen ausführen:
-- **Kategorie setzen**: z.B. „REWE" → Kategorie = „Lebensmittel"
-- **Typ setzen**: z.B. „Gehalt" → Typ = „Einnahmen"
-Eine Regel ohne beide Aktionen ist technisch möglich, aber nutzlos.
+**API-Endpunkte Regeln:**
+| Methode | Route | Funktion |
+|---------|-------|----------|
+| GET | `/regeln` | Alle Regeln des Nutzers |
+| POST | `/regeln/add` | Neue Regel anlegen |
+| PUT | `/regeln/:id` | Regel bearbeiten |
+| DELETE | `/regeln/:id` | Regel löschen |
+| PATCH | `/regeln/:id/toggle` | Aktivieren/Deaktivieren |
+| POST | `/regeln/apply-all` | Alle Privat-Transaktionen re-kategorisieren |
+| POST | `/haushalt/regeln/apply-all` | Alle Haushalt-Transaktionen re-kategorisieren |
 
 ---
 
@@ -604,137 +498,39 @@ Eine Regel ohne beide Aktionen ist technisch möglich, aber nutzlos.
 ### Zugang
 Sidebar → Finanzen → Steuer-Modul (`/users/steuern`)
 
+### Dynamische Steuertarife (seit v3.0)
+Alle Steuerparameter sind im `STEUER_TARIFE`-Objekt hinterlegt (aktuell 2022–2025):
+```javascript
+STEUER_TARIFE = {
+    2025: { grundfreibetrag, progressionszonen, ruerupMaxPct, ruerupMax,
+            riesterMax, sparerpauschbetrag, werbungskostenPausch, soliFreigrenze },
+    2024: { ... },
+    ...
+}
+```
+`getTarif(jahr)` liefert die Parameter für das gewünschte Jahr (fallback auf aktuellstes). **Neues Jahr hinzufügen = ein Eintrag im Objekt ergänzen, kein weiterer Code-Aufwand.**
+
+### „Aus Daten vorausfüllen"-Button (seit v3.0)
+`vorausfuellenAusDaten()` summiert automatisch für das aktive Steuerjahr:
+- Kapitalerträge aus `steuer_kapitalertraege`
+- Rürup/Riester aus `steuer_altersvorsorge`
+- Sonderausgaben aus `steuer_sonderausgaben`
+- Werbungskosten aus `steuer_werbungskosten`
+
+und füllt alle Felder im Erstattungsschätzer vor.
+
 ### Tab-Übersicht
 
----
-
-#### Tab 1: Jahresübersicht
-Lädt alle Transaktionen des Nutzers für das gewählte Steuerjahr und stellt dar:
-- **Stat-Karten**: Gesamteinnahmen, Gesamtausgaben, Werbungskosten, Netto-Saldo
-- **Werbungskosten**: Summe aus `steuer_werbungskosten` + Vergleich mit Pauschbetrag (1.230 €)
-- **Monatliches Balkendiagramm**: Einnahmen vs. Ausgaben (Chart.js)
-- **Werbungskosten-Balken**: Aufschlüsselung nach Kategorie
-- **Monatstabelle**: Detaillierte Monatsauswertung
-
-⚠️ **Wichtig**: Die Jahresübersicht zeigt Transaktionen aus `ausgabenDB` (Ausgabentracker). Das sind **keine** Steuerdaten – Bruttoeinkommen aus der Lohnsteuerbescheinigung ist separat im Erstattungsschätzer einzugeben.
-
----
-
-#### Tab 2: Erstattungsschätzer
-Berechnung der geschätzten Einkommensteuer und Erstattung/Nachzahlung.
-
-**Eingabefelder**:
-| Bereich | Feld | Details |
-|---------|------|---------|
-| Einkommen | Bruttoeinkommen | Jahresbetrag |
-| Einkommen | Steuerklasse | I–VI |
-| Einkommen | Kirchensteuer | Keine / 8% (BY, BW) / 9% (andere) |
-| Abzüge | Werbungskosten | Minimum: 1.230 € Pauschale |
-| Abzüge | Sonderausgaben | Kirchensteuer, Spenden etc. |
-| Abzüge | Außergewöhnliche Belastungen | Arztkosten etc. |
-| Abzüge | Gezahlte Lohnsteuer | Aus Lohnsteuerbescheinigung |
-| Kapitalerträge | Kapitalerträge gesamt | Dividenden + Zinsen + Kursgewinne |
-| Kapitalerträge | Genutzte FSA | Freistellungsaufträge |
-| Altersvorsorge | Rürup-Beitrag | 94% absetzbar, max. 27.565 € |
-| Altersvorsorge | Riester-Beitrag | Max. 2.100 € |
-
-**Berechnungslogik**:
-1. Werbungskosten: `max(Eingabe, 1.230)`
-2. Rürup-Abzug: `min(Eingabe × 0,94, 27.565 × 0,94)`
-3. Riester-Abzug: `min(Eingabe, 2.100)`
-4. Grundfreibetrag 2024: 11.604 € (ledig) / 23.208 € (verheiratet, Kl. III)
-5. ZVE: `max(0, Brutto - Werbung - Sonder - Belastungen - Altersvorsorge-Abzug - Grundfreibetrag)`
-6. ESt aus Grundtabelle 2024 (vereinfacht, 4 Progressionszonen)
-7. Soli: 5,5% der ESt wenn ESt > 18.130 € (mit Gleitzone)
-8. Kirchensteuer: 8% oder 9% der ESt
-9. **Kapitalerträge**: Abgeltungssteuer 25% auf `max(0, Kapitalerträge - FSA)`
-10. Soli auf Abgeltungssteuer: 5,5% wenn Abgeltungssteuer > 972,50 €
-11. Differenz zu gezahlter Lohnsteuer = Erstattung (positiv) oder Nachzahlung (negativ)
-
-**Einschränkungen**: Die Berechnung ist vereinfacht und dient nur als Orientierung. Keine Berücksichtigung von Kinderfreibeträgen, Altersentlastungsbeträgen, besonderen Abzügen etc.
-
----
-
-#### Tab 3: Werbungskosten
-Erfassung absetzbarer Berufsausgaben.
-
-**Tabelle**: `steuer_werbungskosten (id, user_id, kategorie, bezeichnung, betrag, datum, steuerjahr, notiz)`
-
-**Kategorien**: Fahrtkosten, Arbeitsmittel, Fortbildung, Homeoffice, Bewerbungen, Sonstiges
-
-**Anzeige**: Gruppiert nach Kategorie, mit Jahresgesamtbetrag und Vergleich mit Pauschbetrag (1.230 €). Jahresübersichtstab zeigt auch Werbungskosten-Chart.
-
-Löschen mit Undo-Toast (5 Sekunden).
-
----
-
-#### Tab 4: Kapitalerträge
-Erfassung von Kapitalerträgen nach Depot/Konto.
-
-**Tabelle**: `steuer_kapitalertraege (id, user_id, institution, steuerjahr, freistellungsauftrag, dividenden, zinsen, kursgewinne)`
-
-**Logik pro Eintrag**:
-- Gesamterträge = Dividenden + Zinsen + Kursgewinne
-- Steuerpflichtiger Anteil = `max(0, Gesamterträge - Freistellungsauftrag)`
-- Abgeltungssteuer = Steuerpflichtiger Anteil × 25%
-
-**Gesamtübersicht**:
-- Summe aller Erträge und FSA-Beträge über alle Einträge
-- Warnung wenn Gesamt-FSA < Sparerpauschbetrag (1.000 € ledig / 2.000 € verheiratet)
-
-**Interaktion mit Erstattungsschätzer**: Die Kapitalerträge-Daten werden **nicht** automatisch in den Schätzer übernommen – der Nutzer muss die Werte manuell eintragen.
-
----
-
-#### Tab 5: Altersvorsorge
-Erfassung von Altersvorsorge-Verträgen.
-
-**Tabelle**: `steuer_altersvorsorge (id, user_id, typ, bezeichnung, eigenbeitrag, ag_beitrag, zulage, steuerjahr)`
-
-**Vertragstypen**:
-| Typ | Erklärung | Steuerlicher Tipp |
-|-----|-----------|-------------------|
-| `riester` | Riester-Rente | bis 2.100 € als Sonderausgabe (inkl. Zulage: 175 €/J Grundzulage) |
-| `ruerup` | Rürup/Basisrente | 94% des Beitrags absetzbar (2024), max. 27.565 € |
-| `bav` | Betriebliche Altersvorsorge | AG-Beiträge bis 4% der BBG (3.624 €/2024) steuerfrei |
-| `gkv` | Gesetzliche Rentenversicherung | Automatisch über Lohnsteuerbescheinigung |
-
-**Hinweis-Texte**: Das Modal zeigt typ-abhängige Hinweise. AG-Beitragsfeld nur bei bAV; Zulagen-Feld nur bei Riester.
-
----
-
-#### Tab 6: Sonderausgaben
-Erfassung sonstiger absetzbarer Ausgaben.
-
-**Tabelle**: `steuer_sonderausgaben (id, user_id, kategorie, bezeichnung, betrag, steuerjahr, notiz)`
-
-**Kategorien**:
-| Kategorie | Max. Abzug | Hinweis |
-|-----------|-----------|---------|
-| `kirchensteuer` | vollständig | Gezahlte Kirchensteuer selbst absetzbar |
-| `spenden` | 20% des Einkommens | Bis 300 € reicht Kontoauszug |
-| `schulgeld` | 4.000 €/Kind | 2/3 der Kosten, Kinder unter 14 |
-| `ausbildung` | 6.000 € | Erstausbildung / Studium |
-| `unterhalt` | 13.805 € | Nur mit Anlage U (Zustimmung Empfänger) |
-| `sonstiges` | variabel | |
-
----
-
-#### Tab 7: Steuererklärung-Assistent
-Checkliste zur Vorbereitung der Steuererklärung.
-
-**Tabelle**: `steuer_assistent (user_id PK, checks_json TEXT)` – speichert ein JSON-Objekt mit `{[checkboxId]: true/false}`.
-
-Gruppen: Einkommensnachweise, Werbungskosten, Sonderausgaben & Versicherungen, Außergewöhnliche Belastungen, Sonstiges.
-
-**Fortschrittsanzeige** in der Sidebar: `erledigt / gesamt` mit Fortschrittsbalken.
-
-**Fristen**: Anzeige wichtiger Abgabefristen (31. Juli ohne Berater, 28. Februar übernächstes Jahr mit Berater, 1 Monat Einspruchsfrist).
-
----
-
-#### Tab 8: Steuer-Dokumente
-Zeigt Dokumente aus dem allgemeinen Dokumentenportal, gefiltert nach `typ = 'steuer'` oder `typ = 'gehalt'`. Gruppiert nach Jahr. Direktlink zur Dokumentenübersicht für den Upload.
+| Tab | Inhalt |
+|-----|--------|
+| Jahresübersicht | Transaktionen des Steuerjahrs aus `ausgabenDB`, Werbungskosten-Vergleich, Monatsdiagramm |
+| Erstattungsschätzer | Manuelle Eingabe + Berechnung + „Aus Daten vorausfüllen" |
+| Werbungskosten | CRUD `steuer_werbungskosten`, Kategorien: Fahrtkosten, Arbeitsmittel, etc. |
+| Kapitalerträge | CRUD `steuer_kapitalertraege` nach Institution |
+| Altersvorsorge | CRUD `steuer_altersvorsorge`, Typen: riester, ruerup, bav, gkv |
+| Sonderausgaben | CRUD `steuer_sonderausgaben`, Kategorien: Kirchensteuer, Spenden, etc. |
+| Assistent | Checkliste `steuer_assistent`, Fristen-Anzeige |
+| Steuer-Dokumente | Dokumente gefiltert nach `typ='steuer'` oder `typ='gehalt'` |
 
 ---
 
@@ -745,119 +541,122 @@ Zeigt Dokumente aus dem allgemeinen Dokumentenportal, gefiltert nach `typ = 'ste
 activity_log (
     id, user_id,
     aktion TEXT,     -- 'erstellt' | 'geändert' | 'gelöscht'
-    entity TEXT,     -- Entitätstyp (s.u.)
-    entity_id INT,   -- ID der betroffenen Entität (null bei Bulk-Operationen)
-    details TEXT,    -- JSON mit relevanten Feldwerten
+    entity TEXT,
+    entity_id INT,
+    details TEXT,    -- JSON {vorher: {...}, nachher: {...}} bei Änderungen
     created_at TEXT
 )
 ```
 
-### Geloggte Entitäten
-| entity | Wann geloggt |
-|--------|-------------|
-| Transaktion | erstellt, gelöscht, CSV-Bulk-Import |
+### Geloggte Entitäten (vollständige Liste)
+| entity | Wann |
+|--------|------|
+| Transaktion | erstellt, **geändert (Vorher/Nachher seit v3.0)**, gelöscht, CSV-Bulk |
 | Konto | erstellt, bearbeitet, gelöscht |
 | Finanzziel | erstellt, bearbeitet, gelöscht, Einzahlung |
 | Budget | erstellt, bearbeitet, gelöscht |
 | Schuld | erstellt, gelöscht |
+| Schulden-Zahlung | **gelöscht (seit v3.0)** |
 | Fixkosten | erstellt, gelöscht |
 | Haushalt-Transaktion | erstellt, gelöscht |
 
-**Nicht geloggt**: `PUT /updateTransaction` (Bearbeitung privater Transaktionen), Kategorien-Änderungen, Einstellungsänderungen.
-
-### details-JSON
-Das `details`-Feld enthält je nach Entität unterschiedliche Felder:
-- Transaktion: `{ name, amount, type, category, date }`
-- Finanzziel: `{ name, zielbetrag }` oder `{ name, betrag }` bei Einzahlung
-- Budget: `{ kategorie, betrag }`
-- Bulk-Import: `{ bulk_import: N, quelle: 'CSV-Import' }`
-
 ### Anzeige
-- **Privat**: `/users/activity` – Filter nach Entitätstyp
-- **Haushalt**: `/users/activity?filter=Haushalt-Transaktion`
-- Pagination: 50 Einträge pro Seite, „Mehr laden"-Button
-- Gruppierung nach Datum (Heute / Gestern / Wochentag + Datum)
-- Icons: Entitäts-Icon + Aktions-Icon + Farbcodierung (grün=erstellt, blau=geändert, rot=gelöscht)
-- Detail-Tags: Betrag, Typ, Kategorie, Datum aus dem `details`-JSON
+- Privat: `/users/activity` — Filter nach Entitätstyp
+- Haushalt: `/users/activity?filter=Haushalt-Transaktion`
+- Pagination: 50 pro Seite, Gruppierung nach Datum
 
 ---
 
 ## 15. Haushalt-Modus
 
-### Konzept
-Der Haushalt-Modus ermöglicht gemeinsame Finanzverwaltung für **zwei Personen**. Alle Haushaltsdaten sind vollständig von den privaten Daten getrennt (eigene Tabellen, eigene Kategorien).
-
 ### Tabellen-Übersicht
 ```sql
-haushalte (id, name, erstellt_von INTEGER, created_at)
-haushalt_mitglieder (id, haushalt_id, user_id, anzeigename, rolle)
+haushalte (id, name, erstellt_von, created_at)
+haushalt_mitglieder (id, haushalt_id, user_id, anzeigename, rolle ['admin'|'mitglied'])
 haushalt_konten_v2 (id, haushalt_id, name, balance, color, linked_account_id)
 haushalt_transaktionen (id, haushalt_id, eingetragen_von, name, category, amount,
                         type, date, konto_id, anteil_user1, anteil_user2, notiz)
-haushalt_fixkosten (id, haushalt_id, name, betrag, rhythmus, kategorie,
-                    anteil_user1, anteil_user2, datum_tag, erstellt_von)
-haushalt_fixkosten_monat (id, haushalt_id, fixkosten_id, monat, betrag,
-                          anteil_user1, anteil_user2, UNIQUE(...))
-haushalt_gehaelter (id, haushalt_id, user_id, monat, gehalt, sparbetrag)
-haushalt_ausgaben (id, haushalt_id, erstellt_von, name, betrag, datum, kategorie,
-                   notiz, tx_id)
-haushalt_todos (id, haushalt_id, erstellt_von, task, completed, priority,
-                due_date, label, notes)
-haushalt_dokumente (id, haushalt_id, hochgeladen_von, typ, name, ...)
-haushalt_tracker_categories (id, haushalt_id, name, UNIQUE(haushalt_id, name))
+haushalt_anteile (id, haushalt_transaktionen_id, user_id, anteil,
+                  UNIQUE(haushalt_transaktionen_id, user_id))  -- N-Personen-Vorbereitung
+haushalt_fixkosten (id, haushalt_id, name, betrag, rhythmus, kategorie, ...)
+haushalt_todos (id, haushalt_id, erstellt_von, task, completed, priority, due_date,
+                label, notes, zugewiesen_an, wiederholung)
+haushalt_dokumente (id, haushalt_id, hochgeladen_von, typ, name, ablageort, ...)
+haushalt_tracker_categories (id, haushalt_id, name)
+haushalt_ausgleiche (id, haushalt_id, von_user_id, an_user_id, betrag REAL,
+                     monat TEXT, notiz TEXT, created_at TEXT)
+haushalt_einladungen (id, haushalt_id, code TEXT, email TEXT, expires_at TEXT,
+                      used INTEGER DEFAULT 0)
 ```
 
-### Haushalt erstellen & einladen
-- Nutzer erstellt Haushalt über `/users/haushalt` → erhält Einladungs-Code
-- Zweite Person nimmt Einladung an (`/users/haushalt/einladung/:code/accept`)
-- Beide Mitglieder sehen den Haushalt im Haushalt-Modus
-- Max. 2 Mitglieder pro Haushalt
+### N-Personen-Vorbereitung (seit v3.0)
+`haushalt_anteile` ist als Fundament für eine spätere Migration auf N Personen angelegt. `anteil_user1`/`anteil_user2` in `haushalt_transaktionen` bleiben für Rückwärtskompatibilität bestehen. Keine UI-Änderung.
 
-### Haushalt-Konten (haushalt_konten_v2)
-- Mehrere Konten pro Haushalt möglich (v2 entfernt den UNIQUE-Constraint auf `haushalt_id`)
-- Konten können mit privaten Konten verlinkt werden (`linked_account_id`)
-- Kontostand wird analog zu privaten Konten dynamisch aus `haushalt_transaktionen` berechnet
-- Konto-Filter im Tracker: Im localStorage gespeichert als `tracker_active_accounts` (Array von Konto-IDs)
+### Haushalt-Modus serverseitig (seit v3.0)
+Modus wird in `req.session.sidebar_mode` gespeichert. `navheader.js` synchronisiert localStorage ↔ Server. Haushalt-Seiten setzen Session automatisch auf `'haushalt'`.
 
-### Haushalt-Transaktionen
-- Felder ähnlich wie private Transaktionen
-- Zusätzlich: `konto_id`, `anteil_user1`, `anteil_user2` (Kostenaufteilung in %)
-- `eingetragen_von`: ID des Nutzers, der die Transaktion erfasst hat
-- Regeln mit `modus = 'haushalt'` oder `'beide'` werden angewendet
-- Live-Regelanwendung im Haushalt-Tracker mit Hinweis-Badge
-- Löschen mit Undo-Toast (5 Sekunden)
-
-### Haushalt-Fixkosten
-- Separate Tabelle mit Kostenaufteilung
-- `anteil_user1` / `anteil_user2`: prozentuale Anteile (sollten zusammen 100 ergeben)
-- `datum_tag`: Tag des Monats für die Fälligkeit
-- **Monats-Abweichungen** (`haushalt_fixkosten_monat`): Für einen bestimmten Monat kann der Betrag abweichen (z.B. Jahresabrechnung)
-
-### Haushalt-Gehälter
-Für jeden Nutzer und jeden Monat kann ein Gehalt + Sparbetrag eingetragen werden (`haushalt_gehaelter`). Wird für das Haushalt-Dashboard verwendet.
+### Haushalt-Konto-Filter-Validierung (seit v3.0)
+`tracker_active_accounts` (localStorage) wird beim Laden gegen `allAccounts` abgeglichen. Gelöschte Konto-IDs werden automatisch entfernt.
 
 ### UI-Design-Override
-Im Haushalt-Modus wird die CSS-Variable `--haus-accent` (standardmäßig `#10b981`, Smaragdgrün) für Akzentfarben, Links und Badges verwendet statt des lila `--accent`. Alle Haushalt-spezifischen Links in der Sidebar haben die Klasse `sidebar-link-haus`.
+CSS-Variable `--haus-accent` (#10b981, Smaragdgrün) für alle Haushalt-Akzente. Klasse `sidebar-link-haus` in der Sidebar.
 
-### Haushalt-Regeln
-Regeln mit `modus = 'haushalt'` oder `'beide'` gelten für Haushalt-Transaktionen. Die Regelverwaltung ist dieselbe Seite (`/users/regeln`) – Modus wird pro Regel definiert. Im Haushalt-Tracker filtert `applyRegelLocal()` clientseitig die Regeln nach Modus.
+### Einladungs-Flow (seit v3.0)
 
-### API-Endpunkte (Auswahl)
-| Methode | Route | Funktion |
-|---------|-------|----------|
-| GET | `/haushalt` | Haushalt-Dashboard |
-| POST | `/haushalt/create` | Haushalt erstellen |
-| POST | `/haushalt/invite` | Einladungs-Code generieren |
-| POST | `/haushalt/einladung/:code/accept` | Einladung annehmen |
-| GET | `/haushalt/tracker` | Transaktionen-Seite |
-| GET | `/haushalt/transaktionen` | JSON: alle Transaktionen |
-| POST | `/haushalt/transaktionen/add` | Transaktion hinzufügen |
-| DELETE | `/haushalt/transaktionen/:id` | Transaktion löschen |
-| GET | `/haushalt/konto/data` | `{ konten, konto: konten[0] }` |
-| POST | `/haushalt/konto/create` | Neues Haushalt-Konto |
-| POST | `/haushalt/konto/import` | Privatkonto importieren |
-| GET | `/haushalt/fixkosten` | Haushalt-Fixkosten-Seite |
-| GET | `/haushalt/ausgaben` | Fixkosten & Planung |
+Partner-Einladung über die Haushalt-Einstellungen (`/users/haushalt/einstellungen`):
+1. Admin generiert Code → `POST /haushalt/invite` → 7-Tage-gültiger Code in `haushalt_einladungen`
+2. Optional: E-Mail mit Einladungslink wird versendet (Nodemailer)
+3. Link: `{BASE_URL}/users/haushalt/join/{code}` → `views/haushalt-join.html`
+4. Partner gibt Anzeigenamen ein → `POST /haushalt/einladung/:code/accept`
+
+### Settlement — „Wer schuldet wem?" (seit v3.0)
+
+Im Haushalt-Transaktionen-Tab „Abrechnung":
+- `GET /haushalt/settlement/:monat` — summiert `anteil_user1`/`anteil_user2` aller Transaktionen, berechnet Saldo → `{ owes: { from, to, amount } }`
+- `POST /haushalt/ausgleich` — erstellt Record in `haushalt_ausgleiche` + optional Buchung
+- Haushalt-Dashboard: kleines Settlement-Widget (1 Zeile, Link zur Abrechnung)
+
+### Per-Transaktion Kostenaufteilung (seit v3.0)
+
+Jede Haushalt-Transaktion hat `anteil_user1`/`anteil_user2` (0–100, Summe immer 100).
+- Standardaufteilung: 50/50
+- Im Schnelleintrag + Vollformular: Range-Slider 0–100
+- Badge „60/40" in der Transaktionsliste wenn vom Standard abweichend
+
+### Haushalt-Transaktions-Kategorien (seit v3.1)
+
+`GET /haushalt/tracker/categories` befüllt `haushalt_tracker_categories` beim ersten Aufruf automatisch mit 13 Standard-Kategorien:
+
+> Lebensmittel, Miete, Nebenkosten, Strom & Energie, Internet & Telefon, Versicherungen, Haushalt & Reinigung, Freizeit & Unterhaltung, Restaurant & Café, Kleidung, Gesundheit, Transport, Sonstiges
+
+Zusätzlich werden alle Kategorien, die in bestehenden Transaktionen des Haushalts vorkommen, in die Liste gemischt (dedupliciert). Das Edit-Modal zeigt dieselbe Liste.
+
+### Regeln & Automationen im Haushalt (seit v3.1)
+
+Seite „Regeln & Automationen" (`/users/regeln`) gilt für beide Modi:
+- Regeln mit `modus='haushalt'` oder `modus='beide'` werden auf Haushalt-Transaktionen angewendet
+- Haushalt-CSV-Import wendet Regeln serverseitig an (`applyRegeln(..., 'haushalt')`)
+- „Auf Haushalt-Transaktionen anwenden"-Button auf der Regeln-Seite → `POST /haushalt/regeln/apply-all`
+- Sidebar-Link „Regeln & Automationen" ist auch im Haushalt-Bereich der Navigation verfügbar
+
+### Haushalt-Aufgaben (seit v3.0)
+
+`/users/haushalt/todos`:
+- **Quick-Add-Bar**: Textfeld + Enter → sofort hinzufügen ohne Modal
+- **Status-Filter**: Offen / Alle / Erledigt
+- **Label-Filter-Pills**: Alle Labels / Einkaufen / Haushalt / Sonstiges
+- Label „einkaufen" → Grocery-Style mit großen Touch-Checkboxen
+- **Detailmodal**: Priorität (hoch/mittel/niedrig), Fälligkeitsdatum, Zuweisung an Haushaltsmitglied, Wiederholung, Notizen
+- Aufgaben, die dem aktuellen Nutzer zugewiesen sind, werden grün hinterlegt
+
+**Bekannte Einschränkung**: Das `wiederholung`-Feld (täglich/wöchentlich/monatlich) wird gespeichert, aber beim Abhaken einer wiederkehrenden Aufgabe wird **keine** neue Instanz automatisch erstellt (kein Cron-Job implementiert).
+
+### Haushalt-Transaktionen-Tabelle (seit v3.1)
+
+Gleiche Tabellenstruktur wie Privat-Modus:
+- Separate Datum-Spalte (sortierbar)
+- Beträge farbig: Einnahmen grün, Ausgaben rot
+- Kategorie-Filter zeigt nur tatsächlich verwendete Kategorien
 
 ---
 
@@ -865,104 +664,113 @@ Regeln mit `modus = 'haushalt'` oder `'beide'` gelten für Haushalt-Transaktione
 
 ### Privates Dashboard (`/users/overview`)
 
+#### Anstehende Zahlungen (seit v3.0 erweitert)
+Widget zeigt die nächsten **14 Tage** (zuvor 7):
+- **Fixkosten**: nutzt `naechste_faelligkeit` (bevorzugt) oder berechnet aus `datum_tag`
+- **Schulden-Raten**: via `faelligkeitstag` aus `schulden`
+- Jeder Eintrag ist ein klickbarer Link (→ Fixkosten oder Schulden)
+- Header-Link führt zum Kalender
+
 #### Net-Worth-Widget
-Zeigt das Nettovermögen: Assets (Konten + Investments) minus Verbindlichkeiten (Schulden).
-- Konten: `accounts.currentBalance`
-- Investments: `finanzen_investments.portfoliowert` (manuell eintragbar)
-- Immobilien: kann manuell ergänzt werden
-- Schulden: Summe aller `schulden.betrag - gesamt_gezahlt`
-- Visualisierung als Donut-Chart (Chart.js)
+Assets (Konten + Investments) minus Verbindlichkeiten (Schulden). Donut-Chart (Chart.js).
 
 #### Cashflow-Prognose
-- Zeigt Einnahmen und Ausgaben der letzten 6 Monate aus `ausgabenDB`
-- Prognose für kommende 3 Monate (linear extrapoliert aus Ø der letzten 3 Monate)
-- Linie-Chart mit Chart.js
+Letzte 6 Monate + 3 Monate linear extrapoliert (Linie-Chart).
 
 #### Financial Insights
-Automatisch generierte Hinweise auf Basis der Transaktionsdaten:
-- Höchste Ausgaben-Kategorien
-- Budget-Überschreitungen
-- Ungewöhnliche Ausgaben (Vergleich zu Vormonat)
-- Hinweis auf fällige Fixkosten
-
-#### Meine Finanzen (`/users/meine-finanzen`)
-Detaillierte Übersicht:
-- Konten mit Ständen und Transaktionshistorie
-- Investitions-Portfolio (manuell über `finanzen_investments`)
-- Schulden-Übersicht
-- Cashflow-Diagramm
-
-### Haushalt-Dashboard (`/users/haushalt`)
-- Gesamteinnahmen/-ausgaben des Haushalts
-- Monatsübersicht
-- Letzte gemeinsame Transaktionen
-- Fixkosten-Übersicht
-- Aufgaben-Liste
+Automatische Hinweise: Top-Kategorien, Budget-Überschreitungen, Fixkosten-Hinweise.
 
 ---
 
 ## 17. Kalender
 
 ### Zugang
-Sidebar → Kalender (`/users/kalender`)
+Sidebar → „Zahlungskalender" (`/users/kalender`)
 
 ### Inhalte
-Der Kalender zeigt Einträge aus verschiedenen Quellen:
-- **Fälligkeiten** (Fixkosten): `naechste_faelligkeit` aus `recurring_transactions`
-- **Schulden-Raten**: `monatlich` aus `schulden` (nächste Rate berechnet aus `datum_start`)
-- **Sparziel-Zieldaten**: `datum` aus `sparziele` falls gesetzt
-- **Erinnerungen** aus `erinnerungen`-Tabelle (falls vorhanden)
-- **To-do-Fälligkeiten**: `due_date` aus `todos`
+Die Kalenderseite nutzt **FullCalendar** und zeigt:
+- Eigene manuelle Events (erstellbar per Klick auf Datum)
+- Fixkosten-Fälligkeiten (`naechste_faelligkeit`) — als farbige Overlay-Events
+- Schulden-Raten (aus `faelligkeitstag`)
 
-Klick auf einen Eintrag navigiert zur entsprechenden Seite (z.B. Fixkosten, Schulden).
+### Outlook-Integration (Pro)
+Pro-Nutzer können Outlook-Kalender verbinden (OAuth). Outlook-Events werden neben eigenen Events und Fixkosten-Fälligkeiten dargestellt. Verbindung trennbar über das Kalender-UI.
+
+**Hinweis zur Designprinzip-Abweichung**: Laut Sidebar-Beschriftung soll der Kalender ein reiner „Zahlungskalender" (Fixkosten/Raten-Fälligkeiten) sein. Aktuell ist es eine vollwertige Event-Calendar-Anwendung mit eigenem Event-Formular und Outlook-Sync. Eine Reduzierung auf den Zahlungskalender-Scope ist als mögliche Vereinfachung offen — die Fixkosten-Fälligkeiten sind bereits als Overlay eingebunden.
 
 ---
 
-## 18. To-do-Liste
+## 18. In-App Notifications
 
-### Tabelle (privat)
+### Konzept (seit v3.0)
+Benachrichtigungen werden **serverseitig generiert** beim Abruf durch den Client. Kein separater Cron-Job nötig. Das Glocken-Icon in der Topbar zeigt die Anzahl ungelesener Benachrichtigungen.
+
+### Tabelle
 ```sql
-todos (
-    id, user_id,
-    task TEXT,
-    completed INTEGER DEFAULT 0,
-    priority TEXT DEFAULT 'mittel',  -- 'hoch' | 'mittel' | 'niedrig'
-    due_date TEXT,
-    label TEXT,
-    notes TEXT,
+notifications (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER,
+    type TEXT,          -- 'budget' | 'unusual' | 'fixkost'
+    title TEXT,
+    message TEXT,
+    link TEXT,          -- Ziel-URL beim Klick
+    is_read INTEGER DEFAULT 0,
+    dedup_key TEXT,     -- verhindert Duplikate im selben Monat
     created_at TEXT
 )
 ```
 
-### Zugang
-Sidebar → To-do-Liste (`/users/todo`)
+**`dedup_key`** verhindert, dass für dieselbe Bedingung doppelte Benachrichtigungen entstehen. Format:
+- Budget: `budget_{userId}_{kategorie}_{YYYY-MM}`
+- Ungewöhnlich: `unusual_{userId}_{kategorie}_{YYYY-MM}`
+- Fixkost: `fixkost_{userId}_{fixkostId}_{naechste_faelligkeit}`
 
-### Funktionen
-- Erstellen, Bearbeiten, Abhaken, Löschen von Aufgaben
-- Prioritätsstufen mit Farbcodierung
-- Fälligkeitsdatum (erscheint auch im Kalender)
-- Labels/Tags für Gruppierung
+### Benachrichtigungstypen
+| Typ | Icon | Auslöser |
+|-----|------|----------|
+| `budget` | 🔴 | Monatsausgaben einer Kategorie > Budget-Limit |
+| `unusual` | 🟡 | Ausgaben dieser Kategorie > 150% des Vormonats (ab 20€ Basis) |
+| `fixkost` | 🔵 | `naechste_faelligkeit` innerhalb der nächsten 3 Tage |
+
+### Generierung (`generateNotifications`)
+Läuft bei jedem `GET /notifications`-Aufruf. Prüft per `upsertNotification()` ob bereits eine ungelesene Benachrichtigung mit demselben `dedup_key` existiert — falls ja, wird nichts neu erstellt.
+
+### Frontend (navheader)
+- **Glocken-Button** neben der Suchleiste mit rotem Badge (Unread-Count, max. „9+")
+- **Dropdown-Panel**: Liste aller Benachrichtigungen, farbige Icons pro Typ
+- Klick auf Eintrag → markiert als gelesen, navigiert zum Link
+- „Alle gelesen"-Button
+
+### API-Endpunkte
+| Methode | Route | Funktion |
+|---------|-------|----------|
+| GET | `/notifications` | Generieren + alle zurückgeben |
+| POST | `/notifications/read-all` | Alle als gelesen markieren |
+| POST | `/notifications/:id/read` | Einzelne als gelesen markieren |
+
+**Wichtig**: `read-all` muss vor `/:id/read` definiert sein (spezifische Route vor parametrisierter).
 
 ---
 
 ## 19. Dokumente
 
+### Konzept (seit v3.0 vereinfacht)
+Das Modul ist ein **Metadaten-Verzeichnis**, kein Datei-Manager. Es gibt keinen Datei-Upload mehr. Der Nutzer notiert wo ein Dokument physisch liegt.
+
 ### Tabelle
 ```sql
 dokumente (
     id, user_id,
-    typ TEXT,          -- 'steuer' | 'gehalt' | 'versicherung' | 'sonstiges' | ...
+    typ TEXT,          -- 'steuer'|'gehalt'|'versicherung'|'sonstiges'|...
     name TEXT,
     datum TEXT,
     jahr INTEGER,
     notiz TEXT,
-    file_data TEXT,    -- BASE64-kodierte Datei (⚠ Performance-Problem, s. Kap. 25)
-    file_ext TEXT,
-    file_mime TEXT,
+    ablageort TEXT,    -- Freitext oder URL (z.B. /Dokumente/2025 oder https://drive.google.com/...)
     betrag REAL,
     faellig_datum TEXT,
     aussteller TEXT,
-    status TEXT,       -- 'offen' | 'erledigt' | 'abgelaufen'
+    status TEXT,       -- 'offen'|'erledigt'|'abgelaufen'
     kategorie TEXT,
     brutto REAL, netto REAL,
     arbeitgeber TEXT,
@@ -973,14 +781,16 @@ dokumente (
 )
 ```
 
-### Dokumenttypen
-Steuer-relevante Typen (`steuer`, `gehalt`) erscheinen auch im Steuer-Modul (Tab „Steuer-Dokumente").
+`file_data`, `file_ext`, `file_mime` wurden **entfernt**. Der Upload-Mechanismus existiert nicht mehr.
 
-### Upload
-Dateien werden als Base64 in der SQLite-Datenbank gespeichert (`file_data`). Das funktioniert für kleine Dateien, wird aber bei großen Dokumentenmengen zum Performance-Problem (DB-Größe, Abfrage-Geschwindigkeit). Dies ist als offenes Item 1.8 dokumentiert.
+### Ablageort-Anzeige
+In der Detailseite (`/users/dokumente/:id`): Beginnt der Ablageort mit `http://` oder `https://`, wird er als klickbarer Link gerendert. Sonst als Klartext.
 
-### Anzeigen
-`GET /users/dokumente/:id/view` liefert die Datei mit korrektem MIME-Type für Browser-Anzeige.
+### Formular
+Button heißt „Speichern" (nicht mehr „Hochladen"). Das Formular hat ein Textfeld „Ablageort" mit Hinweis-Text.
+
+### Haushalt-Dokumente
+Identisches Vorgehen für `haushalt_dokumente` — ebenfalls nur noch `ablageort`, kein Upload.
 
 ---
 
@@ -990,27 +800,27 @@ Dateien werden als Base64 in der SQLite-Datenbank gespeichert (`file_data`). Das
 ```sql
 versicherungen (
     id, user_id,
-    typ TEXT,            -- Versicherungstyp
-    anbieter TEXT,
-    beitrag REAL,
-    rhythmus TEXT,       -- 'monatlich' | 'jährlich' etc.
-    beginn TEXT,
-    ablauf TEXT,
-    notiz TEXT
+    typ TEXT, anbieter TEXT, beitrag REAL,
+    rhythmus TEXT,   -- 'monatlich'|'jährlich'|...
+    beginn TEXT, ablauf TEXT, notiz TEXT
 )
 ```
 
-Einfaches CRUD-Modul. Keine direkte Verknüpfung mit Transaktionen oder Fixkosten, aber die Beiträge könnten manuell als Fixkosten erfasst werden.
+### Verknüpfung mit Fixkosten (seit v3.0)
+In der Versicherungs-Detailseite gibt es den Button **„Als Fixkost erfassen"** (erscheint nur wenn `beitrag` vorhanden). Ein Klick erstellt automatisch einen `fixkosten`-Eintrag mit:
+- Name: `{Versicherungsname} ({Anbieter})`
+- Betrag, Haeufigkeit aus der Versicherung
+- Kategorie: `Versicherungen`
+- Subtyp: `fixkosten`
+
+Nach Erfolg: 3 Sekunden grünes Status-Feedback, Button deaktiviert sich.
 
 ---
 
 ## 21. Globale Suche
 
 ### Zugang
-`Strg+K` überall in der App → öffnet Such-Modal
-
-### Implementierung
-Die Suche (`#ggcSearchInput`) sendet nach 300ms Debounce eine Anfrage an `GET /users/search?q=...`.
+`Strg+K` öffnet Such-Modal (alternativ: Suchfeld in der Topbar)
 
 ### Durchsuchte Bereiche
 | Bereich | Felder | Ziel-Link |
@@ -1020,13 +830,10 @@ Die Suche (`#ggcSearchInput`) sendet nach 300ms Debounce eine Anfrage an `GET /u
 | Sparziele | name | `/budget#sparzieleTab` |
 | Fixkosten | name | `/fixkosten` |
 | Schulden | kreditor | `/schulden` |
-| Todos | task | `/todo` |
 | Dokumente | name, aussteller | `/dokumente` |
 
 ### Tastaturnavigation
-- `↑`/`↓`: Ergebnisse durchsuchen
-- `Enter`: Ausgewähltes Ergebnis öffnen
-- `Esc`: Modal schließen
+`↑`/`↓` navigieren, `Enter` öffnet, `Esc` schließt.
 
 ---
 
@@ -1036,21 +843,15 @@ Die Suche (`#ggcSearchInput`) sendet nach 300ms Debounce eine Anfrage an `GET /u
 Sidebar (Footer) → Daten exportieren (`/users/export`)
 
 ### Export-Typen
-
 | Typ | Format | Inhalt |
 |-----|--------|--------|
 | Transaktionen | CSV oder JSON | Gefiltert nach Konto und Zeitraum |
 | PDF-Bericht | PDF (jsPDF) | Diagramme + Monatsübersichten |
-| Monatsanalyse | PDF | Ein Monat detailliert |
-| Backup | JSON | Alle Daten (ohne Datei-Anhänge) |
-| Einzelbereiche | CSV/JSON | Konten, Sparziele, Fixkosten, Schulden, etc. |
+| Backup | JSON | Alle Daten (ohne Datei-Blobs — gibt es nicht mehr) |
+| Einzelbereiche | CSV/JSON | Konten, Sparziele, Fixkosten, Schulden |
 | Haushalt | JSON/CSV | Haushalt-Transaktionen, -Konten, -Fixkosten |
 
-### PDF-Export (jsPDF, clientseitig)
-PDFs werden vollständig im Browser generiert. Chart.js-Diagramme werden als Canvas-Screenshot eingebettet. Dokument-Anhänge sind **nicht** im Export enthalten (nur Metadaten).
-
-### Backup-JSON
-`GET /export/data` gibt alle Daten des Nutzers zurück. `file_data` (Base64) wird bewusst **ausgelassen**, da es sonst die JSON-Datei zu groß werden würde.
+PDFs werden vollständig clientseitig generiert (jsPDF + Chart.js-Canvas-Screenshots).
 
 ---
 
@@ -1058,197 +859,150 @@ PDFs werden vollständig im Browser generiert. Chart.js-Diagramme werden als Can
 
 ### Tabellen
 - `user_profiles`: `display_name`, `avatar_url`, `tarif`
-- `user_settings`: `theme`, `language`, `currency`, `notifications_*`, `two_factor`
-
-### Theme
-Dark/Light-Mode über `user_settings.theme`. Die Auswahl wird serverseitig gespeichert und beim Laden der Seite als CSS-Klasse auf `<body>` gesetzt.
-
-### Profil-Seite
-- Anzeigename, Avatar (URL)
-- Passwort ändern
-- 2FA aktivieren/deaktivieren
-
-### Einstellungen-Seite
-- Theme
-- Sprache (aktuell nur Deutsch)
-- Währung (aktuell nur EUR)
-- E-Mail-Benachrichtigungen
+- `user_settings`: `theme`, `language`, `currency`, `notifications_*`, `two_factor`, `reminder_*`
 
 ### Cron-Erinnerungen
-`modules/reminder.js` läuft täglich und versendet Erinnerungs-E-Mails wenn:
-- Fixkosten in den nächsten 3 Tagen fällig sind
-- Schulden-Raten bald fällig sind
-- Sparziel-Zieldaten bald erreicht werden
+`modules/reminder.js` läuft täglich:
+- Fixkosten in den nächsten 3 Tagen fällig → E-Mail
+- Schulden-Raten bald fällig → E-Mail
+- Sparziel-Zieldaten bald erreicht → E-Mail
+
+In-App-Notifications (Kapitel 18) ergänzen die E-Mail-Erinnerungen — sie laufen unabhängig davon.
 
 ---
 
 ## 24. Feature-Interaktionen (Gesamtbild)
 
-### Datenflusskarte
-
-```
-CSV-Import
-    │
-    ├──[Regeln anwenden]──→ Kategorien setzen
-    │
-    └──→ ausgabenDB.INSERT
-              │
-              ├──[account_id]──→ Kontostand-Berechnung
-              │                       └──[Sparziel.account_id]──→ Konto-Aufteilung
-              │
-              ├──[category]──→ Budget-Auswertung
-              │                       └──[Prognose]──→ Budget-Warnung
-              │
-              ├──[recurring_id]──→ Schloss in UI (nicht editierbar)
-              │
-              ├──[transfer_pair_id]──→ Transfer-Anzeige + Löschen beider Seiten
-              │
-              └──[logActivity]──→ activity_log
-```
-
 ### Transaktions-Entstehungsquellen
-Eine Transaktion in `ausgabenDB` kann entstehen durch:
-
 | Quelle | Route | Besonderheiten |
 |--------|-------|----------------|
-| Manuell (Tracker) | `POST /addTransaction` | Regeln werden angewendet |
-| Sparziel-Einzahlung | `POST /sparziele/:id/add` | Nur wenn `createTransaction = true` |
-| Sparziel-Neuerstellung | `POST /sparziele/add` | Nur wenn `gespart > 0` |
-| Schulden-Zahlung | `POST /schulden/:id/zahlungen` | Nur wenn `createTransaction = true` |
-| Fixkost buchen | `POST /fixkosten/unified/:id/book` | `recurring_id` gesetzt |
+| Manuell (Tracker) | `POST /addTransaction` | Regeln + upsertCategory |
+| Sparziel-Einzahlung | `POST /sparziele/:id/add` | Nur wenn `createTransaction=true` |
+| Schulden-Zahlung | `POST /schulden/:id/zahlungen` | Nur wenn `createTransaction=true` |
+| Fixkost buchen | `POST /fixkosten/unified/:id/book` | `recurring_id` gesetzt, Konto Pflicht |
 | Transfer | `POST /transfer` | Zwei Transaktionen, `transfer_pair_id` |
-| Kontostand-Abgleich | `POST /accounts/:id/abgleich` | Kategorie: „Kontostand-Abgleich" |
-| CSV-Import | `POST /import/transactions` | Batch, Regeln clientseitig angewendet |
+| Kontostand-Abgleich | `POST /accounts/:id/abgleich` | Kategorie: „Kontostandskorrektur" |
+| CSV-Import | `POST /import/transactions` | Batch, `{ imported, skipped }` |
 
-### Regeln-Anwendungsmatrix
-
-| Kontext | Zeitpunkt | Modus-Filter | Wer wendet an |
-|---------|-----------|-------------|---------------|
-| Privater Tracker (Eingabe) | Live (250ms) | `privat` oder `beide` | Client |
-| Privater Tracker (Speichern) | Bei POST | `privat` oder `beide` | Server |
-| Haushalt-Tracker (Eingabe) | Live (250ms) | `haushalt` oder `beide` | Client |
-| Haushalt-Tracker (Speichern) | Bei POST | `haushalt` oder `beide` | Server |
-| CSV-Import (Vorschau) | Nach Mapping | `privat` oder `beide` | Client |
-| Regeln → Apply-All | Manuell | alle aktiven | Server |
+### Kategorien-Datenfluss (seit v3.0)
+```
+Transaktion speichern
+    │
+    └── upsertCategory(userId, name)
+            │
+            ├── Suche: categories WHERE user_id=? AND name=? AND is_deleted=0
+            │       → gefunden: id zurückgeben
+            │       → nicht gefunden: INSERT → id zurückgeben
+            │
+            └── category_id in ausgabenDB setzen
+```
 
 ### Kontostand-Abhängigkeiten
-
 ```
 accounts.balance (Startwert)
     + SUM(ausgabenDB WHERE type='Einnahmen' AND account_id=X)
     - SUM(ausgabenDB WHERE type='Ausgaben' AND account_id=X)
-    = currentBalance (berechnet, nie gespeichert)
+    = currentBalance
         └── Konto-Aufteilung:
-                - SUM(sparziele.gespart WHERE account_id=X) = reserviert
-                - currentBalance - reserviert = freies Geld
+                SUM(sparziele.gespart WHERE account_id=X) = reserviert
+                currentBalance - reserviert = freies Geld
 ```
 
-### Budget ↔ Transaktionen
-Budget-Auswertung liest Transaktionen des **aktuellen Monats** für jede Kategorie:
+### Notification-Trigger-Logik
 ```
-ausgabenDB WHERE user_id=X AND type='Ausgaben' AND date LIKE 'YYYY-MM-%' AND category=Y
+GET /notifications
+    │
+    └── generateNotifications(userId)
+            ├── Budget: ausgabenDB Monatsausgaben > budgets.betrag → upsertNotification
+            ├── Unusual: this_month > last_month × 1.5 (ab 20€) → upsertNotification
+            └── Fixkost: naechste_faelligkeit zwischen heute und heute+3 → upsertNotification
+                            └── dedup_key verhindert Duplikate
 ```
-Da Kategorien Freitext sind, ist die Verknüpfung **fehleranfällig**: `"Lebensmittel"` ≠ `"lebensmittel"` ≠ `"Lebensmittel "`.
 
-### Steuer-Interaktionen
-- Die Jahresübersicht zeigt Transaktionen aus `ausgabenDB` – das sind **keine** echten Steuerdaten
-- Kapitalerträge, Altersvorsorge, Sonderausgaben in eigenen Tabellen
-- Erstattungsschätzer ist vollständig manuell – keine Daten werden automatisch übernommen
-- Steuer-Dokumente kommen aus dem allgemeinen `dokumente`-Pool (gefiltert nach Typ)
+### Regeln-Anwendungsmatrix
+| Kontext | Zeitpunkt | Modus-Filter | Wer |
+|---------|-----------|-------------|-----|
+| Privater Tracker (Eingabe) | Live (250ms) | `privat` oder `beide` | Client |
+| Privater Tracker (Speichern) | Bei POST | `privat` oder `beide` | Server |
+| Haushalt-Tracker (Eingabe) | Live (250ms) | `haushalt` oder `beide` | Client |
+| Haushalt-CSV-Import | Beim Import | `haushalt` oder `beide` | Server |
+| CSV-Import Privat (Vorschau) | Nach Mapping | `privat` oder `beide` | Client |
+| Apply-All Privat | Manuell | `privat` oder `beide`, sortiert nach priority | Server |
+| Apply-All Haushalt | Manuell | `haushalt` oder `beide`, sortiert nach priority | Server |
 
 ---
 
-## 25. Bekannte Schwachstellen & Verbesserungspotenziale
+## 25. PWA (Progressive Web App)
 
-### Kritisch (Datenkonsistenz)
+Seit v3.0 ist die App als PWA installierbar:
 
-#### 1. Sparziel-Einzahlung via Edit-Formular erzeugt keine Transaktion
-**Problem**: Wenn der Nutzer `gespart` direkt über das Edit-Formular eines Sparziels (`PUT /sparziele/:id`) ändert, wird keine Transaktion erstellt. Nur `POST /sparziele/:id/add` (der Einzahlen-Button) erzeugt Transaktionen. Das bedeutet, manuell korrigierte `gespart`-Werte sind im Ausgabentracker unsichtbar.
+### Web App Manifest (`/manifest.json`)
+- `name`: „GoldenGoat Capital"
+- `display`: `standalone`
+- Icons in verschiedenen Größen (192×192, 512×512)
 
-**Verbesserung**: Edit-Formular sollte bei `gespart`-Änderung die Differenz erkennen und optional eine Transaktion erstellen.
+### Service Worker (`/sw.js`)
+Aktueller Cache-Name: `ggc-shell-v3`
 
-#### 2. Schulden-Zahlung löschen entfernt nicht die verknüpfte Transaktion
-**Problem**: `DELETE /schulden/zahlungen/:id` löscht die Zahlung, aber die über `transaction_id` verknüpfte Transaktion in `ausgabenDB` bleibt bestehen. Das führt zu einer verwaisten Transaktion.
+Gecachte Dateien beim Install:
+- `/styles.css`, alle Client-JS-Dateien
+- Fonts (Plus Jakarta Sans via Google Fonts CDN)
+- RemixIcon CSS
 
-**Verbesserung**: Serverseitig beim Löschen einer Zahlung: `DELETE FROM ausgabenDB WHERE id = zahlung.transaction_id`.
+**Strategie**: Cache-First für gecachte Assets, Network-Fallback für alles andere.
 
-#### 3. Transaktions-Bearbeitung wird nicht ins Activity-Log geschrieben
-**Problem**: `PUT /updateTransaction/:id` fehlt ein `logActivity()`-Aufruf. Änderungen an Transaktionen (Kategorie, Betrag, Name) sind im Aktivitätsprotokoll nicht nachvollziehbar.
-
-**Verbesserung**: Activity-Log bei jedem `updateTransaction`-Aufruf schreiben, idealerweise mit vorherigen und neuen Werten.
-
-#### 4. Kategorien sind reiner Freitext ohne Normalisierung
-**Problem**: Budget-Kategorien und Transaktions-Kategorien sind durch Freitext-Matching verbunden. Groß-/Kleinschreibung, Leerzeichen oder Tippfehler führen dazu, dass Transaktionen nicht dem richtigen Budget zugeordnet werden.
-
-**Verbesserung**: Kategorien über eine zentrale Tabelle verwalten (aktuell `custom_categories`), aber auch Standard-Kategorien dort hineinmigrieren. Budget und Transaktion sollten gegen dieselbe Quelle matchen.
+**Bei CSS/JS-Updates**: `CACHE_NAME` in `sw.js` auf neue Version bumpen (z.B. `ggc-shell-v4`). Der Browser löscht dann automatisch den alten Cache und lädt frische Assets.
 
 ---
 
-### Hoch (Funktionalität)
-
-#### 5. Dokumente als Base64 in SQLite (offenes Item 1.8)
-**Problem**: `dokumente.file_data` speichert Dateien Base64-kodiert direkt in SQLite. Bei größeren Dokumentenmengen oder größeren Dateien wächst die Datenbank stark an, Abfragen werden langsam, und das Backup-JSON wäre riesig (deshalb ist `file_data` aus dem Export-Endpoint ausgeschlossen).
-
-**Verbesserung**: Dateien ins Filesystem speichern (`/uploads/docs/[user_id]/[filename]`), `file_data` durch einen Dateipfad ersetzen.
-
-#### 6. Haushalt-Modus nur für 2 Personen
-**Problem**: Das Datenmodell (`anteil_user1`, `anteil_user2`) ist hart auf genau zwei Personen ausgelegt. Eine dritte Person kann den Haushalt nicht sinnvoll nutzen.
-
-**Verbesserung**: Kostenaufteilung als flexible N-Personen-Tabelle statt zwei fester Spalten.
-
-#### 7. Modus-Zustand im localStorage (nicht Session-sicher)
-**Problem**: Der aktive Modus (Privat/Haushalt) wird im localStorage gespeichert, nicht im Server-Session. Bei zwei Tabs kann ein Nutzer versehentlich im falschen Modus arbeiten.
-
-**Verbesserung**: Modus in `req.session` speichern, oder zumindest server-seitig validieren.
+## 26. Bekannte Schwachstellen & Verbesserungspotenziale
 
 ---
 
 ### Mittel (UX & Konsistenz)
 
-#### 8. Regeln werden in `apply-all` immer überschreibend angewendet
-**Problem**: `POST /regeln/apply-all` überschreibt Kategorien aller Transaktionen, auch wenn der Nutzer manuell eine abweichende Kategorie gesetzt hat.
+#### 1. Sparziel-Einzahlung via Edit-Formular erzeugt keine Transaktion
+**Problem**: `PUT /sparziele/:id` (Edit-Formular) ändert `gespart` ohne Transaktion. Nur der Einzahlen-Button (`POST /sparziele/:id/add`) erzeugt eine Transaktion. Manuell korrigierte `gespart`-Werte sind im Ausgabentracker unsichtbar.
 
-**Verbesserung**: Option „nur leere Kategorien auffüllen" vs. „alle überschreiben".
+**Verbesserung**: Edit-Formular sollte die Differenz erkennen und optional eine Transaktion anbieten.
 
-#### 9. CSV-Import: Keine Duplikatserkennung
-**Problem**: Wird dieselbe CSV-Datei zweimal importiert, werden alle Transaktionen doppelt erstellt. Es gibt keine Prüfung auf bereits vorhandene Daten (z.B. per Datum + Name + Betrag).
+#### 2. Haushalt nur für 2 Personen
+**Problem**: `anteil_user1`/`anteil_user2` ist hard auf 2 Personen ausgelegt. `haushalt_anteile` ist als N-Personen-Fundament vorbereitet, aber noch keine UI-Migration.
 
-**Verbesserung**: Duplikatserkennung im Import-Endpoint (Hash aus Datum + Name + Betrag vergleichen) oder Nutzer-Hinweis.
+#### 3. Steuer-Erstattungsschätzer ist vereinfacht
+Die Berechnung ignoriert Kinderfreibeträge, Altersentlastungsbeträge, besondere Abzüge etc. Nur als Orientierung geeignet.
 
-#### 10. Fixkosten ohne Konto-Auswahlerzwingung
-**Problem**: Beim Buchen einer Fixkost ist ein Konto optional. Gebuchte Fixkosten ohne Konto-Zuweisung beeinflussen keinen Kontostand.
+#### 4. Haushalt-Todos: Wiederholung ist UI-only
+Das `wiederholung`-Feld (täglich/wöchentlich/monatlich) wird gespeichert, aber kein Cron-Job erstellt automatisch eine neue Instanz wenn eine wiederkehrende Aufgabe abgehakt wird.
 
-**Verbesserung**: UI-Hinweis wenn kein Konto bei der Buchung ausgewählt ist.
+#### 5. Haushalt-Todos: Label-Feld ist Freitext
+Im Detail-Modal ist `ttLabel` ein `<input type="text">`. Nutzer können beliebige Labels eingeben, die dann nicht mit den festen Filter-Pills (Einkaufen / Haushalt / Sonstiges) übereinstimmen. Lösung: `<select>` mit den drei Werten.
 
-#### 11. Regeln: „Erste Regel gewinnt" ohne Prioritätssystem
-**Problem**: Die Reihenfolge der Regeln bestimmt welche greift, aber diese Reihenfolge ist nicht sortierbar (nur per Löschen/Neu-Anlegen änderbar).
-
-**Verbesserung**: Drag-and-Drop-Sortierung für Regeln, oder ein `prioritaet`-Feld.
-
-#### 12. Steuer-Erstattungsschätzer: Manuell, keine Datensynchronisation
-**Problem**: Der Schätzer ist von allen anderen Steuer-Daten entkoppelt. Kapitalerträge, Altersvorsorge und Sonderausgaben die der Nutzer in den jeweiligen Tabs eingetragen hat, werden **nicht** automatisch in den Schätzer übernommen.
-
-**Verbesserung**: Button „Aus erfassten Daten vorausfüllen" der die Jahressummen der entsprechenden Tabellen in die Schätzer-Felder einsetzt.
+#### 6. Haushalt-Einstellungen: Admin-Erkennung im Leave-Modal
+`openLeaveModal()` prüft ob *irgendjemand* im Haushalt Admin ist, nicht ob der *aktuelle Nutzer* Admin ist. Der Warntext „Haushalt für alle Mitglieder gelöscht" erscheint damit auch für Nicht-Admins. Rein kosmetisch — serverseitig ist die Prüfung korrekt.
 
 ---
 
-### Niedrig (Code-Qualität / Kleinigkeiten)
+### Niedrig (Code-Qualität)
 
-#### 13. Haushalt-Konto-Filter im localStorage kann veralten
-`tracker_active_accounts` (Array von Konto-IDs) wird im localStorage gespeichert. Wenn ein Konto gelöscht wird, bleibt seine ID im Filter bestehen (führt zu leerem Filter statt allen Konten).
+#### 7. `category TEXT` in ausgabenDB noch vorhanden
+`category` und `category_id` werden parallel gepflegt. `category` soll nach stabilem Betrieb entfernt werden. Budget-Matching und Regeln nutzen noch `category TEXT`.
 
-#### 14. Grundfreibetrag und Steuertarif sind hardgecoded
-In `steuern.js` (Funktion `berechnEStGrundtabelle`) sind die Steuerparameter 2024 fest einkodiert. Für das Steuerjahr 2025 müssten sie manuell aktualisiert werden.
+#### 8. DEFAULT_CATEGORIES clientseitig hardcodiert
+Standard-Kategorien in `ausgabentracker.js`, `regeln.js` und `haushalt-tracker.js` sind als Array hardcodiert. Langfristig sollten sie aus der API kommen.
 
-#### 15. Transfer-Pair-Inkonsistenz möglich bei halbem Löschen
-Wenn `DELETE /transfer/:id` die zweite Transaktion des Paares aus einem technischen Fehler nicht findet (z.B. durch manuelles DB-Eingreifen), bleibt eine „verwaiste" Transaktion ohne Gegenstück zurück.
+#### 9. Activity-Log: Keine Vorher-Nachher bei allen Entitäten
+`updateTransaction` loggt Vorher/Nachher. Andere Entitäten (Budget-Änderung, Fixkost-Änderung) speichern keinen vollständigen Diff.
 
-#### 16. activity_log speichert keine Vorher-Nachher-Werte bei Änderungen
-Änderungen (`aktion = 'geändert'`) speichern nur den neuen Zustand, nicht was vorher war. Ein echter Audit-Trail würde `{ vorher: {...}, nachher: {...} }` benötigen.
+#### 10. `haushalt_anteile` ohne UI
+Die Tabelle existiert als N-Personen-Fundament, wird aber noch nicht befüllt oder ausgelesen.
 
-#### 17. `saveTransaction` vs. `addTransaction` – Inkonsistente DB-Methodennamen
-Die Methode zum Erstellen einer Transaktion heißt `saveTransaction()`. Das ist missverständlich (klingt nach Update). Konsistenter wäre `createTransaction()` oder `addTransaction()`.
+#### 11. Doppelte `GET /kalender`-Route in routes/users.js
+Zeile 501 und Zeile 1561 deklarieren dieselbe Route. Die zweite ist totes Code — die erste fängt alle Requests ab.
+
+#### 12. `finanzen.js` Tippfehler in `ACCOUNT_LABELS`
+Zeile 17: `sparkont:` (falsch) steht direkt über `sparkonto:` (korrekt). Der falsche Key hat keine Wirkung (wird überschrieben), ist aber totes Code.
 
 ---
 
-*Dieses Handbuch beschreibt den Stand von GoldenGoatCapital zum März 2026. Alle neuen Features sollten hier ergänzt und alle Verbesserungen aus Kapitel 25 nach Umsetzung als ✅ markiert werden.*
+*Dieses Handbuch beschreibt den Stand von GoldenGoatCapital zum März 2026 (Version 3.1). Alle neuen Features sollten hier ergänzt und behobene Schwachstellen aus Kapitel 26 entfernt werden.*

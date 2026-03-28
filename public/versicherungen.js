@@ -19,8 +19,8 @@ const RHYTHMUS_FAK   = { monatlich: 12, vierteljaehrlich: 4, halbjaehrlich: 2, j
 const RHYTHMUS_LABEL = { monatlich: 'monatlich', vierteljaehrlich: 'vierteljährl.', halbjaehrlich: 'halbjährl.', jaehrlich: 'jährlich' };
 const STATUS_LABEL   = { aktiv: 'Aktiv', pausiert: 'Pausiert', gekuendigt: 'Gekündigt' };
 
-const fmtEur = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-const fmtK   = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const fmtEur = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
+const fmtK   = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR'), maximumFractionDigits: 0 });
 
 let allVers   = [];
 let activeKat = 'alle';

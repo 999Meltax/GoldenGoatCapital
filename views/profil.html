@@ -12,8 +12,18 @@
     <%- include('navheader.html') %>
 
     <div class="page-header">
-        <h1>Mein Profil</h1>
-        <p>Persönliche Daten und Kontoverwaltung</p>
+        <h1>Konto &amp; Einstellungen</h1>
+        <p>Persönliche Daten, Sicherheit und App-Konfiguration</p>
+    </div>
+
+    <!-- Konto-Tabs -->
+    <div class="konto-tabs" style="display:flex;gap:4px;margin-bottom:24px;background:var(--surface-2);border-radius:12px;padding:4px;width:fit-content;">
+        <a href="/users/profil" class="konto-tab konto-tab--active" style="display:inline-flex;align-items:center;gap:7px;padding:8px 18px;border-radius:9px;font-size:0.85rem;font-weight:600;text-decoration:none;background:var(--surface);color:var(--text-1);border:1px solid var(--border);">
+            <i class="ri-user-line"></i> Profil
+        </a>
+        <a href="/users/einstellungen" class="konto-tab" style="display:inline-flex;align-items:center;gap:7px;padding:8px 18px;border-radius:9px;font-size:0.85rem;font-weight:600;text-decoration:none;color:var(--text-3);">
+            <i class="ri-settings-3-line"></i> Einstellungen
+        </a>
     </div>
 
     <div id="toastMsg" class="profil-toast" style="display:none;"></div>
@@ -109,13 +119,29 @@
                         <label class="form-label">Neues Passwort</label>
                         <div style="position:relative;">
                             <i class="ri-lock-2-line profil-input-icon"></i>
-                            <input type="password" id="newPwInput" class="profil-input-with-icon" placeholder="min. 6 Zeichen">
+                            <input type="password" id="newPwInput" class="profil-input-with-icon" placeholder="min. 8 Zeichen" oninput="checkProfilPwStrength(this.value)">
+                        </div>
+                        <div id="profilPwChecks" style="margin-top:8px; font-size:0.8rem; display:none; flex-direction:column; gap:3px;">
+                            <span id="profilPwCheck1" style="color:var(--text-3);"><i class="ri-close-circle-line"></i> Mindestens 8 Zeichen</span>
+                            <span id="profilPwCheck2" style="color:var(--text-3);"><i class="ri-close-circle-line"></i> Mindestens ein Großbuchstabe</span>
+                            <span id="profilPwCheck3" style="color:var(--text-3);"><i class="ri-close-circle-line"></i> Mindestens eine Zahl oder ein Sonderzeichen</span>
                         </div>
                     </div>
                 </div>
                 <button class="btn-primary" onclick="savePassword()">
                     <i class="ri-key-line"></i> Passwort ändern
                 </button>
+            </div>
+
+            <!-- Zwei-Faktor-Authentifizierung -->
+            <div class="card" style="margin-bottom:20px;">
+                <div class="card-header" style="margin-bottom:16px;">
+                    <h3><i class="ri-shield-keyhole-line" style="margin-right:8px;color:var(--accent);"></i>Zwei-Faktor-Authentifizierung</h3>
+                </div>
+                <p style="font-size:0.88rem;color:var(--text-2);margin:0 0 14px;">Schütze dein Konto mit einer zweiten Bestätigungsmethode (Authenticator-App).</p>
+                <a href="/users/einstellungen?section=sicherheit" class="btn-primary" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none;">
+                    <i class="ri-settings-3-line"></i> 2FA in den Einstellungen verwalten
+                </a>
             </div>
 
             <!-- Gefahrenzone -->
@@ -325,6 +351,21 @@
         } catch (err) { showToast(err.message || 'Fehler', 'error'); }
     }
 
+    function checkProfilPwStrength(val) {
+        const checks = document.getElementById('profilPwChecks');
+        if (!checks) return;
+        checks.style.display = val.length > 0 ? 'flex' : 'none';
+        const set = (id, ok) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.color = ok ? '#22c55e' : 'var(--text-3)';
+            el.innerHTML = (ok ? '<i class="ri-checkbox-circle-line"></i> ' : '<i class="ri-close-circle-line"></i> ') + el.textContent.replace(/^[^\s]+\s/, '');
+        };
+        set('profilPwCheck1', val.length >= 8);
+        set('profilPwCheck2', /[A-Z]/.test(val));
+        set('profilPwCheck3', /[0-9!@#$%^&*()\-_=+\[\]{};':"\\|,.<>\/?]/.test(val));
+    }
+
     async function savePassword() {
         const currentPassword = document.getElementById('currentPwInput').value;
         const newPassword     = document.getElementById('newPwInput').value;
@@ -344,7 +385,21 @@
 
     function confirmDelete() { document.getElementById('confirmModal').style.display = 'flex'; }
     function closeModal()     { document.getElementById('confirmModal').style.display = 'none'; }
-    async function deleteAccount() { showToast('Funktion noch nicht implementiert', 'error'); closeModal(); }
+    async function deleteAccount() {
+        try {
+            const res = await fetch('/users/account', { method: 'DELETE' });
+            if (res.ok) {
+                window.location.href = '/';
+            } else {
+                const data = await res.json();
+                showToast(data.message || 'Fehler beim Löschen', 'error');
+                closeModal();
+            }
+        } catch (err) {
+            showToast('Fehler beim Löschen', 'error');
+            closeModal();
+        }
+    }
 
     function showToast(msg, type) {
         const el = document.getElementById('toastMsg');

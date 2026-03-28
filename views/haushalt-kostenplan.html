@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kostenplan – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+</head>
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <h1><i class="ri-funds-line" style="color:var(--haus-accent);margin-right:8px;"></i>Kostenplan</h1>
+            <p>Übersicht was jeder monatlich zahlt und wie viel übrig bleibt</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <label class="form-label" style="margin:0;">Monat:</label>
+            <input type="month" id="monatPicker" style="padding:7px 12px;border-radius:var(--radius-md);background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.85rem;">
+        </div>
+    </div>
+
+    <div id="content">
+        <div style="text-align:center;padding:60px;color:var(--text-3);">
+            <i class="ri-loader-4-line" style="animation:spin 1s linear infinite;font-size:1.5rem;"></i>
+        </div>
+    </div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+
+    <script src="/navheader.js"></script>
+    <script>
+    const fmt = new Intl.NumberFormat(window.GGC_LOCALE || 'de-DE', { style: 'currency', currency: window.GGC_CURRENCY || 'EUR' });
+    let haushalt = null, mitglieder = [], user1 = {}, user2 = null, globalSettings = { split_user1: 50, split_user2: 50 };
+
+    const picker = document.getElementById('monatPicker');
+    picker.value = new Date().toISOString().substring(0, 7);
+    picker.addEventListener('change', render);
+
+    function escHtml(str) {
+        return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    async function init() {
+        const res = await fetch('/users/haushalt/status');
+        const data = await res.json();
+        haushalt = data.haushalt;
+        mitglieder = data.mitglieder || [];
+        user1 = mitglieder[0] || {};
+        user2 = mitglieder[1] || null;
+        if (data.settings) globalSettings = data.settings;
+        render();
+    }
+
+    async function render() {
+        const root = document.getElementById('content');
+        root.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-3);"><i class="ri-loader-4-line" style="animation:spin 1s linear infinite;font-size:1.5rem;"></i></div>';
+
+        const monat = picker.value;
+        const monatLabel = new Date(monat + '-01').toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+
+        const [fixkRes, overrideRes, persRes, gehRes, splitMonatRes] = await Promise.all([
+            fetch('/users/haushalt/fixkosten').then(r => r.json()).catch(() => []),
+            fetch('/users/haushalt/fixkosten/monat/' + monat).then(r => r.json()).catch(() => []),
+            fetch('/users/haushalt/persoenlich').then(r => r.json()).catch(() => []),
+            fetch('/users/haushalt/gehaelter?monat=' + monat).then(r => r.json()).catch(() => ({ defaults: [], monat: [] })),
+            fetch('/users/haushalt/split/monat/' + monat).then(r => r.json()).catch(() => null),
+        ]);
+
+        const splitOverride = splitMonatRes;
+        const activeSplit1 = splitOverride ? splitOverride.split_user1 : globalSettings.split_user1;
+        const activeSplit2 = splitOverride ? splitOverride.split_user2 : globalSettings.split_user2;
+
+        const name1 = user1.anzeigename || 'Person 1';
+        const name2 = user2 ? (user2.anzeigename || 'Person 2') : null;
+
+        function getGeh(userId) {
+            const m = gehRes.monat.find(g => g.user_id === userId);
+            return m || gehRes.defaults.find(g => g.user_id === userId) || { gehalt: 0, sparbetrag: 0 };
+        }
+
+        function monatlichBetrag(f, effBetrag) {
+            if (f.rhythmus === 'jaehrlich')        return effBetrag / 12;
+            if (f.rhythmus === 'halbjaehrlich')    return effBetrag / 6;
+            if (f.rhythmus === 'vierteljaehrlich') return effBetrag / 3;
+            return effBetrag;
+        }
+
+        function effFixkost(f) {
+            const ov = overrideRes.find(o => o.fixkosten_id == f.id);
+            const betrag  = ov?.betrag ?? f.betrag;
+            // Per-Fixkost-Monats-Override hat höchste Priorität.
+            // Sonst immer activeSplit1 (monatlicher Override oder globaler Standard).
+            // f.anteil_user1 wird ignoriert — es ist immer nur der globale Split zum Erstellungszeitpunkt.
+            const anteil1 = (ov && ov.anteil_user1 != null) ? ov.anteil_user1 : activeSplit1;
+            const anteil2 = (ov && ov.anteil_user2 != null) ? ov.anteil_user2 : activeSplit2;
+            const monatlich = monatlichBetrag(f, betrag);
+            const rhythmusTag = f.rhythmus !== 'monatlich'
+                ? ' <span style="font-size:0.7rem;color:var(--text-3);">(÷ ' + ({ jaehrlich: '12', halbjaehrlich: '6', vierteljaehrlich: '3' }[f.rhythmus] || '') + ')</span>'
+                : '';
+            return { monatlich, anteil1, anteil2, rhythmusTag };
+        }
+
+        const groups = {};
+        fixkRes.forEach(f => {
+            const kat = f.kategorie || 'sonstiges';
+            if (!groups[kat]) groups[kat] = [];
+            groups[kat].push(f);
+        });
+
+        let totalGemein1 = 0, totalGemein2 = 0;
+
+        const KAT_LABELS = {
+            wohnen: 'Wohnkosten', haushalt: 'Haushalt & Einkauf', versicherung: 'Versicherungen',
+            transport: 'Transport', freizeit: 'Freizeit', gesundheit: 'Gesundheit', sonstiges: 'Sonstige Fixkosten'
+        };
+
+        const colCount = name2 ? 4 : 3;
+
+        function kpRow(label, gesamt, p1, p2, isSummary) {
+            const bg = isSummary ? 'background:var(--surface-2);' : '';
+            return '<tr>' +
+                '<td style="' + bg + 'padding:9px 14px;border-bottom:1px solid var(--border);">' + label + '</td>' +
+                '<td style="' + bg + 'padding:9px 14px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;">' + gesamt + '</td>' +
+                '<td style="' + bg + 'padding:9px 14px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;">' + p1 + '</td>' +
+                (name2 ? '<td style="' + bg + 'padding:9px 14px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;">' + (p2 || '–') + '</td>' : '') +
+            '</tr>';
+        }
+
+        function divRow(label) {
+            return '<tr style="background:rgba(16,185,129,0.06);">' +
+                '<td colspan="' + colCount + '" style="padding:7px 14px;font-size:0.72rem;font-weight:700;color:var(--haus-accent);text-transform:uppercase;letter-spacing:0.07em;">' + label + '</td>' +
+            '</tr>';
+        }
+
+        function sepRow() {
+            return '<tr><td colspan="' + colCount + '" style="height:10px;"></td></tr>';
+        }
+
+        function buildGroupRows(katName, items) {
+            let groupGes = 0, groupP1 = 0, groupP2 = 0;
+            const rows = items.map(f => {
+                const { monatlich, anteil1, anteil2, rhythmusTag } = effFixkost(f);
+                const p1 = monatlich * anteil1 / 100;
+                const p2 = monatlich * anteil2 / 100;
+                groupGes += monatlich; groupP1 += p1; groupP2 += p2;
+                totalGemein1 += p1; totalGemein2 += p2;
+                const ov = overrideRes.find(o => o.fixkosten_id == f.id);
+                const splitHint = (ov && ov.anteil_user1 != null)
+                    ? ' <span style="font-size:0.7rem;color:var(--text-3);">(' + anteil1 + '/' + anteil2 + '%)</span>'
+                    : '';
+                return kpRow(escHtml(f.name) + splitHint + rhythmusTag, fmt.format(monatlich), fmt.format(p1), name2 ? fmt.format(p2) : null, false);
+            }).join('');
+
+            const hdr = '<tr style="background:rgba(16,185,129,0.08);">' +
+                '<td colspan="' + colCount + '" style="padding:7px 14px;font-size:0.72rem;font-weight:700;color:var(--haus-accent);text-transform:uppercase;letter-spacing:0.07em;">' +
+                    (KAT_LABELS[katName] || katName) +
+                '</td></tr>';
+
+            return hdr + rows;
+        }
+
+        // Alle Fixkosten einzeln, dann eine Gesamtzeile für alle gemeinsamen Kosten
+        const groupRowsHtml = Object.entries(groups).map(([kat, items]) => buildGroupRows(kat, items)).join('');
+        const summeGemeinRow = '<tr style="background:var(--surface-2);">' +
+            '<td style="padding:9px 14px;border-bottom:1px solid var(--border);font-weight:700;">Summe gemeinsame Fixkosten</td>' +
+            '<td style="padding:9px 14px;border-bottom:1px solid var(--border);text-align:right;font-weight:700;">' + fmt.format(totalGemein1 + totalGemein2) + '</td>' +
+            '<td style="padding:9px 14px;border-bottom:1px solid var(--border);text-align:right;font-weight:700;color:#10b981;">' + fmt.format(totalGemein1) + '</td>' +
+            (name2 ? '<td style="padding:9px 14px;border-bottom:1px solid var(--border);text-align:right;font-weight:700;color:#3b82f6;">' + fmt.format(totalGemein2) + '</td>' : '') +
+        '</tr>';
+
+        const pers1 = persRes.filter(p => p.user_id === user1.user_id);
+        const pers2 = user2 ? persRes.filter(p => p.user_id === user2.user_id) : [];
+        const sumPers1 = pers1.reduce((s, p) => s + p.betrag, 0);
+        const sumPers2 = pers2.reduce((s, p) => s + p.betrag, 0);
+
+        const gesamtP1 = totalGemein1 + sumPers1;
+        const gesamtP2 = totalGemein2 + sumPers2;
+
+        const geh1 = getGeh(user1.user_id);
+        const geh2 = user2 ? getGeh(user2.user_id) : null;
+
+        const ubrig1 = (geh1.gehalt || 0) - gesamtP1 - (geh1.sparbetrag || 0);
+        const ubrig2 = geh2 ? (geh2.gehalt || 0) - gesamtP2 - (geh2.sparbetrag || 0) : null;
+
+        let persRowsHtml = '';
+        if (sumPers1 > 0 || sumPers2 > 0) {
+            persRowsHtml = sepRow() + kpRow(
+                'Pers. Fixkosten',
+                '–',
+                fmt.format(sumPers1),
+                name2 ? fmt.format(sumPers2) : null,
+                false
+            );
+        }
+
+        const thS  = 'padding:11px 14px;text-align:right;font-size:0.78rem;font-weight:700;color:var(--text-3);border-bottom:2px solid var(--border);background:var(--surface-2);';
+        const thSL = 'padding:11px 14px;font-size:0.78rem;font-weight:700;color:var(--text-3);border-bottom:2px solid var(--border);background:var(--surface-2);';
+
+        const thead = '<thead><tr>' +
+            '<th style="' + thSL + '">Kostenposition</th>' +
+            '<th style="' + thS + '">Gesamt (mo.)</th>' +
+            '<th style="' + thS + ';color:#10b981;">' + escHtml(name1) + '</th>' +
+            (name2 ? '<th style="' + thS + ';color:#3b82f6;">' + escHtml(name2) + '</th>' : '') +
+        '</tr></thead>';
+
+        const splitLabel = 'Aufteilung' + (splitOverride ? ' <span style="font-size:0.7rem;background:rgba(16,185,129,0.12);color:var(--haus-accent);padding:1px 6px;border-radius:6px;font-weight:700;">Monats-Override</span>' : '');
+        const splitInfoRow = '<tr style="background:rgba(16,185,129,0.03);">' +
+            '<td style="padding:9px 14px;border-bottom:1px solid var(--border);font-size:0.82rem;color:var(--text-2);">' + splitLabel + '</td>' +
+            '<td style="padding:9px 14px;border-bottom:1px solid var(--border);text-align:right;color:var(--text-3);">–</td>' +
+            '<td style="padding:9px 14px;border-bottom:1px solid var(--border);text-align:right;font-weight:700;color:#10b981;">' + activeSplit1 + '%</td>' +
+            (name2 ? '<td style="padding:9px 14px;border-bottom:1px solid var(--border);text-align:right;font-weight:700;color:#3b82f6;">' + activeSplit2 + '%</td>' : '') +
+        '</tr>';
+
+        const gesamtRow = sepRow() +
+            '<tr style="background:var(--surface-2);">' +
+                '<td style="padding:12px 14px;border-bottom:2px solid var(--border);font-weight:800;font-size:0.92rem;">Gesamtkosten</td>' +
+                '<td style="padding:12px 14px;border-bottom:2px solid var(--border);text-align:right;color:var(--text-3);">–</td>' +
+                '<td style="padding:12px 14px;border-bottom:2px solid var(--border);text-align:right;font-weight:800;font-size:0.92rem;color:#ef4444;">' + fmt.format(gesamtP1) + '</td>' +
+                (name2 ? '<td style="padding:12px 14px;border-bottom:2px solid var(--border);text-align:right;font-weight:800;font-size:0.92rem;color:#ef4444;">' + fmt.format(gesamtP2) + '</td>' : '') +
+            '</tr>';
+
+        const incomeRows = sepRow() + divRow('Gehalt & Sparen') +
+            kpRow('Gehalt', '–', fmt.format(geh1.gehalt || 0), name2 ? fmt.format(geh2?.gehalt || 0) : null, false) +
+            kpRow('Sparen (geplant)', '–', fmt.format(geh1.sparbetrag || 0), name2 ? fmt.format(geh2?.sparbetrag || 0) : null, false);
+
+        const c1 = ubrig1 >= 0 ? '#22c55e' : '#ef4444';
+        const c2 = ubrig2 !== null ? (ubrig2 >= 0 ? '#22c55e' : '#ef4444') : null;
+        const ubrigRow = '<tr style="background:rgba(16,185,129,0.06);">' +
+            '<td style="padding:14px;font-weight:800;font-size:0.95rem;">Übrig für Freizeit etc.</td>' +
+            '<td style="padding:14px;text-align:right;color:var(--text-3);">–</td>' +
+            '<td style="padding:14px;text-align:right;font-weight:800;font-size:0.95rem;color:' + c1 + ';">' + fmt.format(ubrig1) + '</td>' +
+            (name2 ? '<td style="padding:14px;text-align:right;font-weight:800;font-size:0.95rem;color:' + c2 + ';">' + fmt.format(ubrig2) + '</td>' : '') +
+        '</tr>';
+
+        if (fixkRes.length === 0) {
+            root.innerHTML =
+                '<div class="card" style="padding:40px;text-align:center;color:var(--text-3);">' +
+                    '<i class="ri-funds-line" style="font-size:2rem;display:block;margin-bottom:12px;"></i>' +
+                    '<div style="font-weight:600;margin-bottom:8px;">Noch keine Fixkosten eingetragen</div>' +
+                    '<div style="font-size:0.85rem;margin-bottom:16px;">Trage zuerst eure gemeinsamen Fixkosten ein.</div>' +
+                    '<a href="/users/haushalt/ausgaben?tab=fixkosten" class="btn-primary" style="display:inline-flex;">Zu Fixkosten →</a>' +
+                '</div>';
+            return;
+        }
+
+        root.innerHTML =
+            '<div style="font-size:0.78rem;color:var(--text-3);margin-bottom:12px;">Jährliche und quartalsweise Kosten werden auf den Monat umgerechnet.</div>' +
+            '<div class="card" style="padding:0;overflow:hidden;">' +
+                '<div style="overflow-x:auto;">' +
+                    '<table style="width:100%;border-collapse:collapse;font-size:0.84rem;">' +
+                        thead +
+                        '<tbody>' +
+                            splitInfoRow +
+                            sepRow() +
+                            groupRowsHtml +
+                            summeGemeinRow +
+                            persRowsHtml +
+                            gesamtRow +
+                            incomeRows +
+                            ubrigRow +
+                        '</tbody>' +
+                    '</table>' +
+                '</div>' +
+            '</div>';
+    }
+
+    init();
+    </script>
+</body>
+</html>

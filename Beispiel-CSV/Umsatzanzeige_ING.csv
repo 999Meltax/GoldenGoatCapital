@@ -1,0 +1,15 @@
+Umsatzanzeige;Datei erstellt am: 23.03.2026 08:45;;;;;;;
+;;;;;;;;
+IBAN;-;;;;;;;
+Kontoname;Girokonto;;;;;;;
+Bank;ING;;;;;;;
+Kunde;-;;;;;;;
+Zeitraum;23.03.2025 - 23.03.2026;;;;;;;
+Saldo;53,22;EUR;;;;;;
+;;;;;;;;
+Sortierung;Datum absteigend;;;;;;;
+;;;;;;;;
+In der CSV-Datei finden Sie alle bereits gebuchten Umsätze. Die vorgemerkten Umsätze werden nicht aufgenommen, auch wenn sie in Ihrem Internetbanking angezeigt werden.;;;;;;;;
+;;;;;;;;
+Buchung;Wertstellungsdatum;Auftraggeber/Empfänger;Buchungstext;Verwendungszweck;Saldo;Währung;Betrag;Währung
+23.03.2026;23.03.2026;EWV Energie- und Wasser-Versorgung GmbH;Echtzeitüberweisung;Testverwendungszweck;53,22;EUR;-27,22;EUR

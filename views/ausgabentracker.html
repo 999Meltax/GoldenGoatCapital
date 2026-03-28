@@ -261,6 +261,34 @@
                     <span>Gefiltert: nur <strong>Umbuchungen / Transfers</strong></span>
                     <a href="/users/ausgabentracker" style="margin-left:auto;font-size:0.78rem;color:var(--accent,#6358e6);text-decoration:none;">Filter aufheben</a>
                 </div>
+                <!-- Bulk-Select Toggle -->
+                <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:4px 0 8px;">
+                    <button id="bulkSelectAllBtn" onclick="toggleSelectAll()" style="display:none;align-items:center;gap:6px;padding:5px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);font-size:0.8rem;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;cursor:pointer;">
+                        <i class="ri-checkbox-line"></i> Alle auswählen
+                    </button>
+                    <button id="bulkToggleBtn" onclick="toggleBulkMode()" style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);font-size:0.8rem;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;cursor:pointer;">
+                        <i class="ri-checkbox-multiple-line"></i> Auswählen
+                    </button>
+                </div>
+                <!-- Bulk-Action-Bar -->
+                <div id="bulkActionBar" style="display:none;position:sticky;bottom:12px;z-index:50;background:var(--surface);border:1px solid var(--accent,#6358e6);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:10px;box-shadow:0 4px 20px rgba(99,88,230,0.18);align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span id="bulkCount" style="font-size:0.88rem;font-weight:700;color:var(--accent,#6358e6);white-space:nowrap;"></span>
+                    <select id="bulkCategory" style="flex:1;min-width:120px;max-width:180px;height:32px;padding:0 8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-size:0.82rem;">
+                        <option value="">Kategorie…</option>
+                    </select>
+                    <select id="bulkKonto" style="flex:1;min-width:120px;max-width:180px;height:32px;padding:0 8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-size:0.82rem;">
+                        <option value="__none__">Konto…</option>
+                        <option value="">Kein Konto</option>
+                    </select>
+                    <select id="bulkType" style="flex:1;min-width:110px;max-width:150px;height:32px;padding:0 8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-size:0.82rem;">
+                        <option value="">Typ…</option>
+                        <option value="Ausgaben">Ausgaben</option>
+                        <option value="Einnahmen">Einnahmen</option>
+                    </select>
+                    <button onclick="applyBulkUpdate()" style="padding:6px 14px;border-radius:8px;background:var(--accent,#6358e6);color:#fff;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.83rem;font-weight:700;white-space:nowrap;"><i class="ri-check-line"></i> Anwenden</button>
+                    <button onclick="bulkDelete()" style="padding:6px 14px;border-radius:8px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#ef4444;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.83rem;font-weight:600;white-space:nowrap;"><i class="ri-delete-bin-line"></i> Löschen</button>
+                    <button onclick="toggleBulkMode()" style="padding:6px 14px;border-radius:8px;background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.83rem;font-weight:600;white-space:nowrap;"><i class="ri-close-line"></i> Abbrechen</button>
+                </div>
                 <!-- Pending-Delete-Bar -->
                 <div id="pendingDeleteBar" style="display:none;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-left:3px solid #ef4444;border-radius:var(--radius-md);padding:10px 14px;margin-bottom:10px;font-size:0.85rem;flex-wrap:wrap;"></div>
                 <!-- Sortier-Header -->

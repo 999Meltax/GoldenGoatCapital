@@ -89,6 +89,7 @@
 }
 .imp-preview-table tr:last-child td { border-bottom: none; }
 .imp-preview-table tr.skip td { opacity: 0.35; }
+.imp-preview-table tr.dup-row td { background: rgba(245,158,11,0.04); }
 .imp-preview-table select, .imp-preview-table input[type=text] {
     padding: 3px 7px; border-radius: 5px; font-size: 0.78rem;
     background: var(--surface-2); border: 1px solid var(--border);
@@ -158,6 +159,9 @@
         </div>
     </div>
 
+    <!-- Hidden mode indicator for import.js -->
+    <input type="hidden" id="importMode" value="<%= mode || 'privat' %>">
+
     <!-- ══ STEP 1: Upload ══ -->
     <div id="step1">
         <div class="card" style="padding:28px;margin-bottom:20px;">
@@ -173,13 +177,17 @@
                         <i class="ri-goat-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
                         GoldenGoat CSV
                     </button>
-                    <button class="imp-preset-btn" data-preset="dkb" onclick="selectPreset('dkb',this)">
-                        <i class="ri-bank-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
-                        DKB
-                    </button>
                     <button class="imp-preset-btn" data-preset="ing" onclick="selectPreset('ing',this)">
                         <i class="ri-bank-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
                         ING
+                    </button>
+                    <button class="imp-preset-btn" data-preset="c24" onclick="selectPreset('c24',this)">
+                        <i class="ri-bank-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
+                        C24
+                    </button>
+                    <button class="imp-preset-btn" data-preset="dkb" onclick="selectPreset('dkb',this)">
+                        <i class="ri-bank-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
+                        DKB
                     </button>
                     <button class="imp-preset-btn" data-preset="sparkasse" onclick="selectPreset('sparkasse',this)">
                         <i class="ri-bank-line" style="display:block;font-size:1.2rem;margin-bottom:4px;"></i>
@@ -205,12 +213,38 @@
                     <i class="ri-file-excel-2-line"></i>
                     <h3>CSV-Datei hier ablegen</h3>
                     <p>oder klicken zum Auswählen · .csv, .txt · max. 5 MB</p>
+                    <div style="margin-top:14px;display:inline-flex;align-items:center;gap:6px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:6px 12px;font-size:0.75rem;color:#047857;">
+                        <i class="ri-shield-check-line" style="font-size:0.9rem;"></i>
+                        CSV wird nur im Browser verarbeitet · IBAN, BIC und Saldo werden nie gespeichert
+                    </div>
                 </div>
                 <input type="file" id="csvFileInput" accept=".csv,.txt" style="display:none;" onchange="handleFileSelect(event)">
             </div>
 
+            <!-- Konto-Vorauswahl -->
+            <div class="imp-section" style="margin-top:16px;">
+                <span class="imp-section-label">Konto zuordnen <span style="font-weight:400;color:var(--text-3);">(gilt für alle Transaktionen, im nächsten Schritt einzeln änderbar)</span></span>
+                <select id="defaultAccountSelect" style="width:100%;padding:10px 14px;border-radius:var(--radius-md);background:var(--surface-2);border:1.5px solid var(--border);color:var(--text-1);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.88rem;outline:none;">
+                    <option value="">— Kein Konto vorauswählen —</option>
+                    <% (konten || []).forEach(k => { %>
+                    <option value="<%= k.id %>"><%= k.name %></option>
+                    <% }) %>
+                </select>
+            </div>
+
+            <!-- Aktueller Kontostand -->
+            <div class="imp-section" style="margin-top:16px;">
+                <span class="imp-section-label">Aktueller Kontostand laut Bank <span style="font-weight:400;color:var(--text-3);">(optional — wird nach dem Import gesetzt)</span></span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="text" id="manualSaldoInput" placeholder="z.B. 549,51" autocomplete="off"
+                        style="flex:1;padding:10px 14px;border-radius:var(--radius-md);background:var(--surface-2);border:1.5px solid var(--border);color:var(--text-1);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.88rem;outline:none;">
+                    <span style="color:var(--text-3);font-size:0.88rem;">€</span>
+                </div>
+                <div id="saldoHint" style="font-size:0.78rem;color:var(--text-3);margin-top:4px;display:none;"></div>
+            </div>
+
             <div id="step1FileInfo" style="display:none;" class="imp-badge-row"></div>
-            <div id="step1Msg" style="color:#ef4444;font-size:0.83rem;margin-top:8px;"></div>
+            <div id="step1Msg" style="font-size:0.83rem;margin-top:8px;"></div>
 
             <div style="display:flex;justify-content:flex-end;margin-top:8px;">
                 <button class="btn-primary" id="toStep2Btn" onclick="goToStep2()" disabled>
@@ -275,7 +309,42 @@
                 </div>
             </div>
 
-            <div class="imp-summary-grid" id="previewSummary" style="margin-bottom:16px;"></div>
+            <div class="imp-summary-grid" id="previewSummary" style="margin-bottom:12px;"></div>
+
+            <!-- Kontostand-Modus (nur wenn Saldo erkannt) -->
+            <div id="saldoModeRow" style="display:none;background:rgba(99,88,230,0.07);border:1px solid rgba(99,88,230,0.2);border-radius:var(--radius-md);padding:10px 16px;margin-bottom:12px;align-items:center;gap:16px;flex-wrap:wrap;">
+                <span style="font-size:0.82rem;color:var(--text-2);font-weight:500;"><i class="ri-bank-line" style="color:var(--accent);margin-right:4px;"></i>Kontostand nach Import:</span>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;">
+                    <input type="radio" name="saldoMode" value="target" checked style="accent-color:var(--accent);">
+                    Auf <strong id="saldoModeTargetLabel">—</strong> setzen (Zielkontostand)
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;">
+                    <input type="radio" name="saldoMode" value="none" style="accent-color:var(--accent);">
+                    Nicht anpassen (Transaktionen einfach hinzufügen)
+                </label>
+            </div>
+
+            <!-- Import-Button oben -->
+            <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+                <span id="importCountLabel" style="font-size:0.85rem;color:var(--text-3);"></span>
+                <button class="btn-primary" id="importBtn" onclick="doImport()" style="min-width:180px;justify-content:center;">
+                    <i class="ri-upload-cloud-2-line"></i> Importieren
+                </button>
+            </div>
+
+            <!-- Konto für alle setzen -->
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+                <span style="font-size:0.82rem;color:var(--text-3);white-space:nowrap;">Konto für alle:</span>
+                <select id="bulkAccountSelect" style="flex:1;min-width:160px;max-width:260px;padding:7px 12px;border-radius:var(--radius-md);background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.82rem;">
+                    <option value="">— unverändert —</option>
+                    <% (konten || []).forEach(k => { %>
+                    <option value="<%= k.id %>"><%= k.name %></option>
+                    <% }) %>
+                </select>
+                <button onclick="applyBulkAccount()" style="padding:7px 14px;border-radius:var(--radius-md);background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.82rem;cursor:pointer;white-space:nowrap;">
+                    <i class="ri-check-double-line"></i> Auf alle anwenden
+                </button>
+            </div>
 
             <div id="rulesInfoBanner" style="display:none;background:rgba(99,88,230,0.07);border:1px solid rgba(99,88,230,0.2);border-radius:var(--radius-md);padding:10px 14px;font-size:0.82rem;color:var(--text-2);margin-bottom:14px;">
                 <i class="ri-magic-line" style="color:var(--accent);margin-right:6px;"></i>
@@ -288,10 +357,11 @@
                         <tr>
                             <th style="width:32px;"><input type="checkbox" id="selectAllCb" onchange="selectAll(this.checked)" style="cursor:pointer;accent-color:var(--accent);"></th>
                             <th>Datum</th>
-                            <th>Bezeichnung</th>
+                            <th>Empfänger</th>
+                            <th>Verwendungszweck</th>
                             <th>Betrag</th>
                             <th>Typ</th>
-                            <th>Kategorie</th>
+                            <th style="color:var(--text-3);font-weight:500;">Kategorie <span style="font-size:0.7rem;opacity:0.7;">(Vorschau)</span></th>
                             <th>Konto</th>
                         </tr>
                     </thead>
@@ -300,12 +370,6 @@
             </div>
         </div>
 
-        <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;">
-            <span id="importCountLabel" style="font-size:0.85rem;color:var(--text-3);"></span>
-            <button class="btn-primary" id="importBtn" onclick="doImport()" style="min-width:180px;justify-content:center;">
-                <i class="ri-upload-cloud-2-line"></i> Importieren
-            </button>
-        </div>
     </div>
 
     <!-- ══ STEP 4: Success ══ -->
@@ -327,6 +391,6 @@
 
     <%- include('footer.html') %>
     <script src="/navheader.js"></script>
-    <script src="/import.js"></script>
+    <script src="/import.js?v=14"></script>
 </body>
 </html>

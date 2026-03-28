@@ -1,9 +1,6 @@
 const fmt = new Intl.NumberFormat('de-DE');
 
-const DEFAULT_CATEGORIES = [
-    'Essen & Trinken', 'Lebensmittel', 'Klamotten', 'Freizeit', 'Tanken',
-    'Wohnen', 'Transport', 'Gesundheit', 'Gehalt', 'Sonstiges'
-];
+// DEFAULT_CATEGORIES entfernt (Phase 1-E) — Kategorien kommen vollständig aus der DB
 
 let allRegeln    = [];
 let allCategories = [];
@@ -12,13 +9,18 @@ let allCategories = [];
 // INIT
 // ═══════════════════════════════════════════════════════════
 async function init() {
-    const [regelnRes, catRes] = await Promise.all([
+    const [regelnRes, catRes, hausCatRes] = await Promise.all([
         fetch('/users/regeln/list'),
-        fetch('/users/categories')
+        fetch('/users/categories'),
+        fetch('/users/haushalt/tracker/categories')
     ]);
-    allRegeln     = regelnRes.ok ? await regelnRes.json() : [];
+    allRegeln = regelnRes.ok ? await regelnRes.json() : [];
     const userCats = catRes.ok ? await catRes.json() : [];
-    allCategories = [...new Set([...DEFAULT_CATEGORIES, ...userCats.map(c => c.name)])].sort();
+    const hausCats = hausCatRes.ok ? await hausCatRes.json() : [];
+    const privNames = userCats.map(c => c.name);
+    const hausNames = hausCats.map(c => c.name || c);
+    // Merge and deduplicate, sorted alphabetically
+    allCategories = [...new Set([...privNames, ...hausNames])].sort();
     populateCategorySelect();
     render();
 }
@@ -27,6 +29,33 @@ function populateCategorySelect() {
     const sel = document.getElementById('mKategorie');
     sel.innerHTML = '<option value="">(nicht ändern)</option>' +
         allCategories.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+    const quickSel = document.getElementById('quickRuleKat');
+    if (quickSel) {
+        quickSel.innerHTML = '<option value="">Bitte wählen…</option>' +
+            allCategories.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+    }
+}
+
+async function saveQuickRule() {
+    const wert = (document.getElementById('quickRuleWert')?.value || '').trim();
+    const kat  = document.getElementById('quickRuleKat')?.value || '';
+    const msg  = document.getElementById('quickRuleMsg');
+    if (!wert) { if (msg) { msg.textContent = 'Bitte einen Suchbegriff eingeben.'; msg.style.color = '#ef4444'; } return; }
+    if (!kat)  { if (msg) { msg.textContent = 'Bitte eine Kategorie wählen.'; msg.style.color = '#ef4444'; } return; }
+    try {
+        const res = await fetch('/users/regeln/add', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bedingung_operator: 'enthält', bedingung_wert: wert, aktion_kategorie: kat, aktion_typ: '', modus: 'beide', priority: 0 })
+        });
+        if (!res.ok) throw new Error('Fehler');
+        if (msg) { msg.textContent = `Regel „${wert} → ${kat}" wurde angelegt.`; msg.style.color = '#22c55e'; }
+        document.getElementById('quickRuleWert').value = '';
+        document.getElementById('quickRuleKat').value = '';
+        setTimeout(() => { if (msg) msg.textContent = ''; }, 3000);
+        await init();
+    } catch {
+        if (msg) { msg.textContent = 'Fehler beim Anlegen der Regel.'; msg.style.color = '#ef4444'; }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -49,10 +78,15 @@ function render() {
     const el = document.getElementById('regelnList');
     if (allRegeln.length === 0) {
         el.innerHTML = `
-            <div style="text-align:center;padding:60px 24px;color:var(--text-3);">
-                <i class="ri-robot-line" style="font-size:2rem;display:block;margin-bottom:12px;opacity:.4;"></i>
-                Noch keine Regeln angelegt.<br>
-                <span style="font-size:0.85rem;">Erstelle eine Regel um Transaktionen automatisch zu kategorisieren.</span>
+            <div style="text-align:center;padding:64px 24px;">
+                <i class="ri-magic-line" style="font-size:3rem;display:block;margin-bottom:14px;color:var(--text-3);opacity:0.4;"></i>
+                <div style="font-weight:700;font-size:1.05rem;margin-bottom:8px;color:var(--text-1);">Noch keine Regeln</div>
+                <div style="color:var(--text-3);font-size:0.875rem;max-width:360px;margin:0 auto 20px;line-height:1.6;">
+                    Regeln kategorisieren neue Transaktionen automatisch — einmal einrichten, dauerhaft Zeit sparen.
+                </div>
+                <button onclick="document.getElementById('addRegelBtn')?.click()||document.querySelector('[data-action=add-regel]')?.click()" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;background:var(--accent,#6c63ff);color:#fff;border:none;border-radius:8px;font-size:0.875rem;font-weight:600;cursor:pointer;font-family:inherit;">
+                    <i class="ri-add-line"></i> Erste Regel erstellen
+                </button>
             </div>`;
         return;
     }
@@ -71,9 +105,13 @@ function render() {
             const mb = MODUS_BADGE[r.modus || 'beide'] || MODUS_BADGE.beide;
             aktionParts.push(`<span class="badge" style="background:${mb.bg};color:${mb.color};"><i class="${mb.icon}"></i> ${mb.label}</span>`);
 
+            const prio = parseInt(r.priority) || 0;
             return `
             <div style="display:grid;grid-template-columns:auto 1fr 1fr auto;gap:0;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);${!r.aktiv ? 'opacity:.45;' : ''}">
-                <div style="padding-right:16px;font-size:0.78rem;color:var(--text-3);font-weight:600;">${i + 1}</div>
+                <div style="padding-right:16px;font-size:0.78rem;color:var(--text-3);font-weight:600;display:flex;flex-direction:column;align-items:center;gap:2px;">
+                    <span>${i + 1}</span>
+                    ${prio !== 0 ? `<span style="font-size:0.65rem;padding:1px 5px;border-radius:4px;background:${prio > 0 ? 'rgba(34,197,94,.15)' : 'rgba(239,68,68,.1)'};color:${prio > 0 ? '#22c55e' : '#ef4444'};">${prio > 0 ? '+' : ''}${prio}</span>` : ''}
+                </div>
                 <div style="font-size:0.88rem;">
                     <span style="color:var(--text-3);">${OPERATOR_LABEL[r.bedingung_operator] || r.bedingung_operator}</span>
                     <span style="font-weight:600;color:var(--text-1);margin-left:5px;">"${escHtml(r.bedingung_wert)}"</span>
@@ -111,6 +149,7 @@ function openModal(id = null) {
         document.getElementById('mWert').value       = r.bedingung_wert;
         document.getElementById('mKategorie').value  = r.aktion_kategorie || '';
         document.getElementById('mTyp').value        = r.aktion_typ || '';
+        document.getElementById('mPriority').value   = r.priority ?? 0;
         selectModus(r.modus || 'beide');
     } else {
         document.getElementById('modalTitle').textContent = 'Neue Regel';
@@ -118,6 +157,7 @@ function openModal(id = null) {
         document.getElementById('mWert').value       = '';
         document.getElementById('mKategorie').value  = '';
         document.getElementById('mTyp').value        = '';
+        document.getElementById('mPriority').value   = 0;
         selectModus('beide');
     }
     document.getElementById('mWert').focus();
@@ -138,8 +178,9 @@ async function saveRegel() {
     if (!wert) { msgEl.style.color = '#ef4444'; msgEl.textContent = 'Bitte einen Bedingungswert eingeben.'; return; }
     if (!kategorie && !typ) { msgEl.style.color = '#ef4444'; msgEl.textContent = 'Bitte mindestens eine Aktion auswählen.'; return; }
 
-    const modus = document.getElementById('mModus')?.value || 'beide';
-    const body = { bedingung_operator: operator, bedingung_wert: wert, aktion_kategorie: kategorie || null, aktion_typ: typ || null, modus };
+    const modus    = document.getElementById('mModus')?.value || 'beide';
+    const priority = parseInt(document.getElementById('mPriority')?.value) || 0;
+    const body = { bedingung_operator: operator, bedingung_wert: wert, aktion_kategorie: kategorie || null, aktion_typ: typ || null, modus, priority };
 
     try {
         let res;
@@ -184,7 +225,8 @@ async function toggleAktiv(id, newAktiv) {
             aktion_kategorie:   r.aktion_kategorie,
             aktion_typ:         r.aktion_typ,
             aktiv:              newAktiv,
-            modus:              r.modus || 'beide'
+            modus:              r.modus || 'beide',
+            priority:           r.priority ?? 0
         })
     });
     await reload();
@@ -202,21 +244,32 @@ function selectModus(modus) {
     });
 }
 
-async function applyAll() {
-    const btn = document.getElementById('applyAllBtn');
+async function applyAll(modus = 'privat') {
+    const isHaus = modus === 'haushalt';
+    const btnId = isHaus ? 'applyAllHausBtn' : 'applyAllBtn';
+    const btn = document.getElementById(btnId);
+    const onlyEmpty = document.getElementById('applyOnlyEmptyCheck')?.checked ?? false;
+    const endpoint = isHaus ? '/users/haushalt/regeln/apply-all' : '/users/regeln/apply-all';
+    const labelDefault = isHaus
+        ? '<i class="ri-home-heart-line"></i> Auf Haushalt-Transaktionen anwenden'
+        : '<i class="ri-refresh-line"></i> Auf Privat-Transaktionen anwenden';
     btn.disabled = true;
     btn.innerHTML = '<i class="ri-loader-4-line"></i> Wird angewendet…';
     try {
-        const res  = await fetch('/users/regeln/apply-all', { method: 'POST' });
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ onlyEmpty })
+        });
         const data = await res.json();
         btn.innerHTML = `<i class="ri-check-line"></i> ${data.updated} Transaktion(en) aktualisiert`;
         setTimeout(() => {
             btn.disabled = false;
-            btn.innerHTML = '<i class="ri-refresh-line"></i> Auf bestehende Transaktionen anwenden';
+            btn.innerHTML = labelDefault;
         }, 3000);
     } catch {
         btn.disabled = false;
-        btn.innerHTML = '<i class="ri-refresh-line"></i> Auf bestehende Transaktionen anwenden';
+        btn.innerHTML = labelDefault;
     }
 }
 

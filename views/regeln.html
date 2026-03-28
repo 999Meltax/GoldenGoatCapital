@@ -17,17 +17,34 @@
             <p>Transaktionen werden beim Speichern und beim CSV-Import automatisch kategorisiert</p>
         </div>
         <button class="btn-primary" onclick="openModal()">
-            <i class="ri-add-line"></i> Neue Regel
+            <i class="ri-add-line"></i> Erweiterte Regel
         </button>
     </div>
 
-    <!-- Info-Banner -->
-    <div style="background:rgba(99,88,230,0.08);border:1px solid rgba(99,88,230,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:flex-start;gap:12px;">
-        <i class="ri-magic-line" style="color:var(--accent);font-size:1.1rem;flex-shrink:0;margin-top:1px;"></i>
-        <div style="font-size:0.85rem;color:var(--text-2);line-height:1.6;">
-            Regeln werden <b>der Reihe nach</b> geprüft – spätere Regeln können frühere überschreiben.
-            Der Transaktionsname wird mit dem Bedingungswert verglichen (<b>Groß-/Kleinschreibung wird ignoriert</b>).
-            Mit <b>„Auf bestehende anwenden"</b> kannst du alle vorhandenen Transaktionen nachträglich kategorisieren.
+    <!-- Einfach-Modus -->
+    <div class="card" style="padding:18px 20px;margin-bottom:16px;border:1px solid rgba(99,88,230,0.2);background:rgba(99,88,230,0.04);">
+        <div style="font-size:0.8rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+            <i class="ri-magic-line"></i> Schnell-Regel erstellen
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-size:0.88rem;color:var(--text-2);white-space:nowrap;">Wenn Bezeichnung enthält</span>
+            <input type="text" id="quickRuleWert" class="form-input" placeholder='z.B. "REWE"' style="flex:1;min-width:140px;max-width:220px;padding:8px 12px;">
+            <span style="font-size:0.88rem;color:var(--text-2);white-space:nowrap;">→ Kategorie</span>
+            <select id="quickRuleKat" class="form-input" style="flex:1;min-width:140px;max-width:220px;padding:8px 12px;">
+                <option value="">Bitte wählen…</option>
+            </select>
+            <button class="btn-primary" onclick="saveQuickRule()" style="white-space:nowrap;padding:8px 18px;font-size:0.85rem;">
+                <i class="ri-check-line"></i> Regel anlegen
+            </button>
+        </div>
+        <div id="quickRuleMsg" style="font-size:0.78rem;margin-top:8px;min-height:16px;"></div>
+        <div style="margin-top:10px;">
+            <button onclick="document.getElementById('advancedRuleHint').style.display=document.getElementById('advancedRuleHint').style.display==='none'?'':'none'" style="background:none;border:none;color:var(--text-3);font-size:0.78rem;cursor:pointer;padding:0;font-family:inherit;">
+                <i class="ri-arrow-down-s-line"></i> Mehr Optionen? Nutze „Erweiterte Regel" für Operator, Typ, Modus &amp; Priorität.
+            </button>
+            <div id="advancedRuleHint" style="display:none;font-size:0.78rem;color:var(--text-3);margin-top:6px;line-height:1.5;">
+                Regeln werden <b>der Reihe nach</b> geprüft. Der Name wird <b>ohne Groß-/Kleinschreibung</b> verglichen. Mit „Auf bestehende anwenden" kannst du alle vorhandenen Transaktionen nachträglich kategorisieren.
+            </div>
         </div>
     </div>
 
@@ -42,9 +59,16 @@
     </div>
 
     <!-- Bulk-Aktion -->
-    <div style="margin-top:16px;display:flex;justify-content:flex-end;">
-        <button class="btn-ghost" id="applyAllBtn" onclick="applyAll()" style="display:flex;align-items:center;gap:7px;font-size:0.85rem;">
-            <i class="ri-refresh-line"></i> Auf bestehende Transaktionen anwenden
+    <div style="margin-top:16px;display:flex;align-items:center;justify-content:flex-end;gap:16px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text-2);cursor:pointer;user-select:none;">
+            <input type="checkbox" id="applyOnlyEmptyCheck" style="accent-color:var(--accent);width:15px;height:15px;">
+            Nur Transaktionen ohne Kategorie
+        </label>
+        <button class="btn-ghost" id="applyAllHausBtn" onclick="applyAll('haushalt')" style="display:flex;align-items:center;gap:7px;font-size:0.85rem;">
+            <i class="ri-home-heart-line"></i> Auf Haushalt-Transaktionen anwenden
+        </button>
+        <button class="btn-ghost" id="applyAllBtn" onclick="applyAll('privat')" style="display:flex;align-items:center;gap:7px;font-size:0.85rem;">
+            <i class="ri-refresh-line"></i> Auf Privat-Transaktionen anwenden
         </button>
     </div>
 
@@ -107,6 +131,15 @@
                         </button>
                     </div>
                     <input type="hidden" id="mModus" value="beide">
+                </div>
+
+                <!-- Priorität -->
+                <div>
+                    <div style="font-size:0.75rem;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Priorität</div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <input type="number" id="mPriority" value="0" min="-99" max="99" step="1" class="form-input" style="width:90px;padding:9px 12px;">
+                        <span style="font-size:0.8rem;color:var(--text-3);">Höhere Zahl = wird zuerst geprüft</span>
+                    </div>
                 </div>
 
                 <input type="hidden" id="mEditId">

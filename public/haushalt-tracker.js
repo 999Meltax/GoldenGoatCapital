@@ -635,7 +635,7 @@ function showEditTransactionModal(transaction) {
         const sel = document.getElementById('editAccountSelect');
         if (sel) {
             sel.innerHTML = '<option value="">Kein Konto</option>' +
-                accounts.map(a => `<option value="${a.id}" ${String(a.id) === String(transaction.account_id) ? 'selected' : ''}>${a.name}</option>`).join('');
+                accounts.map(a => `<option value="${a.id}" ${String(a.id) === String(transaction.konto_id || transaction.account_id) ? 'selected' : ''}>${a.name}</option>`).join('');
         }
     });
     actionModalCategory.style.display = 'flex';
@@ -952,7 +952,8 @@ function getFiltered() {
         }
 
         const catMatch = !selCat || selCat === t.category;
-        const accMatch = activeIds === null || !t.account_id || activeIds.has(String(t.account_id));
+        const txKontoId = t.konto_id || t.account_id;
+        const accMatch = activeIds === null || !txKontoId || activeIds.has(String(txKontoId));
         return dateMatch && catMatch && accMatch;
     });
 }
@@ -1114,6 +1115,7 @@ function renderList() {
             const isFixkost  = t.recurring_id != null;
             const li         = document.createElement("li");
             li.className     = "transaction";
+            li.dataset.id    = t.id;
             const splitDefault = globalSettings.split_user1 ?? 50;
             const a1 = t.anteil_user1 ?? 50;
             const splitDiffers = Math.abs(a1 - splitDefault) >= 5;
@@ -1123,7 +1125,7 @@ function renderList() {
             li.innerHTML = `
                 <div class="name">
                     <h4>${t.name}${isFixkost ? ' <span class="fixkost-badge"><i class="ri-repeat-line"></i> Fixkosten</span>' : ''}${splitBadge}</h4>
-                    ${t.account_id ? `<p>${allAccounts.find(x => String(x.id) === String(t.account_id))?.name || ''}</p>` : ''}
+                    ${(t.konto_id || t.account_id) ? `<p>${allAccounts.find(x => String(x.id) === String(t.konto_id || t.account_id))?.name || ''}</p>` : ''}
                 </div>
                 <div class="category"><h4>${t.category}</h4></div>
                 <div class="tx-date">${new Date(t.date).toLocaleDateString('de-DE')}</div>
@@ -1981,3 +1983,227 @@ function escRec(str) {
         .replace(/&/g, '&amp;').replace(/</g, '&lt;')
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  BULK-EDIT (Mehrfachauswahl)
+// ═══════════════════════════════════════════════════════════════
+
+let bulkSelectMode = false;
+let selectedIds    = new Set();
+
+function toggleBulkMode() {
+    bulkSelectMode = !bulkSelectMode;
+    selectedIds    = new Set();
+
+    const btn = document.getElementById('bulkToggleBtn');
+    if (btn) {
+        if (bulkSelectMode) {
+            btn.innerHTML = '<i class="ri-close-line"></i> Abbrechen';
+            btn.style.background    = 'rgba(16,185,129,0.12)';
+            btn.style.borderColor   = 'var(--haus-accent)';
+            btn.style.color         = 'var(--haus-accent)';
+        } else {
+            btn.innerHTML = '<i class="ri-checkbox-multiple-line"></i> Auswählen';
+            btn.style.background  = '';
+            btn.style.borderColor = '';
+            btn.style.color       = '';
+        }
+    }
+    const selectAllBtn = document.getElementById('bulkSelectAllBtn');
+    if (selectAllBtn) selectAllBtn.style.display = bulkSelectMode ? 'inline-flex' : 'none';
+
+    updateBulkBar();
+    renderList();
+}
+
+function toggleTxSelection(id) {
+    if (selectedIds.has(id)) selectedIds.delete(id);
+    else                      selectedIds.add(id);
+    updateBulkBar();
+
+    // Checkbox-State direkt im DOM aktualisieren ohne komplettes Re-Render
+    const cb = document.querySelector(`.tx-bulk-cb[data-id="${id}"]`);
+    if (cb) cb.checked = selectedIds.has(id);
+
+    // Zeile visuell markieren
+    const li = cb?.closest('li');
+    if (li) li.classList.toggle('bulk-selected', selectedIds.has(id));
+
+    // "Alle auswählen"-Button-Label synchron halten
+    const selectAllBtn = document.getElementById('bulkSelectAllBtn');
+    if (selectAllBtn && bulkSelectMode) {
+        const filtered = getFiltered();
+        const allSelected = filtered.length > 0 && filtered.every(t => selectedIds.has(t.id));
+        selectAllBtn.innerHTML = allSelected
+            ? '<i class="ri-checkbox-indeterminate-line"></i> Alle abwählen'
+            : '<i class="ri-checkbox-line"></i> Alle auswählen';
+    }
+}
+
+function toggleSelectAll() {
+    const filtered = getFiltered();
+    const allSelected = filtered.every(t => selectedIds.has(t.id));
+
+    if (allSelected) {
+        // Alle abwählen
+        filtered.forEach(t => selectedIds.delete(t.id));
+    } else {
+        // Alle auswählen
+        filtered.forEach(t => selectedIds.add(t.id));
+    }
+
+    // Checkboxen und visuelle Markierung im DOM aktualisieren
+    document.querySelectorAll('#transactionList li.transaction').forEach(li => {
+        const txId = parseInt(li.dataset.id);
+        if (!txId) return;
+        const cb = li.querySelector('.tx-bulk-cb');
+        if (cb) cb.checked = selectedIds.has(txId);
+        li.classList.toggle('bulk-selected', selectedIds.has(txId));
+    });
+
+    // Button-Label aktualisieren
+    const btn = document.getElementById('bulkSelectAllBtn');
+    if (btn) {
+        const nowAllSelected = filtered.every(t => selectedIds.has(t.id));
+        btn.innerHTML = nowAllSelected
+            ? '<i class="ri-checkbox-indeterminate-line"></i> Alle abwählen'
+            : '<i class="ri-checkbox-line"></i> Alle auswählen';
+    }
+
+    updateBulkBar();
+}
+
+function updateBulkBar() {
+    const bar   = document.getElementById('bulkActionBar');
+    const count = document.getElementById('bulkCount');
+    if (!bar) return;
+
+    if (bulkSelectMode && selectedIds.size > 0) {
+        bar.style.display = 'flex';
+        if (count) count.textContent = selectedIds.size + ' ausgewählt';
+
+        // Kategorien befüllen
+        const catSel = document.getElementById('bulkCategory');
+        if (catSel && catSel.options.length <= 1) {
+            catSel.innerHTML = '<option value="">Kategorie…</option>' +
+                categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+        }
+
+        // Konten befüllen
+        const kontoSel = document.getElementById('bulkKonto');
+        if (kontoSel && kontoSel.options.length <= 2) {
+            kontoSel.innerHTML = '<option value="__none__">Konto…</option><option value="">Kein Konto</option>' +
+                allAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+        }
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+async function applyBulkUpdate() {
+    if (!selectedIds.size) return;
+
+    const catSel   = document.getElementById('bulkCategory');
+    const kontoSel = document.getElementById('bulkKonto');
+    const typeSel  = document.getElementById('bulkType');
+
+    const category = catSel?.value   || null;
+    const kontoVal = kontoSel?.value;
+    const type     = typeSel?.value  || null;
+
+    // Build payload — only include fields that were actually set
+    const payload = { ids: [...selectedIds] };
+    if (category) payload.category = category;
+    if (kontoVal !== '__none__') payload.konto_id = kontoVal || null;
+    if (type)     payload.type     = type;
+
+    if (!payload.category && kontoVal === '__none__' && !payload.type) {
+        showStatus('Bitte mindestens ein Feld zum Ändern auswählen.', true);
+        return;
+    }
+
+    try {
+        const res = await fetch('/users/haushalt/transaktionen/bulk-update', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error((await res.json()).message || 'Fehler beim Aktualisieren');
+        const data = await res.json();
+        showStatus(`${data.count} Transaktion(en) aktualisiert.`, false);
+
+        // Exit bulk mode and reload
+        bulkSelectMode = false;
+        selectedIds    = new Set();
+        const btn = document.getElementById('bulkToggleBtn');
+        if (btn) {
+            btn.innerHTML = '<i class="ri-checkbox-multiple-line"></i> Auswählen';
+            btn.style.background = btn.style.borderColor = btn.style.color = '';
+        }
+        updateBulkBar();
+        await loadData();
+    } catch (err) {
+        showStatus(err.message, true);
+    }
+}
+
+async function bulkDeleteHaus() {
+    if (!selectedIds.size) return;
+    if (!confirm(`${selectedIds.size} Transaktion(en) wirklich löschen?`)) return;
+    const ids = [...selectedIds];
+    // Optimistic remove
+    transactions = transactions.filter(t => !ids.includes(t.id));
+    bulkSelectMode = false;
+    selectedIds    = new Set();
+    const btn = document.getElementById('bulkToggleBtn');
+    if (btn) { btn.innerHTML = '<i class="ri-checkbox-multiple-line"></i> Auswählen'; btn.style.background = btn.style.borderColor = btn.style.color = ''; }
+    const selectAllBtn = document.getElementById('bulkSelectAllBtn');
+    if (selectAllBtn) selectAllBtn.style.display = 'none';
+    updateBulkBar();
+    renderList();
+    try {
+        const res = await fetch('/users/haushalt/transaktionen/bulk-delete', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids })
+        });
+        if (!res.ok) throw new Error((await res.json()).message || 'Fehler');
+        showStatus(`${ids.length} Transaktion(en) gelöscht.`, false);
+        await loadData();
+    } catch (err) {
+        showStatus(err.message, true);
+        await loadData();
+    }
+}
+
+// Patch renderList to inject checkboxes in bulk mode.
+// We wrap the original by hooking into the li creation.
+const _origRenderList = renderList;
+renderList = function() {
+    _origRenderList();
+
+    if (!bulkSelectMode) return;
+
+    // After renderList ran, add checkboxes to each transaction row
+    const items = document.querySelectorAll('#transactionList li.transaction');
+    items.forEach(li => {
+        const txId = parseInt(li.dataset.id);
+        if (!txId) return;
+
+        // Avoid double-adding
+        if (li.querySelector('.tx-bulk-cb')) return;
+
+        const cb = document.createElement('input');
+        cb.type      = 'checkbox';
+        cb.className = 'tx-bulk-cb';
+        cb.dataset.id = txId;
+        cb.checked   = selectedIds.has(txId);
+        cb.style.cssText = 'width:18px;height:18px;margin-right:10px;flex-shrink:0;accent-color:var(--haus-accent);cursor:pointer;';
+        cb.addEventListener('change', () => toggleTxSelection(txId));
+
+        li.style.display = 'flex';
+        li.style.alignItems = 'center';
+        li.insertBefore(cb, li.firstChild);
+
+        if (selectedIds.has(txId)) li.classList.add('bulk-selected');
+    });
+};

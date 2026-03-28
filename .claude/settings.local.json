@@ -2,7 +2,21 @@
   "permissions": {
     "allow": [
       "Bash(grep -E \"\\\\.js$|\\\\.json$\")",
-      "Bash(grep -rn \"existiert bereits\\\\|already exists\\\\|haushalt.*konto\\\\|haushalt_konten\" 'C:\\\\Users\\\\max.delafuente\\\\Documents\\\\Eigene Projekte\\\\GoldenGoatCapital' --include=*.js --include=*.html -l)"
+      "Bash(grep -rn \"existiert bereits\\\\|already exists\\\\|haushalt.*konto\\\\|haushalt_konten\" 'C:\\\\Users\\\\max.delafuente\\\\Documents\\\\Eigene Projekte\\\\GoldenGoatCapital' --include=*.js --include=*.html -l)",
+      "Bash(node -e \":*)",
+      "Bash(ls -la \"C:/Users/max.delafuente/Documents/Eigene Projekte/GoldenGoatCapital/views/haushalt\"*)",
+      "Bash(ls views/haushalt*.html)",
+      "Bash(node --check modules/database.js)",
+      "Bash(node --check routes/users.js)",
+      "Bash(timeout 8 node server.js)",
+      "Bash(timeout 6 node server.js)",
+      "Bash(node:*)",
+      "Bash(\"C:/Users/max.delafuente/Documents/Eigene Projekte/GoldenGoatCapital/.env\")",
+      "Bash(where pandoc:*)",
+      "Bash(npm install:*)",
+      "Bash(ls \"C:\\\\Users\\\\max.delafuente\\\\Documents\\\\Eigene Projekte\\\\GoldenGoatCapital\\\\views\\\\tarife\"*)",
+      "Bash(ls \"C:\\\\Users\\\\max.delafuente\\\\Documents\\\\Eigene Projekte\\\\GoldenGoatCapital\\\\views\"\"tarife* 2>/dev/null; ls \"C:Usersmax.delafuenteDocumentsEigene ProjekteGoldenGoatCapitalviews\"\")",
+      "Bash(powershell -Command \":*)"
     ]
   }
 }

@@ -17,8 +17,8 @@
 
     <div class="page-header" style="display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px;">
         <div>
-            <h1>Kalender</h1>
-            <p>Plane und verwalte deine Termine</p>
+            <h1>Zahlungskalender</h1>
+            <p>Fixkosten, Schuldenraten und Sparziel-Fälligkeiten auf einen Blick</p>
         </div>
 
         <!-- Outlook Connect -->
@@ -57,51 +57,25 @@
         </div>
     </div>
 
+    <!-- Legende -->
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-2);">
+            <span style="width:12px;height:12px;border-radius:3px;background:#7c3aed;flex-shrink:0;"></span> Fixkosten
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-2);">
+            <span style="width:12px;height:12px;border-radius:3px;background:#ef4444;flex-shrink:0;"></span> Schuldenraten
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-2);">
+            <span style="width:12px;height:12px;border-radius:3px;background:#22c55e;flex-shrink:0;"></span> Sparziele (Zieldatum)
+        </div>
+        <div id="outlookLegendItem" style="display:none;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-2);">
+            <span style="width:12px;height:12px;border-radius:3px;background:#0078d4;flex-shrink:0;"></span> Outlook
+        </div>
+    </div>
+
     <div class="kalender-section">
-
-        <!-- Event-Formular -->
-        <form id="eventForm" class="event-form">
-            <div class="form-row">
-                <input type="hidden" id="eventId" name="eventId">
-                <div class="form-group form-group-narrow">
-                    <label class="form-label">Datum</label>
-                    <input type="date" id="eventDate" name="date" required>
-                </div>
-                <div class="form-group form-group-narrow">
-                    <label class="form-label">Startzeit</label>
-                    <input type="time" id="eventStartTime" name="startTime" required>
-                </div>
-                <div class="form-group form-group-narrow">
-                    <label class="form-label">Endzeit</label>
-                    <input type="time" id="eventEndTime" name="endTime">
-                </div>
-                <div class="form-group form-group-text">
-                    <label class="form-label">Bezeichnung</label>
-                    <input type="text" id="eventText" name="text" placeholder="z.B. Meeting" required>
-                </div>
-                <div class="form-group form-group-narrow">
-                    <label class="form-label">Farbe</label>
-                    <select id="eventColor" name="color" required>
-                        <option value="#3788d8">Blau</option>
-                        <option value="#ff0000">Rot</option>
-                        <option value="#0fb90f">Grün</option>
-                        <option value="#ffae00">Orange</option>
-                        <option value="#ff00ff">Magenta</option>
-                    </select>
-                </div>
-                <div class="form-group-buttons">
-                    <button type="submit"><i class="ri-save-line"></i> Speichern</button>
-                    <button type="button" id="deleteEvent" style="display:none;">
-                        <i class="ri-delete-bin-line"></i> Löschen
-                    </button>
-                </div>
-            </div>
-            <div id="statusMessage"></div>
-        </form>
-
         <!-- Kalender -->
         <div id="calendar"></div>
-
     </div>
 
     <!-- Outlook-Info-Banner (erscheint nach Verbindung) -->
@@ -110,10 +84,10 @@
         Outlook-Ereignisse werden in <span style="color:#0078d4; font-weight:600;">Blau</span> angezeigt und sind schreibgeschützt.
     </div>
 
-    <!-- Fixkosten-Banner (immer sichtbar) -->
+    <!-- Hinweis: Nur-Lesemodus -->
     <div class="fixkosten-banner">
-        <i class="ri-repeat-line"></i>
-        Fixkosten-Fälligkeiten werden in <span style="color:#7c3aed; font-weight:600;">Violett</span> angezeigt — automatisch aus deinen Fixkosten.
+        <i class="ri-information-line"></i>
+        Alle Termine werden automatisch aus Fixkosten, Schulden und Sparzielen berechnet — keine manuelle Eingabe nötig.
     </div>
 
     <div id="eventTooltip" style="display:none; position:absolute; padding:6px 12px; border-radius:8px; color:white; font-size:0.82rem; pointer-events:none; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,0.4);"></div>

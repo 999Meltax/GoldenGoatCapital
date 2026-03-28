@@ -30,7 +30,6 @@
         <button class="aus-tab" id="tab-persoenlich" onclick="showTab('persoenlich',this)">Persönliche Kosten</button>
         <button class="aus-tab" id="tab-gehaelter" onclick="showTab('gehaelter',this)">Gehälter</button>
         <button class="aus-tab" id="tab-uebersicht" onclick="showTab('uebersicht',this)">Monatsübersicht</button>
-        <button class="aus-tab" id="tab-abrechnung" onclick="showTab('abrechnung',this)">Abrechnung</button>
     </div>
 
     <div id="tabContent"></div>
@@ -131,21 +130,23 @@
     function loadTab(tab) {
         const root = document.getElementById('tabContent');
         root.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-3);"><i class="ri-loader-4-line" style="animation:spin 1s linear infinite;font-size:1.5rem;"></i></div>';
-        const fns = { fixkosten: loadFixkosten, budget: loadBudget, sparziele: loadSparziele, persoenlich: loadPersoenlich, gehaelter: loadGehaelter, uebersicht: loadUebersicht, abrechnung: loadAbrechnung };
+        const fns = { fixkosten: loadFixkosten, budget: loadBudget, sparziele: loadSparziele, persoenlich: loadPersoenlich, gehaelter: loadGehaelter, uebersicht: loadUebersicht };
         if (fns[tab]) fns[tab](root);
     }
 
     // ── Tab: Haushaltskasse (Fixkosten + globaler Split) ──────────
     async function loadFixkosten(root) {
         const monat = picker.value;
-        const [fixkRes, overrideRes] = await Promise.all([
+        const [fixkRes, overrideRes, splitMonatRes] = await Promise.all([
             fetch('/users/haushalt/fixkosten').then(r=>r.json()).catch(()=>[]),
             fetch('/users/haushalt/fixkosten/monat/' + monat).then(r=>r.json()).catch(()=>[]),
+            fetch('/users/haushalt/split/monat/' + monat).then(r=>r.json()).catch(()=>null),
         ]);
         const name1 = user1.anzeigename || 'Person 1';
         const name2 = user2 ? (user2.anzeigename || 'Person 2') : null;
-        const s1 = globalSettings.split_user1;
-        const s2 = globalSettings.split_user2;
+        const splitOverride = splitMonatRes;
+        const s1 = splitOverride ? splitOverride.split_user1 : globalSettings.split_user1;
+        const s2 = splitOverride ? splitOverride.split_user2 : globalSettings.split_user2;
 
         // Effektiven monatlichen Betrag berechnen (Jahres-/Quartals-Kosten auf Monat umrechnen)
         function monatlichBetrag(f, effBetrag) {
@@ -195,7 +196,7 @@
                 '</div>' +
 
                 // Split-Balken
-                '<div style="margin-bottom:6px;">' +
+                '<div style="margin-bottom:14px;">' +
                     '<div style="display:flex;border-radius:8px;overflow:hidden;height:14px;">' +
                         '<div style="width:' + s1 + '%;background:#10b981;transition:width 0.4s;"></div>' +
                         '<div style="width:' + s2 + '%;background:#3b82f6;transition:width 0.4s;"></div>' +
@@ -203,6 +204,23 @@
                     '<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--text-3);margin-top:4px;">' +
                         '<span style="color:#10b981;">' + escHtml(name1) + ' · ' + s1 + '%</span>' +
                         (user2 ? '<span style="color:#3b82f6;">' + escHtml(name2) + ' · ' + s2 + '%</span>' : '') +
+                    '</div>' +
+                '</div>' +
+
+                // Monats-Override für Split
+                '<div style="border-top:1px solid var(--border);padding-top:14px;">' +
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">' +
+                        '<div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Überschreibung für ' + new Date(monat+'-01').toLocaleDateString('de-DE',{month:'long',year:'numeric'}) + '</div>' +
+                        (splitOverride ? '<span style="font-size:0.72rem;background:rgba(16,185,129,0.12);color:var(--haus-accent);padding:2px 8px;border-radius:6px;font-weight:700;">Aktiv</span>' : '<span style="font-size:0.72rem;color:var(--text-3);">Standard wird verwendet</span>') +
+                    '</div>' +
+                    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+                        '<span style="font-size:0.82rem;color:#10b981;min-width:28px;text-align:right;" id="splitOvVal">' + s1 + '%</span>' +
+                        '<input type="range" id="splitOvSlider" min="0" max="100" value="' + s1 + '" style="flex:1;accent-color:var(--haus-accent);" oninput="document.getElementById(\'splitOvVal\').textContent=this.value+\'%\'">' +
+                        '<span style="font-size:0.82rem;color:#3b82f6;min-width:28px;">' + s2 + '%</span>' +
+                    '</div>' +
+                    '<div style="display:flex;gap:8px;margin-top:10px;">' +
+                        '<button onclick="saveSplitOverride(\'' + monat + '\')" style="padding:7px 14px;border-radius:var(--radius-md);background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.25);cursor:pointer;font-size:0.82rem;font-family:\'Plus Jakarta Sans\',sans-serif;font-weight:600;">Speichern</button>' +
+                        (splitOverride ? '<button onclick="deleteSplitOverride(\'' + monat + '\')" style="padding:7px 14px;border-radius:var(--radius-md);background:rgba(239,68,68,0.08);color:#ef4444;border:1px solid rgba(239,68,68,0.2);cursor:pointer;font-size:0.82rem;font-family:\'Plus Jakarta Sans\',sans-serif;font-weight:600;">Zurücksetzen</button>' : '') +
                     '</div>' +
                 '</div>' +
             '</div>' +
@@ -337,6 +355,20 @@
         if (b2) b2.style.width = (100 - val) + '%';
     }
 
+    async function saveSplitOverride(monat) {
+        const val = parseInt(document.getElementById('splitOvSlider').value);
+        await fetch('/users/haushalt/split/monat/' + monat, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ split_user1: val })
+        });
+        loadTab('fixkosten');
+    }
+
+    async function deleteSplitOverride(monat) {
+        await fetch('/users/haushalt/split/monat/' + monat, { method: 'DELETE' });
+        loadTab('fixkosten');
+    }
+
     async function openFixkostModal(id) {
         const existing = id ? (window._fixkRes || []).find(f => f.id == id) : null;
         const katOptions = ['wohnen','lebensmittel','transport','freizeit','versicherung','sonstiges'];
@@ -346,7 +378,7 @@
                 '<label class="form-label">Bezeichnung</label>' +
                 '<input type="text" id="mfName" value="' + escHtml(existing?.name || '') + '" placeholder="z.B. Miete, Strom, GEZ…">' +
             '</div>' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">' +
                 '<div class="form-group">' +
                     '<label class="form-label">Betrag</label>' +
                     '<input type="number" id="mfBetrag" value="' + (existing?.betrag || '') + '" step="0.01" placeholder="0,00">' +
@@ -359,6 +391,10 @@
                         ).join('') +
                     '</select>' +
                 '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Fällig am Tag</label>' +
+                    '<input type="number" id="mfDatumTag" min="1" max="31" value="' + (existing?.datum_tag || 1) + '" placeholder="1–31">' +
+                '</div>' +
             '</div>' +
             '<div class="form-group">' +
                 '<label class="form-label">Kategorie</label>' +
@@ -368,9 +404,10 @@
             '</div>',
             async () => {
                 const payload = {
-                    name:     document.getElementById('mfName').value.trim(),
-                    betrag:   parseFloat(document.getElementById('mfBetrag').value) || 0,
-                    rhythmus: document.getElementById('mfRhythmus').value,
+                    name:      document.getElementById('mfName').value.trim(),
+                    betrag:    parseFloat(document.getElementById('mfBetrag').value) || 0,
+                    rhythmus:  document.getElementById('mfRhythmus').value,
+                    datum_tag: parseInt(document.getElementById('mfDatumTag').value) || 1,
                     kategorie: document.getElementById('mfKat').value,
                     anteil_user1: globalSettings.split_user1,
                     anteil_user2: globalSettings.split_user2,
@@ -432,7 +469,7 @@
         ]);
 
         // Ausgaben diesen Monat nach Kategorie
-        const monatsAusg = ausgRes.filter(a => a.type === 'Ausgaben' && (a.date||'').startsWith(monat));
+        const monatsAusg = ausgRes.filter(a => a.type === 'Ausgaben' && (a.date||'').startsWith(monat) && !a.ausgabe_id);
         const byKat = {};
         monatsAusg.forEach(a => {
             const k = a.category || 'Sonstiges';
@@ -802,6 +839,7 @@
                     name: document.getElementById('ppName').value.trim(),
                     betrag: parseFloat(document.getElementById('ppBetrag').value) || 0,
                     kategorie: document.getElementById('ppKat').value,
+                    user_id: userId,
                 };
                 if (!payload.name) { alert('Bitte Bezeichnung eingeben.'); return false; }
                 const url = id ? '/users/haushalt/persoenlich/' + id : '/users/haushalt/persoenlich/add';
@@ -878,7 +916,7 @@
     async function saveGehDefault(userId) {
         const gehalt    = parseFloat(document.getElementById('gehDefault_' + userId).value) || 0;
         const sparbetrag = parseFloat(document.getElementById('sparDefault_' + userId).value) || 0;
-        await fetch('/users/haushalt/gehaelter/default', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ gehalt, sparbetrag }) });
+        await fetch('/users/haushalt/gehaelter/default', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ gehalt, sparbetrag, user_id: userId }) });
         loadTab('gehaelter');
     }
 
@@ -886,7 +924,7 @@
         const monat = picker.value;
         const gehalt    = parseFloat(document.getElementById('gehMonat_' + userId).value) || 0;
         const sparbetrag = parseFloat(document.getElementById('sparMonat_' + userId).value) || 0;
-        await fetch('/users/haushalt/gehaelter/monat/' + monat, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ gehalt, sparbetrag }) });
+        await fetch('/users/haushalt/gehaelter/monat/' + monat, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ gehalt, sparbetrag, user_id: userId }) });
         loadTab('gehaelter');
     }
 
@@ -894,7 +932,7 @@
     async function loadUebersicht(root) {
         const monat = picker.value;
         const monatLabel = new Date(monat + '-01').toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
-        const [fixkRes, overrideRes, persRes, gehRes, ausgRes, budgetRes, sparzRes] = await Promise.all([
+        const [fixkRes, overrideRes, persRes, gehRes, ausgRes, budgetRes, sparzRes, splitOverride] = await Promise.all([
             fetch('/users/haushalt/fixkosten').then(r=>r.json()).catch(()=>[]),
             fetch('/users/haushalt/fixkosten/monat/' + monat).then(r=>r.json()).catch(()=>[]),
             fetch('/users/haushalt/persoenlich').then(r=>r.json()).catch(()=>[]),
@@ -902,6 +940,7 @@
             fetch('/users/haushalt/transaktionen').then(r=>r.json()).catch(()=>[]),
             fetch('/users/haushalt/budgets').then(r=>r.json()).catch(()=>[]),
             fetch('/users/haushalt/sparziele').then(r=>r.json()).catch(()=>[]),
+            fetch('/users/haushalt/split/monat/' + monat).then(r=>r.json()).catch(()=>null),
         ]);
 
         function getGeh(userId) {
@@ -909,7 +948,7 @@
             return m || gehRes.defaults.find(g=>g.user_id===userId) || { gehalt:0, sparbetrag:0 };
         }
 
-        const monatsAusg = ausgRes.filter(a => a.type==='Ausgaben'  && (a.date||'').startsWith(monat));
+        const monatsAusg = ausgRes.filter(a => a.type==='Ausgaben'  && (a.date||'').startsWith(monat) && !a.ausgabe_id);
         const monatsEinn = ausgRes.filter(a => a.type==='Einnahmen' && (a.date||'').startsWith(monat));
 
         const totalFix  = fixkRes.reduce((s,f) => { const ov=overrideRes.find(o=>o.fixkosten_id==f.id); return s+(ov?.betrag??f.betrag); }, 0);
@@ -923,8 +962,8 @@
         const byKat = {};
         monatsAusg.forEach(a => { const k=a.category||'Sonstiges'; byKat[k]=(byKat[k]||0)+(a.amount||0); });
 
-        const s1 = globalSettings.split_user1;
-        const s2 = globalSettings.split_user2;
+        const s1 = splitOverride?.split_user1 ?? globalSettings.split_user1;
+        const s2 = 100 - s1;
 
         const renderPerson = (u, color) => {
             if (!u) return '';
@@ -937,11 +976,8 @@
                 const b  = ov?.betrag ?? f.betrag;
                 return s + b * splitP / 100;
             }, 0);
-            const istAusg = monatsAusg.reduce((s,a) => {
-                return s + (a.amount||0) * splitP / 100;
-            }, 0);
             const geplanteKosten = gemein + pers + (geh.sparbetrag||0);
-            const istKosten      = gemein + pers + istAusg + (geh.sparbetrag||0);
+            const istKosten      = gemein + pers + (geh.sparbetrag||0);
             const frei           = geh.gehalt - istKosten;
             const auslastung     = geh.gehalt > 0 ? Math.min(100, istKosten/geh.gehalt*100) : 0;
 
@@ -954,10 +990,7 @@
                 '<div class="ueber-row"><span style="color:var(--text-3);">Pers. Fixkosten</span><span style="color:#ef4444;">−' + fmt.format(pers) + '</span></div>' +
                 '<div class="ueber-row"><span style="color:var(--text-3);">Sparen (geplant)</span><span style="color:#3b82f6;">−' + fmt.format(geh.sparbetrag||0) + '</span></div>' +
                 '<div class="ueber-row" style="border-bottom:none;padding-bottom:2px;"><span style="color:var(--text-3);">Plan-Frei</span><span style="font-weight:700;">' + fmt.format(geh.gehalt - geplanteKosten) + '</span></div>' +
-                // Realität
-                '<div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px;border-top:1px solid var(--border);padding-top:12px;">Realität</div>' +
-                '<div class="ueber-row"><span style="color:var(--text-3);">Ist-Ausgaben</span><span style="color:#f59e0b;">−' + fmt.format(istAusg) + '</span></div>' +
-                '<div class="ueber-total" style="border-color:' + color + '40;">' +
+                '<div class="ueber-total" style="border-color:' + color + '40;margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">' +
                     '<span>Tatsächlich frei</span>' +
                     '<span style="color:' + (frei>=0?'#22c55e':'#ef4444') + ';">' + fmt.format(frei) + '</span>' +
                 '</div>' +
@@ -1007,131 +1040,6 @@
             '</div>';
     }
 
-
-    // ── Tab: Abrechnung (Settlement) ──────────────────────────────
-    async function loadAbrechnung(root) {
-        const monat = picker.value;
-        const monatLabel = new Date(monat + '-01').toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
-
-        const data = await fetch('/users/haushalt/settlement/' + monat).then(r => r.json()).catch(() => null);
-        if (!data) { root.innerHTML = '<div class="card" style="padding:32px;text-align:center;color:#ef4444;">Fehler beim Laden.</div>'; return; }
-
-        const { owes, ausgleiche, mitglieder } = data;
-        const name1 = (mitglieder[0]?.anzeigename) || 'Person 1';
-        const name2 = (mitglieder[1]?.anzeigename) || 'Person 2';
-
-        // Kein zweites Mitglied
-        if (mitglieder.length < 2) {
-            root.innerHTML =
-                '<div class="card" style="padding:40px;text-align:center;color:var(--text-3);">' +
-                    '<i class="ri-group-line" style="font-size:2rem;display:block;margin-bottom:12px;"></i>' +
-                    '<div style="font-weight:600;margin-bottom:8px;">Noch kein zweites Mitglied</div>' +
-                    '<div style="font-size:0.85rem;">Lade jemanden ein um die Abrechnung zu nutzen.</div>' +
-                '</div>';
-            return;
-        }
-
-        // ── Settlement-Ergebnis ────────────────────────────────────
-        let settlementHtml;
-        if (!owes) {
-            settlementHtml =
-                '<div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:28px 20px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-lg);">' +
-                    '<i class="ri-checkbox-circle-line" style="font-size:2.5rem;color:#10b981;"></i>' +
-                    '<div style="font-size:1.1rem;font-weight:800;color:#10b981;">Alles ausgeglichen!</div>' +
-                    '<div style="font-size:0.84rem;color:var(--text-3);">Keine offenen Beträge für ' + monatLabel + '.</div>' +
-                '</div>';
-        } else {
-            const fromName = escHtml(owes.from.anzeigename || 'Person');
-            const toName   = escHtml(owes.to.anzeigename || 'Person');
-            const betragFmt = fmt.format(owes.amount);
-            const color = owes.from.user_id === mitglieder[0].user_id ? '#10b981' : '#3b82f6';
-
-            settlementHtml =
-                '<div style="background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.25);border-radius:var(--radius-lg);padding:24px;text-align:center;margin-bottom:16px;">' +
-                    '<div style="font-size:0.8rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">Offener Betrag · ' + monatLabel + '</div>' +
-                    '<div style="display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;margin-bottom:20px;">' +
-                        '<div style="text-align:center;">' +
-                            '<div style="width:52px;height:52px;border-radius:50%;background:' + color + '20;display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800;color:' + color + ';margin:0 auto 6px;">' + fromName.charAt(0).toUpperCase() + '</div>' +
-                            '<div style="font-size:0.82rem;font-weight:600;">' + fromName + '</div>' +
-                        '</div>' +
-                        '<div style="text-align:center;">' +
-                            '<div style="font-size:1.6rem;font-weight:900;color:#f59e0b;">' + betragFmt + '</div>' +
-                            '<div style="font-size:0.75rem;color:var(--text-3);display:flex;align-items:center;gap:4px;justify-content:center;"><i class="ri-arrow-right-line"></i> schuldet</div>' +
-                        '</div>' +
-                        '<div style="text-align:center;">' +
-                            '<div style="width:52px;height:52px;border-radius:50%;background:#10b98120;display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800;color:#10b981;margin:0 auto 6px;">' + toName.charAt(0).toUpperCase() + '</div>' +
-                            '<div style="font-size:0.82rem;font-weight:600;">' + toName + '</div>' +
-                        '</div>' +
-                    '</div>' +
-                    '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
-                        '<button onclick="buchAusgleich(' + owes.from.user_id + ',' + owes.to.user_id + ',' + owes.amount.toFixed(2) + ',\'' + monat + '\')" class="btn-primary" style="padding:9px 20px;font-size:0.85rem;">' +
-                            '<i class="ri-exchange-dollar-line"></i> Ausgleich buchen' +
-                        '</button>' +
-                        '<button onclick="buchAusgleichMitTx(' + owes.from.user_id + ',' + owes.to.user_id + ',' + owes.amount.toFixed(2) + ',\'' + monat + '\')" style="padding:9px 20px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-size:0.85rem;font-family:\'Plus Jakarta Sans\',sans-serif;font-weight:600;">' +
-                            '<i class="ri-receipt-line"></i> + Transaktion' +
-                        '</button>' +
-                    '</div>' +
-                '</div>';
-        }
-
-        // ── Ausgleich-Historie ─────────────────────────────────────
-        const historieHtml = ausgleiche.length === 0
-            ? '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:0.84rem;">Noch keine Ausgleiche für ' + monatLabel + '.</div>'
-            : ausgleiche.map(a => {
-                const vonName = a.von_user_id === mitglieder[0]?.user_id ? name1 : name2;
-                const anName  = a.an_user_id  === mitglieder[0]?.user_id ? name1 : name2;
-                const datum   = new Date(a.created_at).toLocaleDateString('de-DE', { day: '2-digit', month: 'short' });
-                return '<div class="aus-row">' +
-                    '<div style="width:32px;height:32px;border-radius:50%;background:rgba(16,185,129,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
-                        '<i class="ri-exchange-dollar-line" style="color:#10b981;font-size:0.9rem;"></i>' +
-                    '</div>' +
-                    '<div style="flex:1;">' +
-                        '<div style="font-weight:600;font-size:0.87rem;">' + escHtml(vonName) + ' → ' + escHtml(anName) + '</div>' +
-                        (a.notiz ? '<div style="font-size:0.75rem;color:var(--text-3);">' + escHtml(a.notiz) + '</div>' : '') +
-                    '</div>' +
-                    '<div style="text-align:right;">' +
-                        '<div style="font-weight:700;color:#10b981;">' + fmt.format(a.betrag) + '</div>' +
-                        '<div style="font-size:0.72rem;color:var(--text-3);">' + datum + '</div>' +
-                    '</div>' +
-                '</div>';
-              }).join('');
-
-        root.innerHTML =
-            '<div style="max-width:640px;">' +
-                '<div class="card" style="padding:24px;margin-bottom:16px;">' +
-                    '<h3 style="margin:0 0 18px;"><i class="ri-scales-line" style="color:var(--haus-accent);margin-right:8px;"></i>Monatsabrechnung · ' + monatLabel + '</h3>' +
-                    settlementHtml +
-                '</div>' +
-                '<div class="card" style="padding:20px;">' +
-                    '<div class="card-header" style="margin-bottom:14px;">' +
-                        '<h3 style="margin:0;font-size:0.95rem;">Ausgleich-Historie</h3>' +
-                    '</div>' +
-                    historieHtml +
-                '</div>' +
-            '</div>';
-    }
-
-    async function buchAusgleich(vonUserId, anUserId, betrag, monat) {
-        const notiz = prompt('Notiz (optional):') ?? '';
-        const res = await fetch('/users/haushalt/ausgleich', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ von_user_id: vonUserId, an_user_id: anUserId, betrag, monat, notiz, mit_transaktion: false })
-        });
-        if (!res.ok) { alert('Fehler beim Speichern.'); return; }
-        loadTab('abrechnung');
-    }
-
-    async function buchAusgleichMitTx(vonUserId, anUserId, betrag, monat) {
-        const notiz = prompt('Notiz (optional):') ?? '';
-        const res = await fetch('/users/haushalt/ausgleich', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ von_user_id: vonUserId, an_user_id: anUserId, betrag, monat, notiz, mit_transaktion: true })
-        });
-        if (!res.ok) { alert('Fehler beim Speichern.'); return; }
-        loadTab('abrechnung');
-    }
 
     async function buchFixkost(id, name) {
         const res = await fetch('/users/haushalt/fixkosten/' + id + '/buchen', { method: 'POST' });

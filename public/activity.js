@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════
 // ACTIVITY LOG
 // ═══════════════════════════════════════════════════════════
-const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+const fmt = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
 let currentFilter  = '';
 let currentOffset  = 0;

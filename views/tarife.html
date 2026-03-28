@@ -11,107 +11,194 @@
 <body>
     <%- include('navheader.html') %>
 
-        <!-- Header -->
-        <div class="tarife-header">
-            <h1>Dein Tarif</h1>
-            <p>Wähle den Plan der zu dir passt</p>
-            <% if (reason === 'haushalt') { %>
-                <div class="tarife-reason-banner">
-                    <i class="ri-lock-line"></i>
-                    Der Haushaltsmodus ist ab dem <strong>Pro-Tarif</strong> verfügbar.
+    <!-- Header -->
+    <div class="tarife-header">
+        <h1>Dein Tarif</h1>
+        <p>Wähle den Plan der zu dir passt</p>
+
+        <% if (reason === 'haushalt') { %>
+            <div class="tarife-reason-banner">
+                <i class="ri-lock-line"></i>
+                Der Haushaltsmodus ist ab dem <strong>Pro-Tarif</strong> verfügbar.
+            </div>
+        <% } %>
+        <% if (reason === 'steuern') { %>
+            <div class="tarife-reason-banner">
+                <i class="ri-lock-line"></i>
+                Das Steuer-Modul ist ab dem <strong>Pro-Tarif</strong> verfügbar.
+            </div>
+        <% } %>
+        <% if (reason === 'outlook') { %>
+            <div class="tarife-reason-banner">
+                <i class="ri-lock-line"></i>
+                Die Outlook-Integration ist ab dem <strong>Pro-Tarif</strong> verfügbar.
+            </div>
+        <% } %>
+    </div>
+
+    <!-- Trial-Banner -->
+    <% if (trialInfo && trialInfo.isOnTrial) { %>
+        <div class="tarife-trial-banner">
+            <i class="ri-timer-line"></i>
+            <div>
+                <strong>Du nutzt gerade deinen 14-Tage-Pro-Test.</strong>
+                Noch <strong><%= trialInfo.daysLeft %> Tag<%= trialInfo.daysLeft === 1 ? '' : 'e' %></strong> verbleibend.
+                Upgrade jetzt, um Pro dauerhaft zu behalten.
+            </div>
+        </div>
+    <% } %>
+    <% if (trialInfo && trialInfo.trialExpired && currentPlan === 'free') { %>
+        <div class="tarife-trial-banner expired">
+            <i class="ri-time-line"></i>
+            <div>
+                <strong>Dein 14-Tage-Test ist abgelaufen.</strong>
+                Upgrade auf Pro, um alle Funktionen weiterhin zu nutzen.
+            </div>
+        </div>
+    <% } %>
+
+    <!-- Billing Toggle -->
+    <div class="tarife-toggle-wrap">
+        <span class="tarife-toggle-label" id="labelMonthly">Monatlich</span>
+        <button class="tarife-toggle" id="billingToggle" onclick="switchBilling()" aria-label="Abrechnung wechseln">
+            <span class="tarife-toggle-thumb" id="toggleThumb"></span>
+        </button>
+        <span class="tarife-toggle-label" id="labelYearly">
+            Jährlich
+            <span class="tarife-toggle-save">–33%</span>
+        </span>
+    </div>
+
+    <!-- Plan Cards -->
+    <div class="tarife-grid">
+
+        <!-- FREE -->
+        <div class="tarife-card <%= currentPlan === 'free' ? 'active' : '' %>">
+            <div class="tarife-card-header">
+                <div class="tarife-badge free"><%= currentPlan === 'free' ? 'Aktuell' : 'Free' %></div>
+                <div class="tarife-name">Free</div>
+                <div class="tarife-price">
+                    <span class="tarife-amount">0 €</span>
+                    <span class="tarife-period">/ Monat</span>
                 </div>
-            <% } %>
-            <% if (reason === 'steuern') { %>
-                <div class="tarife-reason-banner">
-                    <i class="ri-lock-line"></i>
-                    Das Steuer-Modul ist ab dem <strong>Pro-Tarif</strong> verfügbar.
-                </div>
-            <% } %>
-            <% if (reason === 'outlook') { %>
-                <div class="tarife-reason-banner">
-                    <i class="ri-lock-line"></i>
-                    Die Outlook-Integration ist ab dem <strong>Pro-Tarif</strong> verfügbar.
-                </div>
+                <p class="tarife-desc">Perfekt zum Einstieg – kostenlos und dauerhaft.</p>
+            </div>
+            <ul class="tarife-features">
+                <li class="ok"><i class="ri-check-line"></i> Bis zu 3 Konten</li>
+                <li class="ok"><i class="ri-check-line"></i> Ausgabentracker</li>
+                <li class="ok"><i class="ri-check-line"></i> Budget & Sparziele</li>
+                <li class="ok"><i class="ri-check-line"></i> Fixkosten & Schulden</li>
+                <li class="ok"><i class="ri-check-line"></i> Zahlungskalender</li>
+                <li class="ok"><i class="ri-check-line"></i> Versicherungen & Dokumente</li>
+                <li class="nok"><i class="ri-close-line"></i> Unbegrenzte Konten</li>
+                <li class="nok"><i class="ri-close-line"></i> PDF-Export</li>
+                <li class="nok"><i class="ri-close-line"></i> Haushaltsmodus</li>
+                <li class="nok"><i class="ri-close-line"></i> E-Mail-Erinnerungen</li>
+                <li class="nok"><i class="ri-close-line"></i> Steuer-Modul</li>
+            </ul>
+            <% if (currentPlan === 'free') { %>
+                <button class="tarife-btn current" disabled>
+                    <i class="ri-check-line"></i> Dein aktueller Plan
+                </button>
+            <% } else { %>
+                <% if (hasStripeCustomer) { %>
+                    <a href="/users/stripe/portal" class="tarife-btn downgrade">
+                        <i class="ri-arrow-down-line"></i> Abo verwalten / kündigen
+                    </a>
+                <% } else { %>
+                    <button class="tarife-btn current" disabled>
+                        <i class="ri-check-line"></i> Pro aktiv
+                    </button>
+                <% } %>
             <% } %>
         </div>
 
-        <!-- Plan Cards -->
-        <div class="tarife-grid">
-
-            <!-- FREE -->
-            <div class="tarife-card <%= currentPlan === 'free' ? 'active' : '' %>">
-                <div class="tarife-card-header">
-                    <div class="tarife-badge free">Aktuell</div>
-                    <div class="tarife-name">Free</div>
-                    <div class="tarife-price">
-                        <span class="tarife-amount">0 €</span>
-                        <span class="tarife-period">/ Monat</span>
-                    </div>
-                    <p class="tarife-desc">Perfekt zum Einstieg – kostenlos und dauerhaft.</p>
+        <!-- PRO -->
+        <div class="tarife-card pro <%= currentPlan === 'pro' ? 'active' : '' %>">
+            <div class="tarife-card-header">
+                <div class="tarife-badge pro">Empfohlen</div>
+                <div class="tarife-name">Pro</div>
+                <div class="tarife-price" id="priceDisplay">
+                    <span class="tarife-amount" id="priceAmount">4,99 €</span>
+                    <span class="tarife-period" id="pricePeriod">/ Monat</span>
                 </div>
-                <ul class="tarife-features">
-                    <li class="ok"><i class="ri-check-line"></i> Bis zu 3 Konten</li>
-                    <li class="ok"><i class="ri-check-line"></i> Ausgabentracker</li>
-                    <li class="ok"><i class="ri-check-line"></i> Budget & Sparziele</li>
-                    <li class="ok"><i class="ri-check-line"></i> Schulden-Tracker</li>
-                    <li class="ok"><i class="ri-check-line"></i> Kalender & Todos</li>
-                    <li class="ok"><i class="ri-check-line"></i> Versicherungsverwaltung</li>
-                    <li class="ok"><i class="ri-check-line"></i> Dokumentenverwaltung</li>
-                    <li class="nok"><i class="ri-close-line"></i> PDF-Export</li>
-                    <li class="nok"><i class="ri-close-line"></i> Haushaltsmodus</li>
-                    <li class="nok"><i class="ri-close-line"></i> E-Mail-Erinnerungen</li>
-                    <li class="nok"><i class="ri-close-line"></i> Steuer-Modul</li>
-                    <li class="nok"><i class="ri-close-line"></i> Outlook-Integration</li>
-                </ul>
-                <% if (currentPlan === 'free') { %>
+                <div class="tarife-yearly-note" id="yearlyNote" style="display:none;">
+                    <span>39,99 € / Jahr (3,33 € / Monat)</span>
+                </div>
+                <p class="tarife-desc">Alles was du für die volle Kontrolle brauchst.</p>
+            </div>
+            <ul class="tarife-features">
+                <li class="ok"><i class="ri-check-line"></i> Alles aus Free</li>
+                <li class="ok"><i class="ri-check-line"></i> Unbegrenzte Konten</li>
+                <li class="ok"><i class="ri-check-line"></i> PDF-Export</li>
+                <li class="ok star"><i class="ri-home-heart-line"></i> Haushaltsmodus</li>
+                <li class="ok"><i class="ri-check-line"></i> E-Mail-Erinnerungen</li>
+                <li class="ok"><i class="ri-check-line"></i> Steuer-Modul</li>
+                <li class="ok"><i class="ri-check-line"></i> Outlook-Integration</li>
+                <li class="ok"><i class="ri-check-line"></i> Prioritäts-Support</li>
+            </ul>
+            <% if (currentPlan === 'pro' && !trialInfo.isOnTrial) { %>
+                <% if (hasStripeCustomer) { %>
+                    <a href="/users/stripe/portal" class="tarife-btn manage">
+                        <i class="ri-settings-3-line"></i> Abo verwalten
+                    </a>
+                <% } else { %>
                     <button class="tarife-btn current" disabled>
                         <i class="ri-check-line"></i> Dein aktueller Plan
                     </button>
-                <% } else { %>
-                    <button class="tarife-btn downgrade" onclick="changePlan('free')">
-                        <i class="ri-arrow-down-line"></i> Zu Free wechseln
-                    </button>
                 <% } %>
-            </div>
-
-            <!-- PRO -->
-            <div class="tarife-card pro <%= currentPlan === 'pro' ? 'active' : '' %>">
-                <div class="tarife-card-header">
-                    <div class="tarife-badge pro">Empfohlen</div>
-                    <div class="tarife-name">Pro</div>
-                    <div class="tarife-price">
-                        <span class="tarife-amount">4,99 €</span>
-                        <span class="tarife-period">/ Monat</span>
-                    </div>
-                    <p class="tarife-desc">Alles was du für die volle Kontrolle brauchst.</p>
-                </div>
-                <ul class="tarife-features">
-                    <li class="ok"><i class="ri-check-line"></i> Alles aus Free</li>
-                    <li class="ok"><i class="ri-check-line"></i> Unbegrenzte Konten</li>
-                    <li class="ok"><i class="ri-check-line"></i> PDF-Export</li>
-                    <li class="ok"><i class="ri-check-line"></i> Haushaltsmodus</li>
-                    <li class="ok"><i class="ri-check-line"></i> E-Mail-Erinnerungen</li>
-                    <li class="ok"><i class="ri-check-line"></i> Steuer-Modul</li>
-                    <li class="ok"><i class="ri-check-line"></i> Outlook-Integration</li>
-                </ul>
-                <% if (currentPlan === 'pro') { %>
-                    <button class="tarife-btn current" disabled>
-                        <i class="ri-check-line"></i> Dein aktueller Plan
-                    </button>
+            <% } else if (stripeEnabled) { %>
+                <% if (trialInfo && trialInfo.isOnTrial) { %>
+                    <a href="/users/stripe/checkout?billing=monthly" class="tarife-btn upgrade" id="upgradeBtn">
+                        <i class="ri-rocket-line"></i> Pro sichern – ab 4,99 €/Monat
+                    </a>
                 <% } else { %>
-                    <button class="tarife-btn upgrade" onclick="changePlan('pro')">
-                        <i class="ri-rocket-line"></i> Jetzt upgraden
-                    </button>
+                    <a href="/users/stripe/checkout?billing=monthly" class="tarife-btn upgrade" id="upgradeBtn">
+                        <i class="ri-rocket-line"></i> 14 Tage kostenlos testen
+                    </a>
                 <% } %>
-            </div>
-
+            <% } else { %>
+                <button class="tarife-btn upgrade" onclick="changePlan('pro')" id="upgradeBtn">
+                    <i class="ri-rocket-line"></i> Jetzt upgraden (Test)
+                </button>
+            <% } %>
         </div>
 
-        <!-- Info -->
-        <p class="tarife-note">
-            <i class="ri-information-line"></i>
-            Du kannst deinen Tarif jederzeit wechseln. Die Abrechnung erfolgt monatlich – Zahlung kommt bald.
-        </p>
+    </div>
+
+    <!-- Feature-Vergleich -->
+    <div class="tarife-compare-wrap">
+        <h2 class="tarife-compare-title">Funktionsvergleich</h2>
+        <div class="tarife-compare-table">
+            <div class="tc-row tc-header">
+                <div class="tc-feature"></div>
+                <div class="tc-col">Free</div>
+                <div class="tc-col pro">Pro</div>
+            </div>
+            <div class="tc-group">Finanzen</div>
+            <div class="tc-row"><div class="tc-feature">Konten</div><div class="tc-col">max. 3</div><div class="tc-col pro">Unbegrenzt</div></div>
+            <div class="tc-row"><div class="tc-feature">Ausgabentracker</div><div class="tc-col"><i class="ri-check-line ok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+            <div class="tc-row"><div class="tc-feature">Budget & Sparziele</div><div class="tc-col"><i class="ri-check-line ok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+            <div class="tc-row"><div class="tc-feature">Fixkosten & Schulden</div><div class="tc-col"><i class="ri-check-line ok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+            <div class="tc-row"><div class="tc-feature">CSV-Import</div><div class="tc-col"><i class="ri-check-line ok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+            <div class="tc-row"><div class="tc-feature">PDF-Export</div><div class="tc-col"><i class="ri-close-line nok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+            <div class="tc-group">Haushalt</div>
+            <div class="tc-row"><div class="tc-feature">Haushaltsmodus</div><div class="tc-col"><i class="ri-close-line nok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+            <div class="tc-row"><div class="tc-feature">Gemeinsame Ausgaben</div><div class="tc-col"><i class="ri-close-line nok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+            <div class="tc-row"><div class="tc-feature">Partner einladen</div><div class="tc-col"><i class="ri-close-line nok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+            <div class="tc-group">Analyse & Mehr</div>
+            <div class="tc-row"><div class="tc-feature">Zahlungskalender</div><div class="tc-col"><i class="ri-check-line ok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+            <div class="tc-row"><div class="tc-feature">Steuer-Modul</div><div class="tc-col"><i class="ri-close-line nok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+            <div class="tc-row"><div class="tc-feature">E-Mail-Erinnerungen</div><div class="tc-col"><i class="ri-close-line nok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+            <div class="tc-row"><div class="tc-feature">Outlook-Kalender Export</div><div class="tc-col"><i class="ri-close-line nok"></i></div><div class="tc-col pro"><i class="ri-check-line ok"></i></div></div>
+        </div>
+    </div>
+
+    <!-- Note -->
+    <p class="tarife-note">
+        <i class="ri-shield-check-line"></i>
+        Jederzeit kündbar · Keine versteckten Kosten · Deine Daten bleiben bei dir
+    </p>
 
     <!-- Toast -->
     <div id="tarifToast" class="tarif-toast" style="display:none;"></div>
@@ -120,14 +207,54 @@
     <script src="/navheader.js"></script>
 
     <script>
-        // reason aus URL lesen
-        const urlParams = new URLSearchParams(window.location.search);
-        const reason = urlParams.get('reason');
+        let billingYearly = false;
 
+        function switchBilling() {
+            billingYearly = !billingYearly;
+            const thumb = document.getElementById('toggleThumb');
+            const labelMonthly = document.getElementById('labelMonthly');
+            const labelYearly = document.getElementById('labelYearly');
+            const priceAmount = document.getElementById('priceAmount');
+            const pricePeriod = document.getElementById('pricePeriod');
+            const yearlyNote = document.getElementById('yearlyNote');
+            const upgradeBtn = document.getElementById('upgradeBtn');
+
+            if (billingYearly) {
+                thumb.style.transform = 'translateX(22px)';
+                labelMonthly.style.opacity = '0.5';
+                labelYearly.style.opacity = '1';
+                if (priceAmount) priceAmount.textContent = '3,33 €';
+                if (pricePeriod) pricePeriod.textContent = '/ Monat';
+                if (yearlyNote) yearlyNote.style.display = 'block';
+                if (upgradeBtn) {
+                    const href = upgradeBtn.getAttribute('href');
+                    if (href) upgradeBtn.setAttribute('href', href.replace('billing=monthly', 'billing=yearly'));
+                }
+            } else {
+                thumb.style.transform = 'translateX(0)';
+                labelMonthly.style.opacity = '1';
+                labelYearly.style.opacity = '0.5';
+                if (priceAmount) priceAmount.textContent = '4,99 €';
+                if (pricePeriod) pricePeriod.textContent = '/ Monat';
+                if (yearlyNote) yearlyNote.style.display = 'none';
+                if (upgradeBtn) {
+                    const href = upgradeBtn.getAttribute('href');
+                    if (href) upgradeBtn.setAttribute('href', href.replace('billing=yearly', 'billing=monthly'));
+                }
+            }
+        }
+
+        // Erfolgs-/Fehlermeldungen aus URL
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('success') === 'upgraded') {
+            showToast('Pro-Tarif erfolgreich aktiviert!', 'success');
+        }
+        const err = params.get('error');
+        if (err === 'payment_unavailable') showToast('Zahlungssystem derzeit nicht verfügbar.', 'error');
+        if (err === 'payment_error') showToast('Fehler bei der Zahlungsabwicklung. Bitte erneut versuchen.', 'error');
+
+        // Fallback für Testzwecke (ohne Stripe)
         async function changePlan(plan) {
-            const btn = document.querySelector(plan === 'pro' ? '.tarife-btn.upgrade' : '.tarife-btn.downgrade');
-            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ri-loader-4-line"></i> Wird gewechselt…'; }
-
             try {
                 const res = await fetch('/users/upgrade', {
                     method: 'POST',
@@ -136,15 +263,13 @@
                 });
                 const data = await res.json();
                 if (data.success) {
-                    showToast(plan === 'pro' ? '🎉 Willkommen im Pro-Tarif!' : 'Tarif auf Free geändert.', plan === 'pro' ? 'success' : 'info');
+                    showToast(plan === 'pro' ? 'Pro-Tarif aktiviert!' : 'Tarif auf Free geändert.', plan === 'pro' ? 'success' : 'info');
                     setTimeout(() => location.reload(), 1200);
                 } else {
                     showToast('Fehler beim Wechsel.', 'error');
-                    if (btn) { btn.disabled = false; }
                 }
             } catch {
                 showToast('Fehler beim Wechsel.', 'error');
-                if (btn) { btn.disabled = false; }
             }
         }
 
@@ -153,14 +278,14 @@
             t.textContent = msg;
             t.className = `tarif-toast ${type}`;
             t.style.display = 'block';
-            setTimeout(() => { t.style.display = 'none'; }, 3000);
+            setTimeout(() => { t.style.display = 'none'; }, 4000);
         }
     </script>
 
     <style>
         .tarife-header {
             text-align: center;
-            margin-bottom: 2.5rem;
+            margin-bottom: 1.5rem;
         }
         .tarife-header h1 { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 800; margin-bottom: 0.4rem; }
         .tarife-header p { color: var(--text-muted, #8892a4); font-size: 1rem; }
@@ -178,12 +303,78 @@
             font-size: 0.875rem;
         }
 
+        /* Trial Banner */
+        .tarife-trial-banner {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            max-width: 780px;
+            margin: 0 auto 1.5rem;
+            padding: 0.875rem 1.25rem;
+            background: rgba(234,179,8,0.1);
+            border: 1px solid rgba(234,179,8,0.3);
+            border-radius: 0.75rem;
+            color: #eab308;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+        .tarife-trial-banner i { font-size: 1.25rem; flex-shrink: 0; }
+        .tarife-trial-banner.expired { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.25); color: #ef4444; }
+
+        /* Billing Toggle */
+        .tarife-toggle-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+        }
+        .tarife-toggle-label {
+            font-size: 0.9rem;
+            color: var(--text, #e2e8f0);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: opacity 0.2s;
+        }
+        .tarife-toggle-save {
+            font-size: 0.7rem;
+            font-weight: 700;
+            background: rgba(34,197,94,0.15);
+            color: #22c55e;
+            padding: 0.15rem 0.4rem;
+            border-radius: 20px;
+        }
+        .tarife-toggle {
+            position: relative;
+            width: 48px;
+            height: 26px;
+            background: var(--accent, #6c63ff);
+            border: none;
+            border-radius: 13px;
+            cursor: pointer;
+            padding: 0;
+            transition: background 0.2s;
+        }
+        .tarife-toggle-thumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            transition: transform 0.2s;
+            display: block;
+        }
+
+        /* Plan Cards */
         .tarife-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 1.25rem;
             max-width: 780px;
-            margin: 0 auto 2rem;
+            margin: 0 auto 2.5rem;
         }
 
         .tarife-card {
@@ -225,6 +416,12 @@
         .tarife-amount { font-size: 2rem; font-weight: 800; color: var(--text, #e2e8f0); }
         .tarife-period { font-size: 0.85rem; color: var(--text-muted, #8892a4); }
 
+        .tarife-yearly-note {
+            font-size: 0.78rem;
+            color: #22c55e;
+            margin-top: -0.25rem;
+        }
+
         .tarife-desc { font-size: 0.875rem; color: var(--text-muted, #8892a4); line-height: 1.5; margin: 0; }
 
         .tarife-features {
@@ -245,6 +442,7 @@
         .tarife-features li.ok { color: var(--text, #e2e8f0); }
         .tarife-features li.nok { color: var(--text-muted, #8892a4); }
         .tarife-features li.ok i { color: #22c55e; font-size: 1rem; flex-shrink: 0; }
+        .tarife-features li.ok.star i { color: var(--accent, #6c63ff); }
         .tarife-features li.nok i { color: #ef4444; font-size: 1rem; flex-shrink: 0; }
 
         .tarife-btn {
@@ -261,6 +459,7 @@
             justify-content: center;
             gap: 0.5rem;
             transition: opacity 0.2s, transform 0.1s;
+            text-decoration: none;
         }
         .tarife-btn:active { transform: scale(0.98); }
         .tarife-btn.upgrade {
@@ -268,6 +467,12 @@
             color: #fff;
         }
         .tarife-btn.upgrade:hover { opacity: 0.88; }
+        .tarife-btn.manage {
+            background: rgba(108,99,255,0.15);
+            color: var(--accent, #6c63ff);
+            border: 1px solid rgba(108,99,255,0.3);
+        }
+        .tarife-btn.manage:hover { opacity: 0.8; }
         .tarife-btn.current {
             background: rgba(148,163,184,0.1);
             color: var(--text-muted, #8892a4);
@@ -281,6 +486,57 @@
         .tarife-btn.downgrade:hover { border-color: #ef4444; color: #ef4444; }
         .tarife-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+        /* Feature Comparison Table */
+        .tarife-compare-wrap {
+            max-width: 780px;
+            margin: 0 auto 2.5rem;
+        }
+        .tarife-compare-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text, #e2e8f0);
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        .tarife-compare-table {
+            background: var(--surface, #1a1d27);
+            border: 1px solid var(--border, #2a2d3a);
+            border-radius: 1rem;
+            overflow: hidden;
+        }
+        .tc-row {
+            display: grid;
+            grid-template-columns: 1fr 100px 100px;
+            align-items: center;
+            padding: 0.625rem 1.25rem;
+            border-bottom: 1px solid var(--border, #2a2d3a);
+            font-size: 0.85rem;
+        }
+        .tc-row:last-child { border-bottom: none; }
+        .tc-row.tc-header {
+            background: rgba(255,255,255,0.03);
+            font-weight: 700;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted, #8892a4);
+        }
+        .tc-group {
+            padding: 0.4rem 1.25rem;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--text-muted, #8892a4);
+            background: rgba(255,255,255,0.02);
+            border-bottom: 1px solid var(--border, #2a2d3a);
+        }
+        .tc-feature { color: var(--text, #e2e8f0); }
+        .tc-col { text-align: center; color: var(--text-muted, #8892a4); }
+        .tc-col.pro { color: var(--accent, #6c63ff); font-weight: 600; }
+        .tc-col i.ok { color: #22c55e; font-size: 1rem; }
+        .tc-col i.nok { color: #ef4444; font-size: 1rem; }
+
         .tarife-note {
             text-align: center;
             font-size: 0.8rem;
@@ -290,7 +546,7 @@
             justify-content: center;
             gap: 0.4rem;
             max-width: 500px;
-            margin: 0 auto;
+            margin: 0 auto 2rem;
         }
 
         /* Toast */
@@ -312,6 +568,10 @@
         @keyframes fadeUp {
             from { opacity:0; transform: translateX(-50%) translateY(10px); }
             to   { opacity:1; transform: translateX(-50%) translateY(0); }
+        }
+
+        @media (max-width: 480px) {
+            .tc-row { grid-template-columns: 1fr 70px 70px; padding: 0.5rem 0.875rem; }
         }
     </style>
 </body>

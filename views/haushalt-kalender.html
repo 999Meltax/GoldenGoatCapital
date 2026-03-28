@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zahlungskalender – Haushalt – Golden Goat Capital</title>
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="./assets/goldengoat.png">
+</head>
+
+<body>
+    <%- include('navheader.html') %>
+
+    <div class="page-header">
+        <div>
+            <h1><i class="ri-calendar-2-line" style="color:var(--haus-accent);margin-right:8px;"></i>Zahlungskalender</h1>
+            <p>Gemeinsame Fixkosten und Sparziel-Fälligkeiten auf einen Blick</p>
+        </div>
+    </div>
+
+    <!-- Legende -->
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-2);">
+            <span style="width:12px;height:12px;border-radius:3px;background:#10b981;flex-shrink:0;"></span> Fixkosten
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-2);">
+            <span style="width:12px;height:12px;border-radius:3px;background:#f59e0b;flex-shrink:0;"></span> Sparziele (Fälligkeit)
+        </div>
+    </div>
+
+    <div class="kalender-section">
+        <div id="calendar"></div>
+    </div>
+
+    <div class="fixkosten-banner" style="background:rgba(16,185,129,0.07);border-color:rgba(16,185,129,0.2);">
+        <i class="ri-information-line" style="color:var(--haus-accent);"></i>
+        Termine werden automatisch aus euren Haushalt-Fixkosten und Sparzielen berechnet.
+        Den Fälligkeitstag könnt ihr bei jeder Fixkostenposition unter <a href="/users/haushalt/ausgaben" style="color:var(--haus-accent);">Fixkosten &amp; Budget</a> einstellen.
+    </div>
+
+    <div id="eventTooltip" style="display:none;position:absolute;padding:6px 12px;border-radius:8px;color:white;font-size:0.82rem;pointer-events:none;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.4);"></div>
+
+    <%- include('footer.html') %>
+
+    <style>
+    .fixkosten-banner {
+        border-radius: var(--radius-md);
+        padding: 10px 16px;
+        font-size: 0.85rem;
+        color: var(--text-2);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+    }
+    </style>
+
+    <script src="/haushalt-kalender.js"></script>
+    <script src="/navheader.js?v=2"></script>
+</body>
+
+</html>

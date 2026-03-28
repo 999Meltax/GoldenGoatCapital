@@ -1,34 +1,59 @@
 document.addEventListener('DOMContentLoaded', () => {
     const currentPath = window.location.pathname;
 
-    // ── Plan-Badge laden ──────────────────────────────────────────
+    // ── Plan + Haushalt-Status laden ─────────────────────────────
     if (currentPath.startsWith('/users/')) {
-        fetch('/users/me/plan')
-            .then(r => r.json())
-            .then(({ plan }) => {
-                const badge = document.getElementById('sidebarPlanBadge');
-                if (!badge) return;
-                if (plan === 'pro') {
-                    badge.textContent = 'Pro';
-                    badge.className = 'sidebar-plan-badge pro';
-                } else {
-                    badge.textContent = 'Free';
-                    badge.className = 'sidebar-plan-badge free';
-                }
+        Promise.all([
+            fetch('/users/me/plan').then(r => r.json()).catch(() => ({ plan: 'free' })),
+            fetch('/users/haushalt/status').then(r => r.json()).catch(() => ({ haushalt: null }))
+        ]).then(([{ plan }, { haushalt }]) => {
+            // Plan-Badge
+            const badge = document.getElementById('sidebarPlanBadge');
+            if (badge) {
+                badge.textContent   = plan === 'pro' ? 'Pro' : 'Free';
+                badge.className     = 'sidebar-plan-badge ' + (plan === 'pro' ? 'pro' : 'free');
                 badge.style.display = 'inline-block';
-            })
-            .catch(() => {});
+            }
+
+            // H-11: Haushalt-Toggle nur für Pro-Nutzer
+            const toggle = document.getElementById('sidebarModeToggle');
+            if (plan !== 'pro') {
+                if (toggle) toggle.style.display = 'none';
+            }
+
+            // H-14: Haushalt-Nav vereinfachen wenn kein Haushalt existiert
+            const haushaltNav = document.getElementById('haushaltNav');
+            if (haushaltNav && !haushalt) {
+                haushaltNav.innerHTML = `
+                    <div style="padding:24px 16px;text-align:center;color:var(--text-3,#666);">
+                        <i class="ri-home-heart-line" style="font-size:2rem;display:block;margin-bottom:8px;color:var(--haus-accent,#22c55e);"></i>
+                        <p style="font-size:0.82rem;margin:0 0 14px;line-height:1.5;">Noch kein Haushalt eingerichtet.</p>
+                        <a href="/users/haushalt" class="sidebar-link sidebar-link-haus" style="justify-content:center;">
+                            <i class="ri-add-line"></i> Haushalt einrichten
+                        </a>
+                    </div>`;
+            }
+        }).catch(() => {});
     }
 
     // ── Modus-Erkennung ───────────────────────────────────────────
-    // Automatisch Haushalt-Modus aktivieren wenn auf Haushalt-Seite
+    // Sofort aus localStorage rendern (kein Flash), dann mit Server abgleichen
     const isHaushaltPage = currentPath.startsWith('/users/haushalt');
-    if (isHaushaltPage) {
-        localStorage.setItem('ggc_mode', 'haushalt');
-    }
+    const localMode = isHaushaltPage ? 'haushalt' : (localStorage.getItem('ggc_mode') || 'privat');
+    applyMode(localMode, false);
 
-    const savedMode = localStorage.getItem('ggc_mode') || 'privat';
-    applyMode(savedMode, false);
+    // Mit Server synchronisieren (Session als Single Source of Truth)
+    fetch('/users/me/mode')
+        .then(r => r.json())
+        .then(({ mode }) => {
+            const serverMode = isHaushaltPage ? 'haushalt' : mode;
+            if (serverMode !== localMode) applyMode(serverMode, false);
+            // Haushalt-Seite → Session aktualisieren wenn nötig
+            if (isHaushaltPage && mode !== 'haushalt') {
+                fetch('/users/me/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'haushalt' }) });
+            }
+        })
+        .catch(() => {});
 
     // ── Aktiven Link markieren ────────────────────────────────────
     document.querySelectorAll('.sidebar-link').forEach(link => {
@@ -44,9 +69,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ── Sektionen-Mapping ─────────────────────────────────────────
+    // "Mehr"-Sektion automatisch öffnen wenn man sich auf einer der sekundären Seiten befindet
     const sectionMap = {
-        finanzSection: ['/meine-finanzen', '/ausgabentracker', '/import', '/budget', '/schulden', '/fixkosten', '/steuern', '/regeln', '/activity'],
-        verwaltungSection: ['/versicherungen', '/dokumente'],
+        mehrSection: ['/steuern', '/versicherungen', '/dokumente', '/export', '/kalender', '/zinseszinsrechner', '/activity'],
     };
 
     Object.entries(sectionMap).forEach(([sectionId, paths]) => {
@@ -95,6 +120,14 @@ function applyMode(mode, navigate) {
     }
 
     localStorage.setItem('ggc_mode', mode);
+    mbnApplyMode(mode);
+
+    // Session auf Server aktualisieren
+    fetch('/users/me/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+    }).catch(() => {});
 
     if (navigate) {
         if (mode === 'haushalt') {
@@ -120,6 +153,29 @@ function setMode(mode) {
     }
 }
 
+function toggleMobileSidebar() {
+    const sidebar  = document.getElementById('sidebar');
+    const overlay  = document.getElementById('sidebarOverlay');
+    const burger   = document.getElementById('ggcHamburger');
+    const isOpen   = sidebar?.classList.toggle('open');
+    overlay?.classList.toggle('open', isOpen);
+    burger?.classList.toggle('open', isOpen);
+}
+
+function closeMobileSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    const burger  = document.getElementById('ggcHamburger');
+    sidebar?.classList.remove('open');
+    overlay?.classList.remove('open');
+    burger?.classList.remove('open');
+}
+
+// Sidebar bei Resize automatisch schließen wenn wieder groß genug
+window.addEventListener('resize', () => {
+    if (window.innerWidth > 768) closeMobileSidebar();
+});
+
 function toggleSidebarSection(sectionId, btn) {
     const section = document.getElementById(sectionId);
     if (!section) return;
@@ -127,13 +183,149 @@ function toggleSidebarSection(sectionId, btn) {
     const isOpen = section.classList.toggle('open');
     btn.classList.toggle('open', isOpen);
 
-    const allSections = ['finanzSection', 'verwaltungSection'];
+    const allSections = ['mehrSection'];
     const openSections = allSections.filter(id => {
         const el = document.getElementById(id);
         return el && el.classList.contains('open');
     });
     localStorage.setItem('sidebar_open_sections', JSON.stringify(openSections));
 }
+// ── In-App Notifications ───────────────────────────────────────
+
+const NOTIF_ICONS = {
+    budget:  'ri-pie-chart-2-line',
+    unusual: 'ri-alert-line',
+    fixkost: 'ri-repeat-line',
+};
+
+let _notifData  = [];
+let _notifOpen  = false;
+
+async function loadNotifications() {
+    const wrap = document.getElementById('ggcNotifWrap');
+    if (!wrap) return;
+    try {
+        const res = await fetch('/users/notifications');
+        if (!res.ok) return;
+        _notifData = await res.json();
+        renderNotifPanel();
+    } catch {}
+}
+
+function renderNotifPanel() {
+    const listEl  = document.getElementById('ggcNotifList');
+    const badge   = document.getElementById('ggcNotifBadge');
+    if (!listEl || !badge) return;
+
+    const unread = _notifData.filter(n => !n.is_read);
+    badge.textContent  = unread.length > 9 ? '9+' : unread.length;
+    badge.style.display = unread.length > 0 ? '' : 'none';
+
+    if (_notifData.length === 0) {
+        listEl.innerHTML = '<div class="ggc-notif-empty"><i class="ri-check-double-line"></i> Keine Benachrichtigungen</div>';
+        return;
+    }
+
+    listEl.innerHTML = _notifData.map(n => {
+        const icon    = NOTIF_ICONS[n.type] || 'ri-information-line';
+        const isRead  = n.is_read ? 'read' : 'unread';
+        const link    = n.link || '#';
+        return `<a class="ggc-notif-item ${isRead}" href="${link}" onclick="markNotifRead(${n.id}, event)">
+            <div class="ggc-notif-icon ${n.type}"><i class="${icon}"></i></div>
+            <div class="ggc-notif-body">
+                <div class="ggc-notif-title">${escGgc(n.title)}</div>
+                <div class="ggc-notif-msg">${escGgc(n.message)}</div>
+            </div>
+            ${!n.is_read ? '<div class="ggc-notif-dot"></div>' : ''}
+        </a>`;
+    }).join('');
+}
+
+function toggleNotifPanel() {
+    const panel = document.getElementById('ggcNotifPanel');
+    const btn   = document.getElementById('ggcNotifBtn');
+    if (!panel) return;
+    _notifOpen = !_notifOpen;
+    panel.classList.toggle('open', _notifOpen);
+    btn.classList.toggle('open', _notifOpen);
+}
+
+async function markNotifRead(id, e) {
+    const n = _notifData.find(x => x.id === id);
+    if (n && !n.is_read) {
+        n.is_read = 1;
+        renderNotifPanel();
+        fetch(`/users/notifications/${id}/read`, { method: 'POST' }).catch(() => {});
+    }
+}
+
+async function markAllNotifsRead() {
+    _notifData.forEach(n => n.is_read = 1);
+    renderNotifPanel();
+    fetch('/users/notifications/read-all', { method: 'POST' }).catch(() => {});
+}
+
+// Schließen bei Klick außerhalb
+document.addEventListener('click', e => {
+    const wrap = document.getElementById('ggcNotifWrap');
+    if (wrap && !wrap.contains(e.target) && _notifOpen) {
+        toggleNotifPanel();
+    }
+});
+
+// Notifications beim Laden abrufen
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.querySelector('.sidebar') && document.getElementById('ggcNotifWrap')) {
+        loadNotifications();
+    }
+});
+
+// ── Mobile Bottom Nav ──────────────────────────────────────────
+function mbnApplyMode(mode) {
+    const privat   = document.getElementById('mbnPrivat');
+    const haushalt = document.getElementById('mbnHaushalt');
+    if (!privat || !haushalt) return;
+    if (mode === 'haushalt') {
+        privat.style.display   = 'none';
+        haushalt.style.display = '';
+    } else {
+        privat.style.display   = '';
+        haushalt.style.display = 'none';
+    }
+    mbnMarkActive();
+}
+
+function mbnMarkActive() {
+    const path = window.location.pathname;
+    document.querySelectorAll('.mbn-item').forEach(el => {
+        const dp = el.getAttribute('data-path');
+        if (!dp) return;
+        const isExact = path === dp;
+        const isSub   = dp !== '/users/overview' && dp !== '/users/haushalt' && path.startsWith(dp);
+        el.classList.toggle('active', isExact || isSub);
+    });
+}
+
+function mbnFabAction() {
+    // If current page has a schnell-overlay, open it
+    const overlay = document.getElementById('schnellOverlay');
+    if (overlay) {
+        overlay.classList.add('open');
+        const firstInput = overlay.querySelector('input, select');
+        if (firstInput) firstInput.focus();
+        return;
+    }
+    // Otherwise navigate to the right tracker
+    const isHaushalt = window.location.pathname.startsWith('/users/haushalt');
+    window.location.href = isHaushalt ? '/users/haushalt-tracker' : '/users/ausgabentracker';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const path = window.location.pathname;
+    const isHaushalt = path.startsWith('/users/haushalt');
+    mbnApplyMode(isHaushalt ? 'haushalt' : (localStorage.getItem('ggc_mode') || 'privat'));
+});
+
 // ── Globale Suche ──────────────────────────────────────────────
 let _ggcSearchTimer  = null;
 let _ggcSearchActive = -1; // aktiv markierter Ergebnis-Index
@@ -417,4 +609,41 @@ function showUndoToast(msg, onUndo, timeout = 5000) {
         el.style.transform = 'translateX(-50%) translateY(80px)';
         el.style.opacity   = '0';
     }
+}
+
+// ── Seitenübergreifender Undo-Check ────────────────────────────
+async function checkPendingDeletes() {
+    // Nur eingeloggte User, und nicht auf der Transaktionsseite (die hat eigene UI)
+    if (!document.getElementById('ggcNotifBtn')) return;
+    if (document.getElementById('transactionList')) return;
+    try {
+        // Privat-Cleanup
+        const res = await fetch('/users/pending-deletes');
+        if (res.ok) {
+            const pending = await res.json();
+            for (const p of pending) {
+                if (p.remainingMs > 0)
+                    setTimeout(() => fetch('/users/pending-deletes').catch(() => {}), p.remainingMs + 200);
+            }
+        }
+        // Haushalt-Cleanup
+        const hRes = await fetch('/users/haushalt/pending-deletes');
+        if (hRes.ok) {
+            const hPending = await hRes.json();
+            for (const p of hPending) {
+                if (p.remainingMs > 0)
+                    setTimeout(() => fetch('/users/haushalt/pending-deletes').catch(() => {}), p.remainingMs + 200);
+            }
+        }
+    } catch {}
+}
+
+document.addEventListener('DOMContentLoaded', checkPendingDeletes);
+
+// ── Service Worker registrieren (PWA) ─────────────────────────
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+            .catch(() => {}); // silently fail — kein SW = App funktioniert trotzdem normal
+    });
 }

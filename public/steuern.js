@@ -2,11 +2,67 @@
 //  STEUERN.JS  –  Golden Goat Capital
 // ══════════════════════════════════════════════════════════════
 
-const fmt    = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-const fmtK   = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const fmt    = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
+const fmtK   = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR'), maximumFractionDigits: 0 });
 const fmtPct = new Intl.NumberFormat('de-DE', { style: 'percent', maximumFractionDigits: 1 });
 
 let aktuellesJahr = new Date().getFullYear() - 1; // Standard: letztes Jahr
+
+// ── Steuer-Tarifdaten nach Jahr ────────────────────────────────
+// Quellen: §32a EStG, BMF-Schreiben, jeweilige Jahressteuergesetze
+const STEUER_TARIFE = {
+    2025: {
+        grundfreibetrag: 12096,
+        zone1_bis: 17740,  zone2_bis: 68430,  zone3_bis: 277826,
+        zone1_a: 979.18,   zone1_b: 1400,
+        zone2_a: 192.59,   zone2_b: 2397,     zone2_c: 966.53,
+        zone3_abzug: 10602.13,   zone4_abzug: 18936.88,
+        ruerup_max: 29344, ruerup_pct: 1.0,   // 100% seit 2023
+        riester_max: 2100,
+        sparerpauschbetrag: 1000,
+        werbungskosten_pausch: 1230,
+        soli_freigrenze: 19950,
+    },
+    2024: {
+        grundfreibetrag: 11604,
+        zone1_bis: 17005,  zone2_bis: 66760,  zone3_bis: 277825,
+        zone1_a: 922.98,   zone1_b: 1400,
+        zone2_a: 181.19,   zone2_b: 2397,     zone2_c: 1025.38,
+        zone3_abzug: 10602.13,   zone4_abzug: 18936.88,
+        ruerup_max: 27565, ruerup_pct: 0.94,
+        riester_max: 2100,
+        sparerpauschbetrag: 1000,
+        werbungskosten_pausch: 1230,
+        soli_freigrenze: 18130,
+    },
+    2023: {
+        grundfreibetrag: 10908,
+        zone1_bis: 15999,  zone2_bis: 61971,  zone3_bis: 277825,
+        zone1_a: 979.18,   zone1_b: 1400,
+        zone2_a: 192.59,   zone2_b: 2397,     zone2_c: 966.53,
+        zone3_abzug: 8963.74,    zone4_abzug: 17078.74,
+        ruerup_max: 26528, ruerup_pct: 1.0,   // 100% ab 2023
+        riester_max: 2100,
+        sparerpauschbetrag: 1000,
+        werbungskosten_pausch: 1230,
+        soli_freigrenze: 17543,
+    },
+    2022: {
+        grundfreibetrag: 10347,
+        zone1_bis: 14926,  zone2_bis: 58596,  zone3_bis: 277825,
+        zone1_a: 1008.70,  zone1_b: 1400,
+        zone2_a: 206.43,   zone2_b: 2397,     zone2_c: 869.32,
+        zone3_abzug: 8239.00,    zone4_abzug: 16052.05,
+        ruerup_max: 25639, ruerup_pct: 0.94,
+        riester_max: 2100,
+        sparerpauschbetrag: 801,
+        werbungskosten_pausch: 1000,
+        soli_freigrenze: 16956,
+    },
+};
+function getTarif(jahr) {
+    return STEUER_TARIFE[jahr] || STEUER_TARIFE[2024];
+}
 let alleWerbungskosten = [];
 let aktiveWbkKat = 'alle';
 let assistentChecks = {};
@@ -144,10 +200,11 @@ async function ladeUebersicht() {
     root.innerHTML = '<div class="steuer-loading"><i class="ri-loader-4-line steuer-spin"></i> Lade Daten…</div>';
 
     try {
-        const [txRes, gehaeltRes, wbkRes] = await Promise.all([
+        const [txRes, gehaeltRes, wbkRes, steuerTxRes] = await Promise.all([
             fetch('/users/getTransactions').then(r => r.json()).catch(() => []),
             fetch('/users/steuer/jahresübersicht/' + aktuellesJahr).then(r => r.json()).catch(() => ({})),
             fetch('/users/steuer/werbungskosten?jahr=' + aktuellesJahr).then(r => r.json()).catch(() => []),
+            fetch('/users/steuern/transaktionen/' + aktuellesJahr).then(r => r.json()).catch(() => []),
         ]);
 
         // Transaktionen des Jahres filtern
@@ -228,6 +285,51 @@ async function ladeUebersicht() {
                         '</tbody>' +
                     '</table>' +
                 '</div>' +
+            '</div>' +
+
+            // Steuerrelevante Transaktionen
+            '<div class="card" style="padding:20px;margin-top:0;">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
+                    '<h4 style="margin:0;display:flex;align-items:center;gap:8px;">' +
+                        '<i class="ri-government-line" style="color:#f59e0b;"></i> Steuerrelevante Transaktionen ' + aktuellesJahr +
+                    '</h4>' +
+                    '<a href="/users/ausgabentracker" style="font-size:0.8rem;color:var(--text-3);">Im Tracker markieren <i class="ri-arrow-right-line"></i></a>' +
+                '</div>' +
+                (steuerTxRes.length === 0 ?
+                    '<div style="text-align:center;color:var(--text-3);padding:32px 0;font-size:0.85rem;">' +
+                        '<i class="ri-government-line" style="font-size:2rem;display:block;margin-bottom:8px;opacity:0.3;"></i>' +
+                        'Noch keine Transaktionen als steuerrelevant markiert.<br>' +
+                        '<span style="font-size:0.8rem;">Im Ausgabentracker das <i class="ri-government-line"></i>-Icon klicken um eine Transaktion zu markieren.</span>' +
+                    '</div>' :
+                    '<div style="overflow-x:auto;">' +
+                        '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;">' +
+                            '<thead><tr>' +
+                                '<th style="text-align:left;padding:8px 10px;color:var(--text-3);font-weight:600;border-bottom:1px solid var(--border);">Datum</th>' +
+                                '<th style="text-align:left;padding:8px 10px;color:var(--text-3);font-weight:600;border-bottom:1px solid var(--border);">Bezeichnung</th>' +
+                                '<th style="text-align:left;padding:8px 10px;color:var(--text-3);font-weight:600;border-bottom:1px solid var(--border);">Kategorie</th>' +
+                                '<th style="text-align:right;padding:8px 10px;color:var(--text-3);font-weight:600;border-bottom:1px solid var(--border);">Betrag</th>' +
+                            '</tr></thead>' +
+                            '<tbody>' +
+                                steuerTxRes.map(t => {
+                                    const isOut = t.type === 'Ausgaben';
+                                    return '<tr style="border-bottom:1px solid var(--border);">' +
+                                        '<td style="padding:8px 10px;color:var(--text-3);">' + new Date(t.date).toLocaleDateString('de-DE') + '</td>' +
+                                        '<td style="padding:8px 10px;font-weight:500;">' + (t.name || '—') + '</td>' +
+                                        '<td style="padding:8px 10px;color:var(--text-3);">' + (t.category || '—') + '</td>' +
+                                        '<td style="padding:8px 10px;text-align:right;font-weight:600;color:' + (isOut ? '#ef4444' : '#22c55e') + ';">' +
+                                            (isOut ? '−' : '+') + fmt.format(t.amount) +
+                                        '</td>' +
+                                    '</tr>';
+                                }).join('') +
+                                '<tr style="border-top:2px solid var(--border);">' +
+                                    '<td colspan="3" style="padding:10px 10px;font-weight:700;">Summe Ausgaben</td>' +
+                                    '<td style="padding:10px 10px;text-align:right;font-weight:700;color:#ef4444;">' +
+                                        '−' + fmt.format(steuerTxRes.filter(t => t.type==='Ausgaben').reduce((s,t) => s+t.amount, 0)) +
+                                    '</td>' +
+                                '</tr>' +
+                            '</tbody>' +
+                        '</table>' +
+                    '</div>') +
             '</div>';
 
         // Chart rendern
@@ -311,33 +413,35 @@ function berechneSchaetzer() {
         return;
     }
 
-    // Werbungskosten: mind. 1.230 € Pauschbetrag
-    const werbung = Math.max(werbungInput || 1230, 1230);
+    const tarif = getTarif(aktuellesJahr);
 
-    // Altersvorsorge-Abzüge
-    const sparerpauschbetrag = stklasse === 3 ? 2000 : 1000;
+    // Werbungskosten: mind. Pauschbetrag laut Tarifjahr
+    const werbung = Math.max(werbungInput || tarif.werbungskosten_pausch, tarif.werbungskosten_pausch);
+
+    // Kapitalerträge & Sparerpauschbetrag (Verheiratete = doppelt)
+    const sparerpauschbetrag = stklasse === 3 ? tarif.sparerpauschbetrag * 2 : tarif.sparerpauschbetrag;
     const fsa = kapitalFSA !== undefined ? kapitalFSA : sparerpauschbetrag;
     const kapitalSteuerpflichtig = Math.max(0, kapital - fsa);
     const abgeltungssteuer = kapitalSteuerpflichtig * 0.25;
-    const abgeltungsSoli   = abgeltungssteuer > 972.5 ? abgeltungssteuer * 0.055 : 0; // Soli-Freigrenze Abgeltung
+    const abgeltungsSoli   = abgeltungssteuer > 972.5 ? abgeltungssteuer * 0.055 : 0;
 
-    // Rürup: 94% des Beitrags abzugsfähig, max. 27.565 € (2024)
-    const ruerupAbzug = Math.min(ruerupInput * 0.94, 27565 * 0.94);
-    // Riester: max. 2.100 €
-    const riesterAbzug = Math.min(riesterInput, 2100);
+    // Rürup: abzugsfähig nach Tarif (seit 2023: 100%), max. Höchstbetrag nach Tarif
+    const ruerupAbzug = Math.min(ruerupInput * tarif.ruerup_pct, tarif.ruerup_max * tarif.ruerup_pct);
+    // Riester: max. laut Tarif
+    const riesterAbzug = Math.min(riesterInput, tarif.riester_max);
     const avAbzug = ruerupAbzug + riesterAbzug;
 
-    // Grundfreibetrag 2024
-    const grundfreibetrag = stklasse === 3 ? 23208 : 11604;
+    // Grundfreibetrag: Splitting-Tarif (SK3) = doppelter Grundfreibetrag
+    const grundfreibetrag = stklasse === 3 ? tarif.grundfreibetrag * 2 : tarif.grundfreibetrag;
 
     // Zu versteuerndes Einkommen
     const zve = Math.max(0, brutto - werbung - sonder - belastung - avAbzug - grundfreibetrag);
 
-    // Vereinfachte Einkommensteuerberechnung (Progressionszonen 2024)
+    // Einkommensteuerberechnung nach Tarifjahr
     let est = berechnESt(zve, stklasse);
 
-    // Solidaritätszuschlag (entfällt für ~90% bei Beträgen unter ~18.130 € ESt)
-    const solidaFreigrenze = 18130;
+    // Solidaritätszuschlag (Freigrenze aus Tarifjahr)
+    const solidaFreigrenze = tarif.soli_freigrenze;
     let soli = 0;
     if (est > solidaFreigrenze) soli = est * 0.055;
     else if (est > solidaFreigrenze * 0.9) soli = (est - solidaFreigrenze * 0.9) * 0.055 * (est / solidaFreigrenze - 0.9) / 0.1;
@@ -347,7 +451,7 @@ function berechneSchaetzer() {
 
     // Steuerersparnis durch Werbungskosten (grober Grenzsteuersatz)
     const grenzsteuersatz = berechneGrenzsteuersatz(zve);
-    const wbkErsparnisExtra = Math.max(0, werbung - 1230) * grenzsteuersatz;
+    const wbkErsparnisExtra = Math.max(0, werbung - tarif.werbungskosten_pausch) * grenzsteuersatz;
 
     const gesamtSchuld = est + soli + kirche + abgeltungssteuer + abgeltungsSoli;
     const differenz    = gezahlt - (est + soli + kirche);
@@ -393,36 +497,89 @@ function zeileSchaetzer(label, value, color) {
     '</div>';
 }
 
-function berechnESt(zve, stklasse) {
-    // Einkommensteuer-Grundtabelle 2024 (vereinfacht, linear-progressiv)
-    // Für Steuerklasse 3 wird Splitting-Vorteil simuliert (Faktor ~0.6 auf Klasse 1)
-    if (stklasse === 3) {
-        const zveSplit = zve / 2;
-        return berechnEStGrundtabelle(zveSplit) * 2;
+function vorausfuellenAusDaten() {
+    const jahr = aktuellesJahr;
+    let gefuellt = 0;
+
+    // Kapitalerträge
+    const kapJahr = alleKapitalertraege.filter(k => parseInt(k.steuerjahr) === jahr);
+    if (kapJahr.length > 0) {
+        const gesamtKapital = kapJahr.reduce((s, k) =>
+            s + (parseFloat(k.dividenden)||0) + (parseFloat(k.zinsen)||0) + (parseFloat(k.kursgewinne)||0), 0);
+        const gesamtFSA = kapJahr.reduce((s, k) => s + (parseFloat(k.freistellungsauftrag)||0), 0);
+        const kapEl = document.getElementById('schaetzerKapital');
+        const fsaEl = document.getElementById('schaetzerKapitalFSA');
+        if (kapEl) { kapEl.value = Math.round(gesamtKapital); gefuellt++; }
+        if (fsaEl && gesamtFSA > 0) { fsaEl.value = Math.round(gesamtFSA); gefuellt++; }
     }
-    return berechnEStGrundtabelle(zve);
+
+    // Altersvorsorge (Rürup / Riester)
+    const avJahr = alleAltersvorsorge.filter(a => parseInt(a.steuerjahr) === jahr);
+    if (avJahr.length > 0) {
+        const ruerupSumme = avJahr.filter(a => a.typ === 'ruerup')
+            .reduce((s, a) => s + (parseFloat(a.eigenbeitrag)||0), 0);
+        const riesterSumme = avJahr.filter(a => a.typ === 'riester')
+            .reduce((s, a) => s + (parseFloat(a.eigenbeitrag)||0), 0);
+        const ruerupEl = document.getElementById('schaetzerRuerup');
+        const riesterEl = document.getElementById('schaetzerRiester');
+        if (ruerupEl && ruerupSumme > 0) { ruerupEl.value = Math.round(ruerupSumme); gefuellt++; }
+        if (riesterEl && riesterSumme > 0) { riesterEl.value = Math.round(riesterSumme); gefuellt++; }
+    }
+
+    // Sonderausgaben
+    const sonderJahr = alleSonderausgaben.filter(s => parseInt(s.steuerjahr) === jahr);
+    if (sonderJahr.length > 0) {
+        const sonderSumme = sonderJahr.reduce((s, e) => s + (parseFloat(e.betrag)||0), 0);
+        const sonderEl = document.getElementById('schaetzerSonder');
+        if (sonderEl && sonderSumme > 0) { sonderEl.value = Math.round(sonderSumme); gefuellt++; }
+    }
+
+    // Werbungskosten
+    const wbkJahr = alleWerbungskosten.filter(w => parseInt(w.jahr) === jahr);
+    if (wbkJahr.length > 0) {
+        const wbkSumme = wbkJahr.reduce((s, w) => s + (parseFloat(w.betrag)||0), 0);
+        const wbkEl = document.getElementById('schaetzerWerbung');
+        if (wbkEl && wbkSumme > 0) { wbkEl.value = Math.round(wbkSumme); gefuellt++; }
+    }
+
+    if (gefuellt === 0) {
+        showUndoToast('Keine Daten für ' + jahr + ' gefunden. Bitte zuerst Kapitalerträge, Altersvorsorge und Sonderausgaben eintragen.');
+    } else {
+        berechneSchaetzer();
+        showUndoToast(gefuellt + ' Felder aus deinen Daten vorausgefüllt.');
+    }
 }
 
-function berechnEStGrundtabelle(zve) {
+function berechnESt(zve, stklasse) {
+    const tarif = getTarif(aktuellesJahr);
+    if (stklasse === 3) {
+        return berechnEStGrundtabelle(zve / 2, tarif) * 2;
+    }
+    return berechnEStGrundtabelle(zve, tarif);
+}
+
+function berechnEStGrundtabelle(zve, tarif) {
+    if (!tarif) tarif = getTarif(aktuellesJahr);
     if (zve <= 0) return 0;
-    if (zve <= 17005) {
-        const y = (zve - 11604) / 10000;
-        return Math.max(0, (922.98 * y + 1400) * y);
+    if (zve <= tarif.zone1_bis) {
+        const y = (zve - tarif.grundfreibetrag) / 10000;
+        return Math.max(0, (tarif.zone1_a * y + tarif.zone1_b) * y);
     }
-    if (zve <= 66760) {
-        const z = (zve - 17005) / 10000;
-        return (181.19 * z + 2397) * z + 1025.38;
+    if (zve <= tarif.zone2_bis) {
+        const z = (zve - tarif.zone1_bis) / 10000;
+        return (tarif.zone2_a * z + tarif.zone2_b) * z + tarif.zone2_c;
     }
-    if (zve <= 277825) {
-        return 0.42 * zve - 10602.13;
+    if (zve <= tarif.zone3_bis) {
+        return 0.42 * zve - tarif.zone3_abzug;
     }
-    return 0.45 * zve - 18936.88;
+    return 0.45 * zve - tarif.zone4_abzug;
 }
 
 function berechneGrenzsteuersatz(zve) {
-    if (zve <= 17005) return 0.14 + (zve - 11604) / 10000 * 0.2398;
-    if (zve <= 66760) return 0.24;
-    if (zve <= 277825) return 0.42;
+    const tarif = getTarif(aktuellesJahr);
+    if (zve <= tarif.zone1_bis) return 0.14 + (zve - tarif.grundfreibetrag) / 10000 * 0.2398;
+    if (zve <= tarif.zone2_bis) return 0.24;
+    if (zve <= tarif.zone3_bis) return 0.42;
     return 0.45;
 }
 

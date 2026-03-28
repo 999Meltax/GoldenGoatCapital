@@ -598,7 +598,13 @@ Abhaken mit `[x]` wenn erledigt.
 
 ---
 
-**Aktueller Stand Phase J:** 7/7 erledigt ✅
+- [x] **J-8: Transaktionen Kategorien auf alle anwenden**
+      Bei einer transaktion soll man eine kategorie festlegen oder ändern können. Man kann aussuchen, ob man es nur auf diese transaktion anwendet,
+      oder ob man es auf alle transaktionen dieses namens anwendet und als regel & automation festlegt für alle zukünftigen transaktionen dieses namens
+
+---
+
+**Aktueller Stand Phase J:** 8/8 erledigt ✅
 
 ---
 

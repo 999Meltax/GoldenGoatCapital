@@ -256,6 +256,92 @@ async function checkSparziele(db, userId, email, displayName) {
     console.log('[Reminder] Sparziel-Mail an', email);
 }
 
+// ── 4. Haushalt-Abrechnungserinnerung (monatlich am 1.) ───────
+
+async function checkHaushaltAbrechnungen(db) {
+    const today = new Date();
+    if (today.getDate() !== 1) return; // Nur am 1. des Monats
+
+    const vormonat     = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const vormonatStr  = vormonat.toISOString().substring(0, 7);
+    const vormonatLabel = vormonat.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+
+    let haushalte;
+    try {
+        haushalte = await db._database.query(
+            `SELECT DISTINCT h.id, h.name FROM haushalte h
+             JOIN haushalt_mitglieder hm ON hm.haushalt_id = h.id
+             GROUP BY h.id HAVING COUNT(hm.id) >= 2`,
+            { type: 'SELECT' }
+        );
+    } catch { return; }
+
+    for (const h of (haushalte || [])) {
+        try {
+            // Bereits gesendet diesen Monat?
+            const alreadySent = await wasReminderSentThisMonth(db, h.id, 'haushalt_abrechnung', String(h.id));
+            if (alreadySent) continue;
+
+            const [mitglieder, txRows] = await Promise.all([
+                db._database.query(
+                    `SELECT hm.user_id, hm.anzeigename, hm.anteil_user1, hm.anteil_user2, u.Benutzername AS email
+                     FROM haushalt_mitglieder hm JOIN users u ON u.id = hm.user_id
+                     WHERE hm.haushalt_id = ? ORDER BY hm.id ASC LIMIT 2`,
+                    { replacements: [h.id], type: 'SELECT' }
+                ),
+                db._database.query(
+                    `SELECT amount, anteil_user1, anteil_user2 FROM haushalt_transaktionen
+                     WHERE haushalt_id = ? AND type = 'Ausgaben' AND date LIKE ?`,
+                    { replacements: [h.id, vormonatStr + '%'], type: 'SELECT' }
+                )
+            ]);
+
+            if (mitglieder.length < 2) continue;
+            const [m1, m2] = mitglieder;
+
+            let saldo = 0; // positiv = m2 schuldet m1
+            for (const tx of (txRows || [])) {
+                const a1 = (tx.anteil_user1 ?? 50) / 100;
+                const a2 = (tx.anteil_user2 ?? 50) / 100;
+                saldo += (tx.amount || 0) * (a1 - a2);
+            }
+
+            const betrag  = Math.abs(saldo);
+            const schuldner = saldo > 0 ? m2 : m1;
+            const glaeubiger = saldo > 0 ? m1 : m2;
+
+            for (const member of mitglieder) {
+                if (!member.email) continue;
+                const recipName = member.anzeigename || 'Haushaltsmitglied';
+                const bodyHtml =
+                    greetingHtml(recipName) +
+                    `<p>Der <strong>${vormonatLabel}</strong> ist vorbei — Zeit für die Haushalt-Abrechnung mit <strong>${h.name}</strong>.</p>` +
+                    (betrag < 0.01
+                        ? `<p style="color:#10b981;">🎉 Super — ihr seid quitt! Keine offenen Beträge.</p>`
+                        : `<div style="background:#1e2030;border:1px solid #2a2d3a;border-radius:10px;padding:16px 18px;margin:16px 0;">` +
+                          `<div style="font-size:1.3rem;font-weight:800;color:#f59e0b;">${fmt.format(betrag)}</div>` +
+                          `<div style="font-size:0.9rem;color:#94a3b8;margin-top:4px;"><strong>${schuldner.anzeigename}</strong> schuldet <strong>${glaeubiger.anzeigename}</strong></div>` +
+                          `</div>`) +
+                    dividerHtml() +
+                    ctaButtonHtml('Abrechnung ansehen →', '/users/haushalt/ausgaben?tab=abrechnung');
+
+                await sendMail({
+                    to: member.email,
+                    subject: `📊 Haushalt-Abrechnung ${vormonatLabel} – ${h.name}`,
+                    title: 'Monatliche Haushalt-Abrechnung',
+                    preheader: betrag < 0.01 ? 'Ihr seid quitt!' : `${schuldner.anzeigename} schuldet ${glaeubiger.anzeigename} ${fmt.format(betrag)}`,
+                    bodyHtml
+                });
+            }
+
+            await markReminderSent(db, h.id, 'haushalt_abrechnung', String(h.id));
+            console.log('[Reminder] Haushalt-Abrechnung an', h.name, '–', mitglieder.length, 'Mitglieder');
+        } catch (e) {
+            console.error('[Reminder] Haushalt-Abrechnung Fehler für Haushalt', h.id, e.message);
+        }
+    }
+}
+
 // ── Reminder-Log (verhindert Doppel-Versand) ─────────────────
 
 async function wasReminderSentThisMonth(db, userId, type, refId) {
@@ -340,6 +426,11 @@ async function runAllReminders() {
                 );
             }
         }
+
+        // Haushalt-Abrechnungserinnerungen (am 1. des Monats, einmal pro Haushalt)
+        await checkHaushaltAbrechnungen(db).catch(e =>
+            console.error('[Reminder] Haushalt-Abrechnung Fehler:', e.message)
+        );
 
         console.log('[Reminder] Fertig – ', (users || []).length, 'Nutzer geprüft');
     } catch (err) {

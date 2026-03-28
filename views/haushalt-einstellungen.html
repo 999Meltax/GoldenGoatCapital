@@ -44,6 +44,7 @@
     <script>
     let haushalt = null;
     let mitglieder = [];
+    let currentUserId = null;
 
     async function init() {
         const res = await fetch('/users/haushalt/status');
@@ -57,6 +58,9 @@
         }
         haushalt    = data.haushalt;
         mitglieder  = data.mitglieder || [];
+        currentUserId = data.current_user_id || null;
+        const settingsRes = await fetch('/users/haushalt/settings');
+        window._hausSettings = settingsRes.ok ? await settingsRes.json() : {};
         render();
     }
 
@@ -86,7 +90,7 @@
                 '<div style="display:flex;gap:10px;align-items:flex-end;max-width:400px;">' +
                     '<div class="form-group" style="flex:1;margin:0;">' +
                         '<label class="form-label">Anzeigename</label>' +
-                        '<input type="text" id="myAnzeige" value="' + escHtml(haushalt.anzeigename || '') + '" placeholder="z.B. Max">' +
+                        '<input type="text" id="myAnzeige" value="' + escHtml((mitglieder.find(m => m.user_id === currentUserId) || {}).anzeigename || '') + '" placeholder="z.B. Max">' +
                     '</div>' +
                     '<button onclick="saveAnzeigename()" class="btn-primary" style="font-size:0.85rem;flex-shrink:0;">' +
                         '<i class="ri-save-line"></i> Speichern' +
@@ -122,12 +126,29 @@
                         '<input type="text" id="invEmail" placeholder="partner@email.de">' +
                     '</div>' +
                     '<button onclick="sendInvite()" class="btn-primary" style="font-size:0.85rem;flex-shrink:0;">' +
-                        '<i class="ri-mail-send-line"></i> Code generieren' +
+                        '<i class="ri-mail-send-line"></i> Einladen' +
                     '</button>' +
                 '</div>' +
                 '<div id="invResult" style="margin-top:12px;"></div>' +
             '</div>'
             : '') +
+
+            // Benachrichtigungen
+            '<div class="eins-section">' +
+                '<h3><i class="ri-notification-3-line" style="color:var(--haus-accent);"></i>Benachrichtigungen</h3>' +
+                '<p style="font-size:0.83rem;color:var(--text-3);margin-bottom:14px;">Erhalte eine E-Mail, wenn im Haushalt eine große Ausgabe eingetragen wird.</p>' +
+                '<div style="display:flex;gap:10px;align-items:flex-end;max-width:400px;">' +
+                    '<div class="form-group" style="flex:1;margin:0;">' +
+                        '<label class="form-label">Schwellenwert (€) — 0 = deaktiviert</label>' +
+                        '<input type="number" id="schwelleInput" min="0" step="10" value="' + (window._hausSettings?.benachrichtigung_schwelle || 0) + '" placeholder="z.B. 100">' +
+                    '</div>' +
+                    '<button onclick="saveSchwelle()" class="btn-primary" style="font-size:0.85rem;flex-shrink:0;">' +
+                        '<i class="ri-save-line"></i> Speichern' +
+                    '</button>' +
+                '</div>' +
+                '<p style="font-size:0.78rem;color:var(--text-3);margin-top:8px;">Beide Haushaltsmitglieder werden benachrichtigt, wenn eine Ausgabe diesen Betrag überschreitet.</p>' +
+                '<div id="schwelleMsg" style="margin-top:6px;font-size:0.82rem;"></div>' +
+            '</div>' +
 
             // Haushalt verlassen
             '<div class="eins-section" style="border-color:rgba(239,68,68,0.2);">' +
@@ -171,15 +192,24 @@
             });
             const d = await res.json();
             if (!res.ok) throw new Error(d.message);
+            const emailNote = d.emailSent
+                ? '<p style="font-size:0.78rem;color:#10b981;margin:10px 0 0;"><i class="ri-mail-check-line"></i> Einladungs-E-Mail wurde gesendet.</p>'
+                : '<p style="font-size:0.78rem;color:var(--text-3);margin:10px 0 0;">Teile diesen Link manuell mit deinem Partner (7 Tage gültig).</p>';
             result.innerHTML =
                 '<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-md);padding:14px 16px;">' +
-                    '<div style="font-size:0.72rem;color:var(--text-3);margin-bottom:6px;">Einladungscode</div>' +
-                    '<div style="font-family:monospace;font-size:1.4rem;font-weight:800;color:var(--haus-accent);letter-spacing:0.15em;margin-bottom:10px;">' + d.code + '</div>' +
-                    '<button onclick="navigator.clipboard.writeText(\'' + d.code + '\').then(()=>this.textContent=\'✓ Kopiert!\')" ' +
-                        'style="padding:7px 14px;border-radius:var(--radius-md);background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;font-size:0.82rem;font-weight:600;">' +
-                        'Code kopieren' +
-                    '</button>' +
-                    '<p style="font-size:0.78rem;color:var(--text-3);margin:10px 0 0;">Dein Partner kann diesen Code unter <strong>Haushalt → Einladung annehmen</strong> eingeben.</p>' +
+                    '<div style="font-size:0.72rem;color:var(--text-3);margin-bottom:4px;">Einladungscode</div>' +
+                    '<div style="font-family:monospace;font-size:1.3rem;font-weight:800;color:var(--haus-accent);letter-spacing:0.15em;margin-bottom:10px;">' + d.code + '</div>' +
+                    '<div style="font-size:0.72rem;color:var(--text-3);margin-bottom:6px;">Einladungslink</div>' +
+                    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">' +
+                        '<input readonly value="' + escHtml(d.link) + '" ' +
+                            'style="flex:1;min-width:0;padding:7px 10px;border-radius:var(--radius-md);background:var(--surface);border:1px solid var(--border);color:var(--text-2);font-size:0.78rem;font-family:monospace;" ' +
+                            'onclick="this.select()">' +
+                        '<button onclick="navigator.clipboard.writeText(\'' + escHtml(d.link) + '\').then(()=>this.textContent=\'✓\')" ' +
+                            'style="padding:7px 12px;border-radius:var(--radius-md);background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;font-size:0.82rem;font-weight:600;flex-shrink:0;">' +
+                            'Kopieren' +
+                        '</button>' +
+                    '</div>' +
+                    emailNote +
                 '</div>';
         } catch (err) {
             result.innerHTML = '<p style="color:#ef4444;font-size:0.85rem;">' + escHtml(err.message) + '</p>';
@@ -194,8 +224,7 @@
         const existing = document.getElementById('leaveModalOverlay');
         if (existing) existing.remove();
 
-        const isAdmin = mitglieder.find(m => m.rolle === 'admin');
-        const ichBinAdmin = isAdmin && haushalt; // vereinfacht – serverseitig geprüft
+        const ichBinAdmin = !!mitglieder.find(m => m.user_id === currentUserId && m.rolle === 'admin');
 
         const overlay = document.createElement('div');
         overlay.id = 'leaveModalOverlay';
@@ -214,7 +243,9 @@
                 '</div>' +
             '</div>' +
             '<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius-md);padding:12px 14px;font-size:0.83rem;color:var(--text-2);margin-bottom:20px;line-height:1.5;">' +
-                '<strong style="color:#ef4444;">Achtung:</strong> Als Admin wird der gesamte Haushalt für <strong>alle Mitglieder</strong> gelöscht. Alle gemeinsamen Transaktionen, Aufgaben und Einstellungen gehen verloren.' +
+                (ichBinAdmin
+                    ? '<strong style="color:#ef4444;">Achtung:</strong> Du bist Admin. Der gesamte Haushalt wird für <strong>alle Mitglieder</strong> gelöscht. Alle gemeinsamen Transaktionen, Aufgaben und Einstellungen gehen unwiderruflich verloren.'
+                    : '<strong style="color:#ef4444;">Achtung:</strong> Du verlässt den Haushalt. Deine Mitgliedschaft wird entfernt. Der Haushalt selbst bleibt für die anderen Mitglieder bestehen.') +
             '</div>' +
             '<div class="form-group" style="margin-bottom:20px;">' +
                 '<label class="form-label">Zur Bestätigung <strong style="color:#ef4444;">VERLASSEN</strong> eingeben</label>' +
@@ -259,6 +290,22 @@
                 if (msg) { msg.style.color = '#ef4444'; msg.textContent = err.message; }
             }
         });
+    }
+
+    async function saveSchwelle() {
+        const val = parseInt(document.getElementById('schwelleInput').value) || 0;
+        const msg = document.getElementById('schwelleMsg');
+        try {
+            const settings = window._hausSettings || {};
+            const res = await fetch('/users/haushalt/settings', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ split_user1: settings.split_user1 ?? 50, split_user2: settings.split_user2 ?? 50, benachrichtigung_schwelle: val })
+            });
+            if (!res.ok) throw new Error();
+            window._hausSettings = { ...settings, benachrichtigung_schwelle: val };
+            msg.style.color = '#10b981'; msg.textContent = val > 0 ? 'Gespeichert — E-Mail ab ' + val + ' €.' : 'Benachrichtigung deaktiviert.';
+            setTimeout(() => msg.textContent = '', 3000);
+        } catch { msg.style.color = '#ef4444'; msg.textContent = 'Fehler beim Speichern.'; }
     }
 
     init();</script>

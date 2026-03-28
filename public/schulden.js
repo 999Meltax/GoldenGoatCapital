@@ -2,7 +2,7 @@
 //  schulden.js  –  Golden Goat Capital  –  Schulden-Tracker
 // ─────────────────────────────────────────────────────────────
 
-const fmt     = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+const fmt     = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 const fmtPct  = v => v != null ? v.toFixed(2).replace('.', ',') + ' %' : '—';
 
 const TYP_CONFIG = {

@@ -345,7 +345,7 @@
         const monatStr   = new Date().toISOString().substring(0, 7);
         const monatLabel = new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
 
-        const [fixkRes, persRes, gehRes, ausgRes, todoRes, dokRes, sparzRes, budgetRes, overrideRes, settlementRes] = await Promise.all([
+        const [fixkRes, persRes, gehRes, ausgRes, todoRes, dokRes, sparzRes, budgetRes, overrideRes, splitMonat] = await Promise.all([
             fetch('/users/haushalt/fixkosten').then(r=>r.json()).catch(()=>[]),
             fetch('/users/haushalt/persoenlich').then(r=>r.json()).catch(()=>[]),
             fetch('/users/haushalt/gehaelter?monat='+monatStr).then(r=>r.json()).catch(()=>({defaults:[],monat:[]})),
@@ -355,7 +355,7 @@
             fetch('/users/haushalt/sparziele').then(r=>r.json()).catch(()=>[]),
             fetch('/users/haushalt/budgets').then(r=>r.json()).catch(()=>[]),
             fetch('/users/haushalt/fixkosten/monat/'+monatStr).then(r=>r.json()).catch(()=>[]),
-            fetch('/users/haushalt/settlement/'+monatStr).then(r=>r.json()).catch(()=>null),
+            fetch('/users/haushalt/split/monat/'+monatStr).then(r=>r.json()).catch(()=>null),
         ]);
 
         // Für Person-Drill-down Client-seitig verfügbar machen
@@ -378,7 +378,7 @@
         }
 
         // Monatszahlen
-        const monatsAusg  = ausgRes.filter(a => a.type === 'Ausgaben'  && (a.date||'').startsWith(monatStr));
+        const monatsAusg  = ausgRes.filter(a => a.type === 'Ausgaben'  && (a.date||'').startsWith(monatStr) && !a.ausgabe_id);
         const monatsEinn  = ausgRes.filter(a => a.type === 'Einnahmen' && (a.date||'').startsWith(monatStr));
         const totalAusgaben  = monatsAusg.reduce((s,a)  => s + (a.amount||0), 0);
         const totalEinnahmen = monatsEinn.reduce((s,a) => s + (a.amount||0), 0);
@@ -386,9 +386,9 @@
         const totalGehalt    = [user1, user2].filter(Boolean).reduce((s,u) => s + (getGehalt(u.user_id).gehalt||0), 0);
         const sparquote = totalGehalt > 0 ? ((totalGehalt - totalAusgaben) / totalGehalt * 100) : 0;
 
-        // Personen-Daten
-        const splitPct1 = settings.split_user1 ?? 50;
-        const splitPct2 = settings.split_user2 ?? 50;
+        // Personen-Daten — monats-spezifischer Split hat Vorrang vor dem Default
+        const splitPct1 = splitMonat?.split_user1 ?? settings.split_user1 ?? 50;
+        const splitPct2 = splitMonat?.split_user2 ?? settings.split_user2 ?? 50;
         function personData(u) {
             if (!u) return null;
             const geh    = getGehalt(u.user_id);
@@ -398,11 +398,8 @@
                 return s + e.betrag * splitP / 100;
             }, 0);
             const pers    = persRes.filter(p => p.user_id === u.user_id).reduce((s,p) => s+p.betrag, 0);
-            const freiAusg = monatsAusg.reduce((s,a) => {
-                return s + (a.amount||0) * splitP / 100;
-            }, 0);
-            const frei = geh.gehalt - anteil - pers - freiAusg - (geh.sparbetrag||0);
-            return { geh, anteil, pers, freiAusg, frei };
+            const frei = geh.gehalt - anteil - pers - (geh.sparbetrag||0);
+            return { geh, anteil, pers, frei };
         }
         const pd1 = personData(user1);
         const pd2 = personData(user2);
@@ -488,7 +485,7 @@
                     '<div class="card">' +
                         '<div class="card-header">' +
                             '<h3><i class="ri-scales-line" style="color:var(--haus-accent);margin-right:6px;"></i>Monatsbalance ' + monatLabel + '</h3>' +
-                            '<a href="/users/haushalt/ausgaben" style="font-size:0.82rem;color:var(--text-3);">Details <i class="ri-arrow-right-line"></i></a>' +
+                            '<a href="/users/haushalt/ausgaben?tab=uebersicht" style="font-size:0.82rem;color:var(--text-3);">Details <i class="ri-arrow-right-line"></i></a>' +
                         '</div>' +
                         '<div class="haus-person-grid">' +
                             renderPersonCard(name1, pd1, '#10b981', user1.user_id) +
@@ -528,9 +525,6 @@
                             : sparzRes.slice(0, 4).map(z => renderSparzielMini(z)).join('')) +
                         (sparzRes.length > 0 ? '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:0.8rem;color:var(--text-3);">Gesamt angespart: <strong style="color:var(--text-1);">' + fmt.format(sparzTotal) + '</strong></div>' : '') +
                     '</div>' +
-
-                    // Settlement-Widget (nur wenn 2 Mitglieder und offener Betrag)
-                    renderSettlementWidget(settlementRes, monatLabel) +
 
                     // Aufgaben
                     '<div class="card">' +
@@ -586,8 +580,8 @@
 
     function renderPersonCard(name, pd, color, userId) {
         if (!pd) return '';
-        const { geh, anteil, pers, freiAusg, frei } = pd;
-        const totalKosten = anteil + pers + freiAusg;
+        const { geh, anteil, pers, frei } = pd;
+        const totalKosten = anteil + pers;
         const auslastung  = geh.gehalt > 0 ? Math.min(100, totalKosten / geh.gehalt * 100) : 0;
         const clickAttr   = userId ? ' onclick="openPersonDetail(' + userId + ')" style="cursor:pointer;"' : '';
         return '<div class="haus-person-card" style="background:' + color + '10;border:1px solid ' + color + '28;"' + clickAttr + '>' +
@@ -596,7 +590,6 @@
                 personRow('Gehalt', fmt.format(geh.gehalt||0), '#22c55e', false) +
                 personRow('Fixkosten-Anteil', '−' + fmt.format(anteil), '#ef4444', false) +
                 personRow('Pers. Fixkosten', '−' + fmt.format(pers), '#ef4444', false) +
-                personRow('Ist-Ausgaben', '−' + fmt.format(freiAusg), '#f59e0b', false) +
                 personRow('Sparen', '−' + fmt.format(geh.sparbetrag||0), '#3b82f6', false) +
             '</div>' +
             '<div class="haus-person-total">' +
@@ -742,34 +735,6 @@
                     (d.betrag ? '<span style="font-weight:700;font-size:0.83rem;color:#f59e0b;">' + fmt.format(d.betrag) + '</span>' : '') +
                 '</div>';
             }).join('') +
-        '</div>';
-    }
-
-    // ── Settlement-Widget ──────────────────────────────────────────
-    function renderSettlementWidget(data, monatLabel) {
-        if (!data || !data.owes) return '';
-        const owes = data.owes;
-        const fromName = escHtml(owes.from.anzeigename || 'Person');
-        const toName   = escHtml(owes.to.anzeigename || 'Person');
-        return '<div class="card">' +
-            '<div class="card-header">' +
-                '<h3><i class="ri-scales-line" style="color:#f59e0b;margin-right:6px;"></i>Abrechnung</h3>' +
-                '<a href="/users/haushalt/ausgaben?tab=abrechnung" style="font-size:0.82rem;color:var(--text-3);">Details <i class="ri-arrow-right-line"></i></a>' +
-            '</div>' +
-            '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">' +
-                '<div style="width:36px;height:36px;border-radius:50%;background:rgba(245,158,11,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
-                    '<i class="ri-exchange-dollar-line" style="color:#f59e0b;"></i>' +
-                '</div>' +
-                '<div style="flex:1;font-size:0.84rem;">' +
-                    '<span style="font-weight:700;">' + fromName + '</span>' +
-                    ' schuldet ' +
-                    '<span style="font-weight:700;">' + toName + '</span>' +
-                '</div>' +
-                '<span style="font-weight:800;color:#f59e0b;">' + fmt.format(owes.amount) + '</span>' +
-            '</div>' +
-            '<a href="/users/haushalt/ausgaben?tab=abrechnung" style="display:block;margin-top:10px;padding:7px;border-radius:var(--radius-md);background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);color:#b45309;font-size:0.8rem;font-weight:600;text-align:center;text-decoration:none;">' +
-                '<i class="ri-exchange-dollar-line"></i> Ausgleich buchen' +
-            '</a>' +
         '</div>';
     }
 

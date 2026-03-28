@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════
 // GLOBAL STATE
 // ═══════════════════════════════════════════════════════════
-const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+const fmt = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
 // ── Zieltypen ────────────────────────────────────────────────
 const GOAL_TYPES = {
@@ -170,7 +170,16 @@ function renderBudget() {
 
     const listEl = document.getElementById('budgetKatList');
     if (allKats.size === 0) {
-        listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-3);">Noch keine Budgets festgelegt.</div>';
+        listEl.innerHTML = `<div style="text-align:center;padding:64px 24px;">
+            <i class="ri-pie-chart-2-line" style="font-size:3rem;display:block;margin-bottom:14px;color:var(--text-3);opacity:0.4;"></i>
+            <div style="font-weight:700;font-size:1.05rem;margin-bottom:8px;color:var(--text-1);">Noch keine Budgets</div>
+            <div style="color:var(--text-3);font-size:0.875rem;max-width:380px;margin:0 auto 20px;line-height:1.6;">
+                Setze monatliche Ausgabenlimits pro Kategorie — GGC zeigt dir sofort, wo du stehst.
+            </div>
+            <button onclick="document.querySelector('[data-action=add-budget],[id*=addBudget]')?.click()" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;background:var(--accent,#6c63ff);color:#fff;border:none;border-radius:8px;font-size:0.875rem;font-weight:600;cursor:pointer;font-family:inherit;">
+                <i class="ri-add-line"></i> Erstes Budget anlegen
+            </button>
+        </div>`;
     } else {
         listEl.innerHTML = [...allKats].map(kat => {
             const budget   = allBudgets.find(b => b.kategorie === kat);
@@ -425,8 +434,8 @@ function renderKontoAufteilung() {
     const cards = Object.values(kontoMap).map(({ acc, sparziele }) => {
         const balance     = acc.currentBalance ?? acc.balance ?? 0;
         const reserviert  = sparziele.reduce((s, sz) => s + (sz.gespart || 0), 0);
-        const frei        = Math.max(balance - reserviert, 0);
-        const freePct     = balance > 0 ? (frei / balance * 100) : 0;
+        const frei        = balance - reserviert;
+        const freePct     = balance > 0 ? Math.max(frei / balance * 100, 0) : 0;
 
         // Segmente für die Balkengrafik
         let segmentsHtml = '';
@@ -437,7 +446,7 @@ function renderKontoAufteilung() {
             const label = freePct >= 10 ? freePct.toFixed(0) + '%' : '';
             segmentsHtml += `<div class="konto-aufteilung-bar-segment" style="width:${freePct.toFixed(2)}%;background:var(--surface-3,#2a2a3a);">${label}</div>`;
         }
-        legendHtml += `<div class="konto-aufteilung-legend-item"><div class="konto-legend-dot" style="background:var(--surface-3,#2a2a3a);border:1px solid var(--border);"></div><span>Frei: <b>${fmt.format(frei)}</b> (${freePct.toFixed(1)}%)</span></div>`;
+        legendHtml += `<div class="konto-aufteilung-legend-item"><div class="konto-legend-dot" style="background:var(--surface-3,#2a2a3a);border:1px solid var(--border);"></div><span style="color:${frei < 0 ? '#ef4444' : 'inherit'};">Frei verfügbar: <b>${fmt.format(frei)}</b></span></div>`;
 
         // Sparziel-Segmente
         sparziele.forEach(sz => {
@@ -466,7 +475,7 @@ function renderKontoAufteilung() {
                 </div>
                 <div class="konto-balance-info">
                     <div style="font-size:1rem;font-weight:800;color:var(--text-1);">${fmt.format(balance)}</div>
-                    <div>${fmt.format(reserviert)} reserviert · ${fmt.format(frei)} frei</div>
+                    <div style="color:${frei < 0 ? '#ef4444' : 'var(--text-3)'};">${fmt.format(reserviert)} verplant · <b>${fmt.format(frei)}</b> frei</div>
                 </div>
             </div>
             <div class="konto-aufteilung-bar-wrap">${segmentsHtml}</div>

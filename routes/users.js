@@ -2,8 +2,41 @@ import express from 'express';
 import { check, validationResult } from 'express-validator';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 import Database from '../modules/database.js';
 import { sendMail, greetingHtml, ctaButtonHtml, dividerHtml, sectionTitleHtml } from '../modules/mailer.js';
+import Stripe from 'stripe';
+
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirRoutes = dirname(__filename);
+
+// ── Multer-Setup für Dokumenten-Upload ───────────────────────
+const dokStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const dir = path.join(__dirRoutes, '..', 'uploads', `user_${req.session.userId}`);
+        fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        cb(null, Date.now() + '-' + Math.round(Math.random() * 1e9) + ext);
+    }
+});
+const dokUpload = multer({
+    storage: dokStorage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const allowed = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.doc', '.docx', '.xlsx', '.csv', '.txt'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        allowed.includes(ext) ? cb(null, true) : cb(new Error('Dateityp nicht erlaubt'));
+    }
+});
 
 const router = express.Router();
 
@@ -118,9 +151,10 @@ router.get('/register', (req, res) => {
 // GET-Route für Login
 router.get('/login', (req, res) => {
     if (req.session.username) {
-        return res.redirect('/users/overview');
+        const redirect = req.query.redirect;
+        return res.redirect(redirect || '/users/overview');
     }
-    res.render('login_tpl', { isLoggedIn: false, error: null, twoFactor: false });
+    res.render('login_tpl', { isLoggedIn: false, error: null, twoFactor: false, redirectUrl: req.query.redirect || '' });
 });
 
 // Route für Login
@@ -146,8 +180,10 @@ router.post('/check_login', async (req, res) => {
             }
             req.session.username = username;
             req.session.userId = user.id;
+            req.session.isNewUser = !!user.is_new_user;
             if (user.is_new_user) return res.redirect('/users/onboarding');
-            res.redirect('/users/overview');
+            const redirectTo = req.body.redirect || '/users/overview';
+            res.redirect(redirectTo);
         } else {
             res.render('login_tpl', { isLoggedIn: false, error: 'Benutzer existiert nicht oder Passwort ist ungültig', twoFactor: false });
         }
@@ -202,7 +238,11 @@ router.post('/verify-2fa', async (req, res) => {
 // Route für Registrierung
 router.post('/register', [
     check('user').trim().notEmpty().isEmail().withMessage('Bitte geben Sie eine gültige E-Mail-Adresse ein'),
-    check('pw').notEmpty().withMessage('Passwort fehlt'),
+    check('pw')
+        .notEmpty().withMessage('Passwort fehlt')
+        .isLength({ min: 8 }).withMessage('Passwort muss mindestens 8 Zeichen lang sein')
+        .matches(/[A-Z]/).withMessage('Passwort muss mindestens einen Großbuchstaben enthalten')
+        .matches(/[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/).withMessage('Passwort muss mindestens eine Zahl oder ein Sonderzeichen enthalten'),
 ], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -218,6 +258,7 @@ router.post('/register', [
         }
         await db.registerUser(username, password);
         const userId = await db.getUserIdByName(username);
+        await db.setTrial(userId);
         const token = crypto.randomBytes(32).toString('hex');
         await db.setVerifyToken(userId, token);
         const verifyUrl = `${process.env.APP_URL || 'http://localhost:3000'}/users/verify-email?token=${token}`;
@@ -314,7 +355,7 @@ router.post('/addTransaction', async (req, res) => {
         finalCategory    = applied.category;
         transactionType  = applied.type;
 
-        const transactionId = await db.saveTransaction(
+        const transactionId = await db.createTransaction(
             userId, name, finalCategory, date, parseFloat(amount), transactionType,
             account_id ? parseInt(account_id) : null
         );
@@ -382,152 +423,7 @@ router.delete('/deleteTransaction/:id', async (req, res) => {
     }
 });
 
-router.get('/todo', async (req, res) => {
-    if (!req.session.username) return res.redirect('/users/login');
-    res.render('todo', { isLoggedIn: true });
-});
-
-// JSON API: Alle Todos laden
-router.get('/todos', async (req, res) => {
-    if (!req.session.username || !req.session.userId) {
-        return res.status(401).json({ message: 'Nicht autorisiert' });
-    }
-    try {
-        const db    = await Database.getInstance();
-        const todos = await db.getTodosForUser(req.session.userId);
-        res.json(todos);
-    } catch (error) {
-        console.error('Fehler beim Abrufen der Todos:', error);
-        res.status(500).json({ message: 'Interner Serverfehler' });
-    }
-});
-
-// JSON API: Todo hinzufügen
-router.post('/todos/add', async (req, res) => {
-    if (!req.session.username) return res.status(401).json({ message: 'Nicht autorisiert' });
-    const { task, quantity, priority, due_date, label, notes } = req.body;
-    if (!task) return res.status(400).json({ message: 'Aufgabe erforderlich' });
-    try {
-        const db = await Database.getInstance();
-        const id = await db.addTodo(req.session.userId, task, parseInt(quantity) || 0, priority || 'mittel', due_date || null, label || '', notes || '');
-        res.status(201).json({ id, message: 'Todo erstellt' });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Interner Serverfehler' });
-    }
-});
-
-// JSON API: Todo bearbeiten
-router.put('/todos/:id', async (req, res) => {
-    if (!req.session.username) return res.status(401).json({ message: 'Nicht autorisiert' });
-    try {
-        const db = await Database.getInstance();
-        await db.updateTodo(req.session.userId, req.params.id, req.body);
-        res.json({ message: 'Todo aktualisiert' });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Fehler beim Aktualisieren' });
-    }
-});
-
-// JSON API: Todo als erledigt markieren / wieder öffnen
-router.patch('/todos/:id', async (req, res) => {
-    if (!req.session.username || !req.session.userId) {
-        return res.status(401).json({ message: 'Nicht autorisiert' });
-    }
-    const { completed } = req.body;
-    try {
-        const db = await Database.getInstance();
-        if (completed) {
-            await db.completeTodo(req.session.userId, req.params.id);
-        } else {
-            await db.uncompleteTodo(req.session.userId, req.params.id);
-        }
-        res.status(200).json({ message: 'Todo-Status aktualisiert' });
-    } catch (error) {
-        console.error('Fehler beim Aktualisieren des Todo-Status:', error);
-        res.status(500).json({ message: 'Interner Serverfehler' });
-    }
-});
-
-// JSON API: Zähler erhöhen
-router.post('/todos/:id/increment', async (req, res) => {
-    if (!req.session.username) return res.status(401).json({ message: 'Nicht autorisiert' });
-    try {
-        const db      = await Database.getInstance();
-        const success = await db.incrementTodo(req.session.userId, req.params.id);
-        if (success) res.json({ message: 'Erhöht' });
-        else res.status(400).json({ message: 'Zähler konnte nicht erhöht werden' });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Interner Serverfehler' });
-    }
-});
-
-// JSON API: Todo löschen
-router.delete('/todos/:id', async (req, res) => {
-    if (!req.session.username) return res.status(401).json({ message: 'Nicht autorisiert' });
-    try {
-        const db = await Database.getInstance();
-        await db.deleteTodo(req.session.userId, req.params.id);
-        res.json({ message: 'Todo gelöscht' });
-    } catch (error) {
-        console.error('Fehler beim Löschen:', error);
-        res.status(500).json({ message: 'Interner Serverfehler' });
-    }
-});
-
-// Legacy POST-Routen (Rückwärtskompatibilität für Dashboard etc.)
-router.post('/todo/add', async (req, res) => {
-    if (!req.session.username) return res.status(401).send('Nicht autorisiert');
-    const { task, quantity } = req.body;
-    if (!task) return res.status(400).send('Aufgabe erforderlich');
-    try {
-        const db = await Database.getInstance();
-        await db.addTodo(req.session.userId, task, parseInt(quantity) || 0);
-        res.redirect('/users/todo');
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Interner Serverfehler');
-    }
-});
-
-router.post('/todo/increment/:id', async (req, res) => {
-    if (!req.session.username) return res.status(401).send('Nicht autorisiert');
-    try {
-        const db      = await Database.getInstance();
-        const success = await db.incrementTodo(req.session.userId, req.params.id);
-        if (success) res.redirect('/users/todo');
-        else res.status(400).send('Zähler konnte nicht erhöht werden');
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Interner Serverfehler');
-    }
-});
-
-router.post('/todo/complete/:id', async (req, res) => {
-    if (!req.session.username) return res.status(401).send('Nicht autorisiert');
-    try {
-        const db = await Database.getInstance();
-        await db.completeTodo(req.session.userId, req.params.id);
-        res.redirect('/users/todo');
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Interner Serverfehler');
-    }
-});
-
-router.post('/todo/delete/:id', async (req, res) => {
-    if (!req.session.username) return res.status(401).send('Nicht autorisiert');
-    try {
-        const db = await Database.getInstance();
-        await db.deleteTodo(req.session.userId, req.params.id);
-        res.redirect('/users/todo');
-    } catch (error) {
-        console.error('Fehler beim Löschen:', error);
-        res.status(500).send('Interner Serverfehler');
-    }
-});
+// Privat-ToDo entfernt (Phase 0-A) — ToDo existiert nur noch im Haushalt-Kontext (/users/haushalt/todos)
 
 router.get('/ausgabentracker', (req, res) => {
     const isLoggedIn = !!req.session.username;
@@ -726,6 +622,155 @@ const requireLogin = (req, res, next) => {
     next();
 };
 
+// Neue User zum Onboarding zwingen (nur GET-Seitenanfragen, nicht API-Calls)
+router.use((req, res, next) => {
+    if (req.method !== 'GET') return next();
+    if (!req.session.userId || !req.session.isNewUser) return next();
+    const skipPaths = ['/onboarding', '/login', '/logout', '/register', '/verify-email',
+                       '/impressum', '/datenschutz', '/agb', '/startseite', '/stripe'];
+    if (skipPaths.some(p => req.path.startsWith(p))) return next();
+    // API-artige Pfade überspringen (enthalten Dateiendungen oder bekannte API-Segmente)
+    if (req.path.includes('.')) return next();
+    return res.redirect('/users/onboarding');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// ── IN-APP NOTIFICATIONS ──────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+
+router.get('/pending-deletes', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const userId = await db.getUserIdByName(req.session.username);
+        if (userId === -1) return res.json([]);
+        const pending = await db.getAndCleanPendingDeletes(userId);
+        res.json(pending);
+    } catch (err) { res.json([]); }
+});
+
+router.post('/transactions/:id/pending-delete', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const userId = await db.getUserIdByName(req.session.username);
+        if (userId === -1) return res.status(404).json({ message: 'Benutzer nicht gefunden' });
+        await db.setPendingDelete(userId, req.params.id);
+        res.json({ ok: true });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.post('/transactions/:id/undo-delete', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const userId = await db.getUserIdByName(req.session.username);
+        if (userId === -1) return res.status(404).json({ message: 'Benutzer nicht gefunden' });
+        await db.undoPendingDelete(userId, req.params.id);
+        res.json({ ok: true });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.get('/notifications', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.generateNotifications(req.session.userId);
+        const notifs = await db.getNotifications(req.session.userId);
+        res.json(notifs);
+    } catch (err) { res.json([]); }
+});
+
+router.post('/notifications/read-all', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.markAllNotificationsRead(req.session.userId);
+        res.json({ ok: true });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.post('/notifications/:id/read', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.markNotificationRead(req.session.userId, req.params.id);
+        res.json({ ok: true });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// ── BULK TRANSACTION ACTIONS ──────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+
+router.post('/transactions/bulk-delete', requireLogin, async (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'Keine IDs angegeben' });
+    try {
+        const db = await Database.getInstance();
+        let deleted = 0;
+        for (const id of ids) {
+            const ok = await db.deleteTransaction(req.session.userId, id);
+            if (ok) deleted++;
+        }
+        res.json({ deleted });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.post('/transactions/bulk-categorize', requireLogin, async (req, res) => {
+    const { ids, category } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0 || !category) return res.status(400).json({ message: 'Fehlende Parameter' });
+    try {
+        const db = await Database.getInstance();
+        let updated = 0;
+        for (const id of ids) {
+            const tx = await db.getTransactionById(req.session.userId, id);
+            if (tx) {
+                await db.updateTransaction(req.session.userId, id, tx.name, category, tx.amount, tx.date.substring(0,10), tx.type, tx.account_id);
+                updated++;
+            }
+        }
+        res.json({ updated });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.post('/transactions/bulk-update', requireLogin, async (req, res) => {
+    const { ids, category, account_id, type } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'Keine IDs angegeben' });
+    if (category === undefined && account_id === undefined && type === undefined)
+        return res.status(400).json({ message: 'Mindestens ein Feld angeben' });
+    try {
+        const db = await Database.getInstance();
+        let updated = 0;
+        for (const id of ids) {
+            const tx = await db.getTransactionById(req.session.userId, id);
+            if (!tx) continue;
+            await db.updateTransaction(
+                req.session.userId, id,
+                tx.name,
+                category !== undefined ? category : tx.category,
+                tx.amount,
+                tx.date.substring(0, 10),
+                type     !== undefined ? type     : tx.type,
+                account_id !== undefined ? (account_id || null) : tx.account_id
+            );
+            updated++;
+        }
+        res.json({ updated });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.post('/transactions/categorize-by-name', requireLogin, async (req, res) => {
+    const { name, category } = req.body;
+    if (!name || !category) return res.status(400).json({ message: 'Fehlende Parameter' });
+    try {
+        const db = await Database.getInstance();
+        const txs = await db.getTransactionsForUser(req.session.userId);
+        const nameLower = name.toLowerCase();
+        const matching = txs.filter(tx => tx.name.toLowerCase() === nameLower);
+        let updated = 0;
+        for (const tx of matching) {
+            await db.updateTransaction(req.session.userId, tx.id, tx.name, category, tx.amount, tx.date.substring(0, 10), tx.type, tx.account_id);
+            updated++;
+        }
+        res.json({ updated });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 // ── Umbuchung zwischen Konten ─────────────────────────────────
 router.post('/transfer', requireLogin, async (req, res) => {
     try {
@@ -766,9 +811,16 @@ async function getUserPlan(userId) {
 // ── Tarif / Upgrade Routen ────────────────────────────────────
 
 router.get('/tarife', requireLogin, async (req, res) => {
+    const db = await Database.getInstance();
     const plan = await getUserPlan(req.session.userId);
+    const trialInfo = await db.getTrialInfo(req.session.userId);
+    const profile = await db.getUserProfile(req.session.userId);
     const reason = req.query.reason || null;
-    res.render('tarife', { isLoggedIn: true, currentPlan: plan, reason });
+    const success = req.query.success || null;
+    const error = req.query.error || null;
+    const stripeEnabled = !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_MONTHLY);
+    const hasStripeCustomer = !!profile.stripe_customer_id;
+    res.render('tarife', { isLoggedIn: true, currentPlan: plan, reason, trialInfo, success, error, stripeEnabled, hasStripeCustomer });
 });
 
 router.post('/upgrade', requireLogin, async (req, res) => {
@@ -784,11 +836,118 @@ router.post('/upgrade', requireLogin, async (req, res) => {
     }
 });
 
+// ── Stripe-Routen ─────────────────────────────────────────────
+
+router.get('/stripe/checkout', requireLogin, async (req, res) => {
+    if (!stripe || !process.env.STRIPE_PRICE_MONTHLY) {
+        return res.redirect('/users/tarife?error=payment_unavailable');
+    }
+    const billing = req.query.billing === 'yearly' ? 'yearly' : 'monthly';
+    const priceId = billing === 'yearly' ? process.env.STRIPE_PRICE_YEARLY : process.env.STRIPE_PRICE_MONTHLY;
+    if (!priceId) return res.redirect('/users/tarife?error=payment_unavailable');
+
+    const db = await Database.getInstance();
+    const profile = await db.getUserProfile(req.session.userId);
+    try {
+        const sessionConfig = {
+            mode: 'subscription',
+            line_items: [{ price: priceId, quantity: 1 }],
+            success_url: `${process.env.APP_URL || 'http://localhost:3001'}/users/stripe/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${process.env.APP_URL || 'http://localhost:3001'}/users/tarife`,
+            metadata: { userId: String(req.session.userId) },
+            subscription_data: { metadata: { userId: String(req.session.userId) } },
+        };
+        if (profile.stripe_customer_id) {
+            sessionConfig.customer = profile.stripe_customer_id;
+        } else {
+            sessionConfig.customer_email = req.session.username;
+        }
+        const session = await stripe.checkout.sessions.create(sessionConfig);
+        res.redirect(303, session.url);
+    } catch (err) {
+        console.error('[Stripe] Checkout error:', err.message);
+        res.redirect('/users/tarife?error=payment_error');
+    }
+});
+
+router.get('/stripe/success', requireLogin, async (req, res) => {
+    res.redirect('/users/tarife?success=upgraded');
+});
+
+router.get('/stripe/portal', requireLogin, async (req, res) => {
+    if (!stripe) return res.redirect('/users/tarife');
+    const db = await Database.getInstance();
+    const profile = await db.getUserProfile(req.session.userId);
+    if (!profile.stripe_customer_id) return res.redirect('/users/tarife');
+    try {
+        const portalSession = await stripe.billingPortal.sessions.create({
+            customer: profile.stripe_customer_id,
+            return_url: `${process.env.APP_URL || 'http://localhost:3001'}/users/tarife`,
+        });
+        res.redirect(303, portalSession.url);
+    } catch (err) {
+        console.error('[Stripe] Portal error:', err.message);
+        res.redirect('/users/tarife');
+    }
+});
+
+router.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
+        return res.status(400).send('Stripe nicht konfiguriert');
+    }
+    const sig = req.headers['stripe-signature'];
+    let event;
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+        console.error('[Stripe] Webhook-Signatur-Fehler:', err.message);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+    try {
+        const db = await Database.getInstance();
+        if (event.type === 'checkout.session.completed') {
+            const session = event.data.object;
+            const userId = parseInt(session.metadata?.userId);
+            if (userId) {
+                await db.setUserPlan(userId, 'pro');
+                if (session.customer) await db.setStripeInfo(userId, { customerId: session.customer });
+                if (session.subscription) await db.setStripeInfo(userId, { subscriptionId: session.subscription });
+                console.log(`[Stripe] User ${userId} auf Pro upgraded`);
+            }
+        } else if (event.type === 'customer.subscription.deleted') {
+            const subscription = event.data.object;
+            const userId = parseInt(subscription.metadata?.userId);
+            if (userId) {
+                await db.setUserPlan(userId, 'free');
+                console.log(`[Stripe] User ${userId} Abo beendet → Free`);
+            }
+        } else if (event.type === 'invoice.payment_failed') {
+            console.warn('[Stripe] Zahlung fehlgeschlagen:', event.data.object.customer);
+        }
+    } catch (err) {
+        console.error('[Stripe] Webhook-Verarbeitung fehlgeschlagen:', err);
+    }
+    res.json({ received: true });
+});
+
 router.get('/me/plan', requireLogin, async (req, res) => {
     try {
         const plan = await getUserPlan(req.session.userId);
         res.json({ plan });
     } catch { res.json({ plan: 'free' }); }
+});
+
+// ── Sidebar-Modus (serverseitig per Session) ───────────────────
+router.get('/me/mode', requireLogin, (req, res) => {
+    res.json({ mode: req.session.sidebar_mode || 'privat' });
+});
+
+router.post('/me/mode', requireLogin, (req, res) => {
+    const { mode } = req.body;
+    if (mode === 'privat' || mode === 'haushalt') {
+        req.session.sidebar_mode = mode;
+    }
+    res.json({ mode: req.session.sidebar_mode || 'privat' });
 });
 
 
@@ -844,9 +1003,18 @@ router.get('/analysen/:id/data', requireLogin, async (req, res) => {
     }
 });
 
-// Seite: Meine Finanzen
-router.get('/meine-finanzen', requireLogin, (req, res) => {
-    res.render('meine-finanzen');
+// Seite: Konten (ehemals meine-finanzen)
+router.get('/konten', requireLogin, (req, res) => {
+    res.render('konten');
+});
+// Legacy-Redirect
+router.get('/meine-finanzen', (req, res) => {
+    res.redirect(301, '/users/konten');
+});
+
+// ── Konto & Einstellungen (unified entry point) ─────────────────
+router.get('/konto', requireLogin, (req, res) => {
+    res.redirect(302, '/users/profil');
 });
 
 router.get('/konto/:id', requireLogin, (req, res) => {
@@ -906,18 +1074,6 @@ router.get('/manuelle-eintraege', requireLogin, async (req, res) => {
     }
 });
 
-// 4. Kategorien laden (für Ausgabentracker + Finanzen)
-router.get('/categories', requireLogin, async (req, res) => {
-    try {
-        const db = await Database.getInstance();
-        const cats = await db.getCategories(req.session.userId);
-        res.json(cats.map(c => c.name));
-    } catch (err) {
-        console.error(err);
-        res.json([]);
-    }
-});
-
 // Fixkosten hinzufügen
 router.post('/fixkosten/add', requireLogin, async (req, res) => {
     const { name, betrag, datum_tag, haeufigkeit, kategorie } = req.body;
@@ -966,7 +1122,14 @@ router.put('/updateTransaction/:id', async (req, res) => {
         return res.status(400).json({ message: 'Alle Felder müssen ausgefüllt sein.' });
     try {
         const db = await Database.getInstance();
+        const vorher = await db.getTransactionById(req.session.userId, req.params.id);
         await db.updateTransaction(req.session.userId, req.params.id, name, category, parseFloat(amount), date, type, account_id || null);
+        if (vorher) {
+            db.logActivity(req.session.userId, 'bearbeitet', 'Transaktion', parseInt(req.params.id), {
+                vorher: { name: vorher.name, amount: vorher.amount, category: vorher.category, type: vorher.type },
+                nachher: { name, amount: parseFloat(amount), category, type }
+            });
+        }
         res.json({ message: 'Transaktion aktualisiert' });
     } catch (err) { res.status(500).json({ message: 'Interner Serverfehler' }); }
 });
@@ -1015,8 +1178,12 @@ router.delete('/fixkosten/:id', requireLogin, async (req, res) => {
 router.get('/accounts', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
-        res.json(await db.getAccountsWithBalance(req.session.userId));
-    } catch (err) { res.status(500).json({ message: 'Fehler beim Laden' }); }
+        const showArchived = req.query.showArchived === 'true';
+        res.json(await db.getAccountsWithBalance(req.session.userId, { showArchived }));
+    } catch (err) {
+        console.error('GET /accounts error:', err.message);
+        res.status(500).json({ message: 'Fehler beim Laden', detail: err.message });
+    }
 });
 
 // Kombinierte Konten: privat + Haushalt — für Transfer-Dropdowns
@@ -1072,11 +1239,62 @@ router.put('/accounts/:id', requireLogin, async (req, res) => {
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
 
+// Setzt den Startbetrag so, dass currentBalance == targetBalance
+router.post('/accounts/:id/set-balance', requireLogin, async (req, res) => {
+    const { targetBalance } = req.body;
+    if (targetBalance === undefined || isNaN(parseFloat(targetBalance))) {
+        return res.status(400).json({ message: 'targetBalance fehlt' });
+    }
+    try {
+        const db = await Database.getInstance();
+        const userId = req.session.userId;
+        const accountId = parseInt(req.params.id);
+        // Verify account belongs to user
+        const accounts = await db.getAccountsWithBalance(userId);
+        const acc = accounts.find(a => a.id === accountId);
+        if (!acc) return res.status(404).json({ message: 'Konto nicht gefunden' });
+        // currentBalance = balance + delta  →  new balance = targetBalance - delta
+        const delta = acc.currentBalance - acc.balance;
+        const newStartBalance = parseFloat(targetBalance) - delta;
+        await db.updateAccount(userId, accountId, acc.name, acc.type, newStartBalance, acc.color, acc.icon);
+        db.logActivity(userId, 'geändert', 'Konto', accountId, { balance_adjusted_to: parseFloat(targetBalance) });
+        res.json({ message: 'Kontostand angepasst', newStartBalance, currentBalance: parseFloat(targetBalance) });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Fehler beim Anpassen' });
+    }
+});
+
+router.patch('/accounts/:id/archive', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.archiveAccount(req.session.userId, req.params.id, 1);
+        db.logActivity(req.session.userId, 'archiviert', 'Konto', parseInt(req.params.id), {});
+        res.json({ message: 'Konto archiviert' });
+    } catch (err) { res.status(500).json({ message: 'Fehler' }); }
+});
+
+router.patch('/accounts/:id/unarchive', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        await db.archiveAccount(req.session.userId, req.params.id, 0);
+        db.logActivity(req.session.userId, 'wiederhergestellt', 'Konto', parseInt(req.params.id), {});
+        res.json({ message: 'Konto wiederhergestellt' });
+    } catch (err) { res.status(500).json({ message: 'Fehler' }); }
+});
+
 router.delete('/accounts/:id', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
-        const accounts = await db.getAccountsWithBalance(req.session.userId);
-        const acc = accounts.find(a => a.id == req.params.id);
+        const force = req.query.force === 'true';
+        if (!force) {
+            const txCount = await db.getAccountTransactionCount(req.session.userId, req.params.id);
+            if (txCount > 0) {
+                return res.status(409).json({ message: `Konto hat ${txCount} Transaktion(en) und kann nicht gelöscht werden. Bitte zuerst archivieren.`, hasTransactions: true });
+            }
+        }
+        const allAccounts = await db.getAccountsWithBalance(req.session.userId, { showArchived: true });
+        const acc = allAccounts.find(a => a.id == req.params.id);
         await db.deleteAccount(req.session.userId, req.params.id);
         if (acc) db.logActivity(req.session.userId, 'gelöscht', 'Konto', parseInt(req.params.id), { name: acc.name });
         res.json({ message: 'Konto gelöscht' });
@@ -1118,7 +1336,7 @@ router.post('/accounts/:id/abgleich', requireLogin, async (req, res) => {
         const heute = new Date().toISOString().substring(0, 10);
         const name  = `Kontostandskorrektur: ${account.name}`;
 
-        const txId = await db.saveTransaction(
+        const txId = await db.createTransaction(
             userId, name, 'Kontostandskorrektur', heute,
             Math.abs(differenz), typ, accountId
         );
@@ -1194,7 +1412,9 @@ router.put('/profil/email', requireLogin, async (req, res) => {
 router.put('/profil/password', requireLogin, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) return res.status(400).json({ message: 'Alle Felder erforderlich' });
-    if (newPassword.length < 6) return res.status(400).json({ message: 'Passwort muss mindestens 6 Zeichen lang sein' });
+    if (newPassword.length < 8) return res.status(400).json({ message: 'Passwort muss mindestens 8 Zeichen lang sein' });
+    if (!/[A-Z]/.test(newPassword)) return res.status(400).json({ message: 'Passwort muss mindestens einen Großbuchstaben enthalten' });
+    if (!/[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword)) return res.status(400).json({ message: 'Passwort muss mindestens eine Zahl oder ein Sonderzeichen enthalten' });
     try {
         const db = await Database.getInstance();
         await db.updateUserPassword(req.session.userId, currentPassword, newPassword);
@@ -1205,14 +1425,122 @@ router.put('/profil/password', requireLogin, async (req, res) => {
     }
 });
 
+// ── Konto löschen ───────────────────────────────────────────────
+router.delete('/account', requireLogin, async (req, res) => {
+    const userId = req.session.userId;
+    try {
+        const db = await Database.getInstance();
+        const { Sequelize: Seq } = await import('sequelize');
+        const tables = [
+            'ausgabenDB', 'accounts', 'user_profiles', 'user_settings',
+            'analysen', 'dokumente', 'recurring_transactions', 'reminder_log',
+            'budgets', 'sparziele', 'kategorisierungs_regeln', 'activity_log',
+            'abos', 'notizen', 'gewohnheiten', 'ziele', 'notifications',
+            'steuer_werbungskosten', 'steuer_assistent', 'steuer_kapitalertraege',
+            'steuer_sonderausgaben', 'steuer_altersvorsorge', 'outlook_tokens',
+            'finanzen_investments', 'schulden_zahlungen'
+        ];
+        for (const table of tables) {
+            try {
+                await db._database.query(`DELETE FROM ${table} WHERE user_id = :uid`, {
+                    replacements: { uid: userId },
+                    type: Seq.QueryTypes.DELETE
+                });
+            } catch (e) { /* Tabelle existiert nicht oder kein user_id-Feld – ignorieren */ }
+        }
+        // Haushalt-Mitgliedschaft entfernen
+        try {
+            await db._database.query(`DELETE FROM haushalt_mitglieder WHERE user_id = :uid`, {
+                replacements: { uid: userId }, type: Seq.QueryTypes.DELETE
+            });
+        } catch (e) {}
+        // Benutzer selbst löschen
+        await db._database.query(`DELETE FROM users WHERE id = :uid`, {
+            replacements: { uid: userId }, type: Seq.QueryTypes.DELETE
+        });
+        req.session.destroy();
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('deleteAccount:', err);
+        res.status(500).json({ message: 'Fehler beim Löschen des Kontos' });
+    }
+});
+
 // ── Einstellungen-Seite ─────────────────────────────────────────
 router.get('/einstellungen', requireLogin, (req, res) => {
     res.render('einstellungen', { isLoggedIn: true });
 });
 
 // ── CSV-Import ───────────────────────────────────────────────────
-router.get('/import', requireLogin, (req, res) => {
-    res.render('import', { isLoggedIn: true });
+router.get('/haushalt/import', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        const konten = haushalt ? await db.getHaushaltKonten(haushalt.id) : [];
+        res.render('import', { isLoggedIn: true, konten, mode: 'haushalt' });
+    } catch (err) {
+        res.render('import', { isLoggedIn: true, konten: [], mode: 'haushalt' });
+    }
+});
+
+router.post('/haushalt/import/transactions', requireLogin, async (req, res) => {
+    const { transactions } = req.body;
+    if (!Array.isArray(transactions) || transactions.length === 0)
+        return res.status(400).json({ message: 'Keine Transaktionen übergeben' });
+
+    const ALLOWED = ['date', 'amount', 'type', 'name', 'notes', 'account_id'];
+    const clean = transactions.map(tx =>
+        Object.fromEntries(ALLOWED.map(k => [k, tx[k]]).filter(([, v]) => v !== undefined))
+    );
+
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+
+        // Build duplicate hash set from existing haushalt transactions
+        const existing = await db.getHaushaltTransaktionen(haushalt.id);
+        const txHash = (t) => `${t.name}|${t.date}|${parseFloat(t.amount).toFixed(2)}|${(t.notiz || '').trim()}`;
+        const existingHashes = new Set(existing.map(txHash));
+
+        let imported = 0, duplicates = 0;
+
+        for (const tx of clean) {
+            if (!tx.name || !tx.date) continue;
+            const amount = Math.abs(parseFloat(tx.amount)) || 0;
+            const hash = `${tx.name}|${tx.date}|${amount.toFixed(2)}|${(tx.notes || '').trim()}`;
+            if (existingHashes.has(hash)) { duplicates++; continue; }
+            existingHashes.add(hash); // prevent duplicates within the same import batch
+
+            const txType = tx.type || 'Ausgaben';
+            const applied = await db.applyRegeln(req.session.userId, tx.name + ' ' + (tx.notes || ''), null, txType, 'haushalt');
+            const finalCategory = applied.category || 'Sonstiges';
+            const finalType = applied.type || txType;
+
+            await db.addHaushaltTransaktion(haushalt.id, req.session.userId, {
+                name: tx.name, category: finalCategory, amount,
+                type: finalType, date: tx.date,
+                notiz: tx.notes || '', konto_id: tx.account_id || null,
+                anteil_user1: 50, anteil_user2: 50
+            });
+            imported++;
+        }
+        res.json({ imported, duplicates, message: `${imported} importiert${duplicates > 0 ? `, ${duplicates} Duplikat(e) übersprungen` : ''}` });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Fehler beim Import' });
+    }
+});
+
+router.get('/import', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const konten = await db.getAccountsWithBalance(req.session.userId);
+        res.render('import', { isLoggedIn: true, konten, mode: 'privat' });
+    } catch (err) {
+        console.error('GET /import error:', err.message);
+        res.render('import', { isLoggedIn: true, konten: [], mode: 'privat' });
+    }
 });
 
 router.post('/import/transactions', requireLogin, async (req, res) => {
@@ -1220,26 +1548,46 @@ router.post('/import/transactions', requireLogin, async (req, res) => {
     if (!Array.isArray(transactions) || transactions.length === 0) {
         return res.status(400).json({ message: 'Keine Transaktionen übergeben' });
     }
+    // Privacy: whitelist — only these fields are accepted, all others silently dropped
+    const ALLOWED = ['date', 'amount', 'type', 'name', 'notes', 'account_id'];
+    const clean = transactions.map(tx =>
+        Object.fromEntries(ALLOWED.map(k => [k, tx[k]]).filter(([, v]) => v !== undefined))
+    );
+
     try {
         const db = await Database.getInstance();
-        let imported = 0;
-        for (const tx of transactions) {
+        const userId = req.session.userId;
+
+        // Build duplicate hash set from existing transactions
+        const existing = await db.getTransactionsForUser(userId);
+        const txHash = (t) => `${t.name}|${t.date}|${parseFloat(t.amount).toFixed(2)}|${(t.notes || '').trim()}`;
+        const existingHashes = new Set(existing.map(txHash));
+
+        let imported = 0, duplicates = 0;
+
+        for (const tx of clean) {
             if (!tx.name || !tx.date) continue;
-            await db.saveTransaction(
-                req.session.userId,
-                tx.name,
-                tx.category || 'Sonstiges',
-                tx.date,
-                Math.abs(parseFloat(tx.amount)) || 0,
-                tx.type || 'Ausgaben',
-                tx.account_id || null
+            const amount = Math.abs(parseFloat(tx.amount)) || 0;
+            const hash = `${tx.name}|${tx.date}|${amount.toFixed(2)}|${(tx.notes || '').trim()}`;
+            if (existingHashes.has(hash)) { duplicates++; continue; }
+            existingHashes.add(hash); // prevent duplicates within the same import batch
+
+            // Server applies rules to set category (client preview is only for display)
+            const txType = tx.type || 'Ausgaben';
+            const applied = await db.applyRegeln(userId, tx.name + ' ' + (tx.notes || ''), null, txType, 'privat');
+            const finalCategory = applied.category || 'Sonstiges';
+            const finalType     = applied.type     || txType;
+
+            await db.createTransaction(
+                userId, tx.name, finalCategory, tx.date, amount, finalType,
+                tx.account_id || null, tx.notes || ''
             );
             imported++;
         }
         if (imported > 0) {
-            db.logActivity(req.session.userId, 'erstellt', 'Transaktion', null, { bulk_import: imported, quelle: 'CSV-Import' });
+            db.logActivity(userId, 'erstellt', 'Transaktion', null, { bulk_import: imported, quelle: 'CSV-Import' });
         }
-        res.json({ imported, message: `${imported} Transaktion(en) importiert` });
+        res.json({ imported, duplicates, message: `${imported} importiert${duplicates > 0 ? `, ${duplicates} Duplikat(e) übersprungen` : ''}` });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Fehler beim Import' });
@@ -1483,11 +1831,6 @@ router.get('/outlook/status', async (req, res) => {
     catch { res.json({ connected: false }); }
 });
 
-router.get('/kalender', (req, res) => {
-    if (!req.session.username) return res.redirect('/users/login');
-    res.render('kalender', { isLoggedIn: true });
-});
-
 
 // ── Dokumentenportal ────────────────────────────────────────
 
@@ -1510,12 +1853,17 @@ router.get('/dokumente/data', requireLogin, async (req, res) => {
 });
 
 // API: Dokument hochladen — MUSS vor /:id Routen stehen!
-router.post('/dokumente/add', requireLogin, async (req, res) => {
+router.post('/dokumente/add', requireLogin, dokUpload.single('file'), async (req, res) => {
     const { name, typ } = req.body;
     if (!name || !typ) return res.status(400).json({ message: 'Name und Typ erforderlich' });
     try {
         const db = await Database.getInstance();
-        const id = await db.addDokument(req.session.userId, req.body);
+        const fileData = req.file
+            ? `uploads/user_${req.session.userId}/${req.file.filename}`
+            : '';
+        const fileExt  = req.file ? path.extname(req.file.originalname).toLowerCase().replace('.', '') : '';
+        const fileMime = req.file ? req.file.mimetype : '';
+        const id = await db.addDokument(req.session.userId, { ...req.body, file_data: fileData, file_ext: fileExt, file_mime: fileMime });
         res.status(201).json({ id, message: 'Dokument gespeichert' });
     } catch (err) {
         console.error(err);
@@ -1527,11 +1875,33 @@ router.post('/dokumente/add', requireLogin, async (req, res) => {
 router.delete('/dokumente/delete/:id', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
+        const doc = await db.getDokumentById(req.session.userId, req.params.id);
+        if (doc?.file_data) {
+            const filePath = path.join(__dirRoutes, '..', doc.file_data);
+            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        }
         await db.deleteDokument(req.session.userId, req.params.id);
         res.json({ message: 'Dokument gelöscht' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Fehler beim Löschen' });
+    }
+});
+
+// API: Datei herunterladen / anzeigen — MUSS vor /:id/file stehen!
+router.get('/dokumente/:id/download', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const doc = await db.getDokumentById(req.session.userId, req.params.id);
+        if (!doc || !doc.file_data) return res.status(404).json({ message: 'Keine Datei vorhanden' });
+        const filePath = path.join(__dirRoutes, '..', doc.file_data);
+        if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Datei nicht gefunden' });
+        res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
+        res.setHeader('Content-Type', doc.file_mime || 'application/octet-stream');
+        res.sendFile(filePath);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Fehler' });
     }
 });
 
@@ -1635,6 +2005,43 @@ router.get('/steuer/jahresübersicht/:jahr', requireLogin, async (req, res) => {
     } catch (err) {
         res.status(500).json({});
     }
+});
+
+// Steuer-relevante Transaktionen eines Jahres abrufen
+router.get('/steuern/transaktionen/:jahr', requireLogin, async (req, res) => {
+    try {
+        const db   = await Database.getInstance();
+        const jahr = parseInt(req.params.jahr);
+        const rows = await db._database.query(
+            `SELECT a.id, a.name, a.amount, a.date, a.type, a.steuer_relevant,
+                    COALESCE(c.name, a.category) AS category
+             FROM ausgabenDB a
+             LEFT JOIN categories c ON c.id = a.category_id AND c.user_id = a.user_id
+             WHERE a.user_id = ? AND a.steuer_relevant = 1
+               AND strftime('%Y', a.date) = ?
+             ORDER BY a.date DESC`,
+            { replacements: [req.session.userId, String(jahr)], type: db._database.constructor.QueryTypes.SELECT }
+        );
+        res.json(rows);
+    } catch (err) { res.status(500).json([]); }
+});
+
+// Steuer-Flag toggeln
+router.patch('/transactions/:id/steuer-flag', requireLogin, async (req, res) => {
+    try {
+        const db  = await Database.getInstance();
+        const row = await db._database.query(
+            'SELECT steuer_relevant FROM ausgabenDB WHERE id=? AND user_id=?',
+            { replacements: [req.params.id, req.session.userId], type: db._database.constructor.QueryTypes.SELECT }
+        );
+        if (!row.length) return res.status(404).json({ message: 'Nicht gefunden' });
+        const newVal = row[0].steuer_relevant ? 0 : 1;
+        await db._database.query(
+            'UPDATE ausgabenDB SET steuer_relevant=? WHERE id=? AND user_id=?',
+            { replacements: [newVal, req.params.id, req.session.userId], type: db._database.constructor.QueryTypes.UPDATE }
+        );
+        res.json({ steuer_relevant: newVal });
+    } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
 
 // Werbungskosten
@@ -1861,7 +2268,7 @@ router.post('/sparziele/add', requireLogin, async (req, res) => {
         // Initial deposit → create transaction
         if (parseFloat(gespart) > 0) {
             const today = new Date().toISOString().slice(0, 10);
-            const txId = await db.saveTransaction(req.session.userId, `Sparziel: ${name}`, 'Sparziele', today, parseFloat(gespart), 'Ausgaben', account_id || null);
+            const txId = await db.createTransaction(req.session.userId, `Sparziel: ${name}`, 'Sparziele', today, parseFloat(gespart), 'Ausgaben', account_id || null);
             db.logActivity(req.session.userId, 'erstellt', 'Transaktion', txId, { name: `Sparziel: ${name}`, amount: parseFloat(gespart), type: 'Ausgaben', category: 'Sparziele', date: today });
         }
 
@@ -1893,7 +2300,7 @@ router.post('/sparziele/:id/add', requireLogin, async (req, res) => {
         let txId = null;
         if (createTransaction !== false) {
             const today = new Date().toISOString().slice(0, 10);
-            txId = await db.saveTransaction(
+            txId = await db.createTransaction(
                 req.session.userId,
                 `Sparziel: ${sz.name}`,
                 'Sparziele',
@@ -1954,21 +2361,21 @@ router.get('/regeln/list', requireLogin, async (req, res) => {
 });
 
 router.post('/regeln/add', requireLogin, async (req, res) => {
-    const { bedingung_operator, bedingung_wert, aktion_kategorie, aktion_typ, modus } = req.body;
+    const { bedingung_operator, bedingung_wert, aktion_kategorie, aktion_typ, modus, priority } = req.body;
     if (!bedingung_operator || !bedingung_wert) return res.status(400).json({ message: 'Bedingung erforderlich' });
     if (!aktion_kategorie && !aktion_typ) return res.status(400).json({ message: 'Mindestens eine Aktion erforderlich' });
     try {
         const db = await Database.getInstance();
-        const id = await db.addRegel(req.session.userId, bedingung_operator, bedingung_wert, aktion_kategorie || null, aktion_typ || null, modus || 'beide');
+        const id = await db.addRegel(req.session.userId, bedingung_operator, bedingung_wert, aktion_kategorie || null, aktion_typ || null, modus || 'beide', parseInt(priority) || 0);
         res.status(201).json({ id, message: 'Regel erstellt' });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
 
 router.put('/regeln/:id', requireLogin, async (req, res) => {
-    const { bedingung_operator, bedingung_wert, aktion_kategorie, aktion_typ, aktiv, modus } = req.body;
+    const { bedingung_operator, bedingung_wert, aktion_kategorie, aktion_typ, aktiv, modus, priority } = req.body;
     try {
         const db = await Database.getInstance();
-        await db.updateRegel(req.session.userId, req.params.id, bedingung_operator, bedingung_wert, aktion_kategorie || null, aktion_typ || null, aktiv !== false, modus || 'beide');
+        await db.updateRegel(req.session.userId, req.params.id, bedingung_operator, bedingung_wert, aktion_kategorie || null, aktion_typ || null, aktiv == null ? 1 : (aktiv ? 1 : 0), modus || 'beide', parseInt(priority) || 0);
         res.json({ message: 'Regel aktualisiert' });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
@@ -1986,7 +2393,9 @@ router.post('/regeln/apply-all', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         const userId = req.session.userId;
-        const txs = await db.getTransactionsForUser(userId);
+        const onlyEmpty = req.body.onlyEmpty === true;
+        let txs = await db.getTransactionsForUser(userId);
+        if (onlyEmpty) txs = txs.filter(tx => !tx.category || tx.category.trim() === '');
         let updated = 0;
         for (const tx of txs) {
             const applied = await db.applyRegeln(userId, tx.name, tx.category, tx.type);
@@ -1998,6 +2407,29 @@ router.post('/regeln/apply-all', requireLogin, async (req, res) => {
         res.json({ message: `${updated} Transaktion(en) aktualisiert`, updated });
     } catch (err) { res.status(500).json({ message: 'Fehler' }); }
 });
+
+// Bulk: Regeln auf alle bestehenden Haushalt-Transaktionen anwenden
+router.post('/haushalt/regeln/apply-all', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const userId = req.session.userId;
+        const haushalt = await db.getHaushaltForUser(userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        const onlyEmpty = req.body.onlyEmpty === true;
+        let txs = await db.getHaushaltTransaktionen(haushalt.id);
+        if (onlyEmpty) txs = txs.filter(tx => !tx.category || tx.category.trim() === '' || tx.category === 'Sonstiges');
+        let updated = 0;
+        for (const tx of txs) {
+            const applied = await db.applyRegeln(userId, tx.name + ' ' + (tx.notiz || ''), tx.category, tx.type, 'haushalt');
+            if (applied.category !== tx.category || applied.type !== tx.type) {
+                await db.updateHaushaltTransaktion(haushalt.id, tx.id, { ...tx, category: applied.category, type: applied.type });
+                updated++;
+            }
+        }
+        res.json({ message: `${updated} Transaktion(en) aktualisiert`, updated });
+    } catch (err) { res.status(500).json({ message: 'Fehler' }); }
+});
+
 
 // ── Abonnements ─────────────────────────────────────────────────
 router.get('/abos', requireLogin, async (req, res) => {
@@ -2217,6 +2649,7 @@ router.delete('/schulden/zahlungen/:id', requireLogin, async (req, res) => {
         const db = await Database.getInstance();
         const ok = await db.deleteSchuldenZahlung(req.session.userId, req.params.id);
         if (!ok) return res.status(404).json({ message: 'Zahlung nicht gefunden' });
+        db.logActivity(req.session.userId, 'gelöscht', 'Schulden-Zahlung', parseInt(req.params.id), {});
         res.json({ message: 'Gelöscht' });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2506,6 +2939,14 @@ router.get('/haushalt/todos', requireLogin, async (req, res) => {
     res.render('haushalt-todos', { isLoggedIn: true, haushalt });
 });
 
+router.get('/haushalt/kostenplan', requireLogin, async (req, res) => {
+    const db = await Database.getInstance();
+    const plan = await db.getUserPlan(req.session.userId);
+    if (plan === 'free') return res.redirect('/users/tarife?reason=haushalt');
+    const haushalt = await getHaushaltForUser(req.session.userId);
+    res.render('haushalt-kostenplan', { isLoggedIn: true, haushalt });
+});
+
 router.get('/haushalt/einstellungen', requireLogin, async (req, res) => {
     const db = await Database.getInstance();
     const plan = await db.getUserPlan(req.session.userId);
@@ -2522,10 +2963,13 @@ router.get('/haushalt/status', requireLogin, async (req, res) => {
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.json({ haushalt: null });
-        const mitglieder = await db.getHaushaltMitglieder(haushalt.id);
-        // Kontostand für Dashboard-Widget
-        const konto = await db.getHaushaltKontoMitStand(haushalt.id);
-        res.json({ haushalt, mitglieder, konto: konto || null });
+        const [mitglieder, konten, settings] = await Promise.all([
+            db.getHaushaltMitglieder(haushalt.id),
+            db.getHaushaltKonten(haushalt.id),
+            db.getHaushaltSettings(haushalt.id),
+        ]);
+        const gesamtBalance = konten.reduce((s, k) => s + (k.currentBalance || 0), 0);
+        res.json({ haushalt, mitglieder, konto: konten[0] || null, konten, gesamtBalance, settings, current_user_id: req.session.userId });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -2561,11 +3005,53 @@ router.post('/haushalt/invite', requireLogin, async (req, res) => {
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt gefunden' });
-        // Zufälligen Code generieren
         const code = Math.random().toString(36).substring(2, 10).toUpperCase();
         await db.createHaushaltEinladung(haushalt.id, req.session.userId, email, code);
-        res.json({ code, message: 'Einladungscode erstellt' });
+        const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+        const joinLink = `${baseUrl}/users/haushalt/join/${code}`;
+        // E-Mail senden wenn echte Adresse angegeben
+        const isPlaceholder = !email || email === 'partner@example.com';
+        if (!isPlaceholder) {
+            try {
+                await sendMail({
+                    to: email,
+                    subject: `${req.session.username} lädt dich zu Golden Goat Capital ein`,
+                    title: 'Haushalt-Einladung',
+                    preheader: `${req.session.username} möchte gemeinsam Finanzen im Haushalt verwalten.`,
+                    bodyHtml: `
+                        ${greetingHtml('')}
+                        <p><strong>${req.session.username}</strong> hat dich eingeladen, gemeinsam den Haushalt in <strong>Golden Goat Capital</strong> zu verwalten.</p>
+                        <p>Klicke auf den Button, um der Einladung beizutreten. Der Link ist <strong>7 Tage</strong> gültig.</p>
+                        ${ctaButtonHtml('Einladung annehmen →', `/users/haushalt/join/${code}`)}
+                        ${dividerHtml()}
+                        <p style="font-size:12px;color:#64748b;">Falls du keinen Button siehst, kopiere diesen Link:<br>${joinLink}</p>
+                        <p style="font-size:12px;color:#64748b;">Einladungscode: <strong>${code}</strong></p>
+                    `,
+                });
+            } catch (mailErr) {
+                console.warn('[Invite] E-Mail konnte nicht gesendet werden:', mailErr.message);
+            }
+        }
+        res.json({ code, link: joinLink, emailSent: !isPlaceholder, message: 'Einladung erstellt' });
     } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// Einladungs-Join-Seite (öffentlich — kein requireLogin, damit Link in E-Mail funktioniert)
+router.get('/haushalt/join/:code', async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const einladung = await db.getEinladungByCode(req.params.code);
+        const isLoggedIn = getIsLoggedIn(req);
+        res.render('haushalt-join', {
+            einladung: einladung || null,
+            code: req.params.code,
+            isLoggedIn,
+            username: req.session.username || null,
+            error: einladung ? null : 'Diese Einladung ist ungültig, abgelaufen oder wurde bereits verwendet.'
+        });
+    } catch (err) {
+        res.render('haushalt-join', { einladung: null, code: req.params.code, isLoggedIn: false, username: null, error: 'Fehler beim Laden der Einladung.' });
+    }
 });
 
 // Einladung per Code prüfen (GET, damit man die Info anzeigen kann)
@@ -2701,7 +3187,11 @@ router.post('/haushalt/persoenlich/add', requireLogin, async (req, res) => {
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
-        const id = await db.addHaushaltPersoenlicheFixkost(haushalt.id, req.session.userId, req.body);
+        const mitglieder = await db.getHaushaltMitglieder(haushalt.id);
+        const targetUserId = req.body.user_id && mitglieder.some(m => m.user_id == req.body.user_id)
+            ? parseInt(req.body.user_id)
+            : req.session.userId;
+        const id = await db.addHaushaltPersoenlicheFixkost(haushalt.id, targetUserId, req.body);
         res.status(201).json({ id });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2745,7 +3235,11 @@ router.post('/haushalt/gehaelter/default', requireLogin, async (req, res) => {
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
-        await db.setHaushaltGehaltDefault(haushalt.id, req.session.userId, gehalt, sparbetrag);
+        const mitglieder = await db.getHaushaltMitglieder(haushalt.id);
+        const targetUserId = req.body.user_id && mitglieder.some(m => m.user_id == req.body.user_id)
+            ? parseInt(req.body.user_id)
+            : req.session.userId;
+        await db.setHaushaltGehaltDefault(haushalt.id, targetUserId, gehalt, sparbetrag);
         res.json({ message: 'Gespeichert' });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2756,7 +3250,11 @@ router.post('/haushalt/gehaelter/monat/:monat', requireLogin, async (req, res) =
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
-        await db.setHaushaltGehaltMonat(haushalt.id, req.session.userId, req.params.monat, gehalt, sparbetrag);
+        const mitglieder = await db.getHaushaltMitglieder(haushalt.id);
+        const targetUserId = req.body.user_id && mitglieder.some(m => m.user_id == req.body.user_id)
+            ? parseInt(req.body.user_id)
+            : req.session.userId;
+        await db.setHaushaltGehaltMonat(haushalt.id, targetUserId, req.params.monat, gehalt, sparbetrag);
         res.json({ message: 'Gespeichert' });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2787,17 +3285,59 @@ router.post('/haushalt/ausgaben/add', requireLogin, async (req, res) => {
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
         const konto = await db.getHaushaltKonto(haushalt.id);
         if (!konto) return res.status(404).json({ message: 'Kein Haushaltskonto vorhanden. Bitte zuerst ein Konto einrichten.' });
+        const amount = Math.abs(parseFloat(req.body.betrag || req.body.amount) || 0);
+        const txType = req.body.type || 'Ausgaben';
         const id = await db.addHaushaltTransaktion(haushalt.id, req.session.userId, {
             name:         req.body.name,
             category:     req.body.kategorie || req.body.category || 'Sonstiges',
-            amount:       Math.abs(parseFloat(req.body.betrag || req.body.amount) || 0),
-            type:         req.body.type || 'Ausgaben',
+            amount,
+            type:         txType,
             date:         req.body.datum || req.body.date || new Date().toISOString().slice(0, 10),
             notiz:        req.body.notiz || '',
             anteil_user1: req.body.anteil_user1 ?? 50,
             anteil_user2: req.body.anteil_user2 ?? 50,
         });
         res.status(201).json({ id });
+
+        // E-Mail-Benachrichtigung bei großen Ausgaben (async, non-blocking)
+        if (txType === 'Ausgaben' && amount > 0) {
+            (async () => {
+                try {
+                    const settings = await db.getHaushaltSettings(haushalt.id);
+                    const schwelle = settings.benachrichtigung_schwelle || 0;
+                    if (schwelle <= 0 || amount < schwelle) return;
+                    const mitglieder = await db.getHaushaltMitglieder(haushalt.id);
+                    const eintraeger = mitglieder.find(m => m.user_id === req.session.userId);
+                    const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+                    for (const m of mitglieder) {
+                        const userRow = await db._database.query(
+                            'SELECT Benutzername AS email FROM users WHERE id=?',
+                            { replacements: [m.user_id], type: 'SELECT' }
+                        );
+                        if (!userRow?.[0]?.email) continue;
+                        const recipName = m.anzeigename || m.display_name || 'Haushaltsmitglied';
+                        const eintraegerName = eintraeger ? (eintraeger.anzeigename || eintraeger.display_name || 'Jemand') : 'Jemand';
+                        await sendMail({
+                            to: userRow[0].email,
+                            subject: `💸 Große Ausgabe im Haushalt: ${fmt.format(amount)} – ${req.body.name || 'Ausgabe'}`,
+                            title: 'Große Ausgabe eingetragen',
+                            preheader: `${eintraegerName} hat ${fmt.format(amount)} für "${req.body.name || 'Ausgabe'}" eingetragen.`,
+                            bodyHtml:
+                                greetingHtml(recipName) +
+                                `<p><strong>${eintraegerName}</strong> hat im Haushalt <strong>${haushalt.name}</strong> eine Ausgabe eingetragen, die über eurer Benachrichtigungs-Schwelle von ${fmt.format(schwelle)} liegt:</p>` +
+                                sectionTitleHtml('Ausgabe') +
+                                `<div style="background:#1e2030;border:1px solid #2a2d3a;border-radius:10px;padding:16px 18px;margin-bottom:16px;">` +
+                                `<div style="font-size:1.3rem;font-weight:800;color:#ef4444;margin-bottom:6px;">${fmt.format(amount)}</div>` +
+                                `<div style="font-size:0.9rem;color:#94a3b8;">${req.body.name || 'Ausgabe'}` +
+                                (req.body.kategorie || req.body.category ? ` · ${req.body.kategorie || req.body.category}` : '') + `</div>` +
+                                `</div>` +
+                                dividerHtml() +
+                                ctaButtonHtml('Haushalt öffnen →', '/users/haushalt')
+                        });
+                    }
+                } catch (e) { console.error('[Haushalt-Benachrichtigung] Fehler:', e.message); }
+            })();
+        }
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -2866,7 +3406,32 @@ router.patch('/haushalt/todos/:id/complete', requireLogin, async (req, res) => {
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+
+        // Todo laden um Wiederholung zu prüfen
+        const todos = await db.getHaushaltTodos(haushalt.id);
+        const todo = todos.find(t => String(t.id) === String(req.params.id));
+
         await db.completeHaushaltTodo(haushalt.id, req.params.id);
+
+        // Bei Wiederholung: neue Instanz mit nächstem Fälligkeitsdatum erstellen
+        if (todo && todo.wiederholung && todo.wiederholung !== 'keine') {
+            const base = todo.due_date ? new Date(todo.due_date) : new Date();
+            let next = new Date(base);
+            if (todo.wiederholung === 'täglich')      next.setDate(next.getDate() + 1);
+            else if (todo.wiederholung === 'wöchentlich') next.setDate(next.getDate() + 7);
+            else if (todo.wiederholung === 'monatlich')   next.setMonth(next.getMonth() + 1);
+            const nextDate = next.toISOString().slice(0, 10);
+            await db.addHaushaltTodo(haushalt.id, req.session.userId, {
+                task:         todo.task,
+                priority:     todo.priority,
+                due_date:     nextDate,
+                label:        todo.label,
+                notes:        todo.notes,
+                zugewiesen_an: todo.zugewiesen_an,
+                wiederholung: todo.wiederholung,
+            });
+        }
+
         res.json({ message: 'Erledigt' });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2956,25 +3521,64 @@ router.get('/haushalt/konto', requireLogin, async (req, res) => {
     res.render('haushalt-konto', { isLoggedIn: true });
 });
 
+// Haushalt-Zahlungskalender
+router.get('/haushalt/kalender', requireLogin, async (req, res) => {
+    res.render('haushalt-kalender', { isLoggedIn: true });
+});
+
 // Vollwertiger Haushalt-Ausgabentracker
 router.get('/haushalt/tracker', requireLogin, async (req, res) => {
     res.render('haushalt-tracker', { isLoggedIn: true });
 });
 
 // Haushalt-Tracker: Kategorien (Standard-Set, kein custom per User)
+const HAUSHALT_DEFAULT_CATEGORIES = [
+    'Lebensmittel', 'Miete', 'Nebenkosten', 'Strom & Energie', 'Internet & Telefon',
+    'Versicherungen', 'Haushalt & Reinigung', 'Freizeit & Unterhaltung',
+    'Restaurant & Café', 'Kleidung', 'Gesundheit', 'Transport', 'Sonstiges'
+];
+
 router.get('/haushalt/tracker/categories', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.json([]);
-        const cats = await db.getHaushaltTrackerCategories(haushalt.id);
+
+        let cats = await db.getHaushaltTrackerCategories(haushalt.id);
+
+        // Seed defaults on first use
+        if (cats.length === 0) {
+            for (const name of HAUSHALT_DEFAULT_CATEGORIES) {
+                await db.addHaushaltTrackerCategory(haushalt.id, name);
+            }
+            cats = await db.getHaushaltTrackerCategories(haushalt.id);
+        }
+
+        // Also include any category used in transactions but not yet in the list
+        const txs = await db.getHaushaltTransaktionen(haushalt.id);
+        const existing = new Set(cats.map(c => c.name));
+        for (const tx of txs) {
+            if (tx.category && !existing.has(tx.category)) {
+                await db.addHaushaltTrackerCategory(haushalt.id, tx.category);
+                cats.push({ name: tx.category, is_default: 0 });
+                existing.add(tx.category);
+            }
+        }
+
+        cats.sort((a, b) => a.name.localeCompare(b.name, 'de'));
         res.json(cats);
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// Haushalt-Tracker: Konten (kein Konto-Filter im Haushalt nötig – leeres Array)
+// Haushalt-Tracker: Konten (haushalt_konten_v2 mit currentBalance)
 router.get('/haushalt/tracker/accounts', requireLogin, async (req, res) => {
-    res.json([]);
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.json([]);
+        const konten = await db.getHaushaltKonten(haushalt.id);
+        res.json(konten);
+    } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 // Haushalt-Tracker: Kategorien CRUD
@@ -3032,8 +3636,6 @@ router.post('/haushalt/konto/create', requireLogin, async (req, res) => {
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt gefunden' });
-        const existing = await db.getHaushaltKonto(haushalt.id);
-        if (existing) return res.status(409).json({ message: 'Haushaltskonto existiert bereits' });
         const { name, balance, color } = req.body;
         const id = await db.createHaushaltKonto(haushalt.id, name, parseFloat(balance) || 0, color || '#10b981');
         res.json({ id, message: 'Haushaltskonto erstellt' });
@@ -3046,8 +3648,6 @@ router.post('/haushalt/konto/import', requireLogin, async (req, res) => {
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt gefunden' });
-        const existing = await db.getHaushaltKonto(haushalt.id);
-        if (existing) return res.status(409).json({ message: 'Haushaltskonto existiert bereits' });
 
         const { account_id } = req.body;
         // Sicherheit: Nur eigene Konten dürfen importiert werden!
@@ -3076,16 +3676,48 @@ router.post('/haushalt/konto/import', requireLogin, async (req, res) => {
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// Konto bearbeiten
-router.patch('/haushalt/konto', requireLogin, async (req, res) => {
+// Konto bearbeiten (per ID)
+router.patch('/haushalt/konto/:id', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
         const { name, balance, color } = req.body;
-        await db.updateHaushaltKonto(haushalt.id, name, parseFloat(balance) || 0, color);
+        await db.updateHaushaltKontoById(haushalt.id, req.params.id, name, parseFloat(balance) || 0, color);
         res.json({ message: 'Gespeichert' });
     } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// Kontostand manuell setzen
+router.post('/haushalt/konto/:id/set-balance', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        const desiredBalance = parseFloat(req.body.balance);
+        if (isNaN(desiredBalance)) return res.status(400).json({ message: 'Ungültiger Betrag' });
+        // Aktuellen Stand ermitteln
+        const konten = await db.getHaushaltKonten(haushalt.id);
+        const konto  = konten.find(k => k.id == req.params.id);
+        if (!konto) return res.status(404).json({ message: 'Konto nicht gefunden' });
+        // Neues Startguthaben so setzen, dass currentBalance = desiredBalance
+        // currentBalance = balance + delta  →  newBalance = desiredBalance - delta
+        const delta       = konto.currentBalance - konto.balance;
+        const newBalance  = desiredBalance - delta;
+        await db.updateHaushaltKontoById(haushalt.id, req.params.id, konto.name, newBalance, konto.color);
+        res.json({ message: 'Kontostand aktualisiert' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// Einzelnes Haushalt-Konto löschen (inkl. zugehörige Transaktionen)
+router.delete('/haushalt/konto/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        await db.deleteHaushaltKontoById(haushalt.id, req.params.id);
+        res.json({ message: 'Konto gelöscht' });
+    } catch (err) { res.status(400).json({ message: err.message }); }
 });
 
 // Konto löschen
@@ -3127,7 +3759,7 @@ router.post('/haushalt/transaktionen/add', requireLogin, async (req, res) => {
         const konto = await db.getHaushaltKonto(haushalt.id);
         if (!konto) return res.status(404).json({ message: 'Kein Haushaltskonto vorhanden' });
         // Regeln anwenden (modus='haushalt')
-        let txBody = { ...req.body };
+        let txBody = { ...req.body, konto_id: req.body.konto_id || req.body.account_id || null };
         const appliedH = await db.applyRegeln(req.session.userId, txBody.name, txBody.category, txBody.type === 'inbound' ? 'Einnahmen' : 'Ausgaben', 'haushalt');
         if (appliedH.category !== (txBody.category)) txBody.category = appliedH.category;
         if (appliedH.type === 'Einnahmen') txBody.type = 'inbound';
@@ -3138,13 +3770,95 @@ router.post('/haushalt/transaktionen/add', requireLogin, async (req, res) => {
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
+router.post('/haushalt/transaktionen/bulk-update', requireLogin, async (req, res) => {
+    const { ids, category, konto_id, account_id, type } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'Fehlende Parameter: ids' });
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        const { Sequelize } = await import('sequelize');
+        const resolvedKontoId = konto_id !== undefined ? konto_id : (account_id !== undefined ? account_id : undefined);
+        let updated = 0;
+        for (const id of ids) {
+            const rows = await db._database.query(
+                'SELECT * FROM haushalt_transaktionen WHERE id=? AND haushalt_id=?',
+                { replacements: [id, haushalt.id], type: Sequelize.QueryTypes.SELECT }
+            );
+            if (!rows.length) continue;
+            const cur = rows[0];
+            const updateData = {
+                name:         cur.name,
+                category:     category !== undefined ? category : cur.category,
+                amount:       cur.amount,
+                type:         type !== undefined ? type : cur.type,
+                date:         cur.date,
+                notiz:        cur.notiz || '',
+                anteil_user1: cur.anteil_user1 ?? 50,
+                anteil_user2: cur.anteil_user2 ?? 50,
+                konto_id:     resolvedKontoId !== undefined ? (resolvedKontoId || null) : cur.konto_id,
+            };
+            await db.updateHaushaltTransaktion(haushalt.id, id, updateData);
+            updated++;
+        }
+        res.json({ message: 'Aktualisiert', count: updated });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.post('/haushalt/transaktionen/bulk-delete', requireLogin, async (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'Keine IDs angegeben' });
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        let deleted = 0;
+        for (const id of ids) {
+            await db.deleteHaushaltTransaktion(haushalt.id, id);
+            deleted++;
+        }
+        res.json({ message: 'Gelöscht', count: deleted });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 router.put('/haushalt/transaktionen/:id', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         const haushalt = await db.getHaushaltForUser(req.session.userId);
         if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
-        await db.updateHaushaltTransaktion(haushalt.id, req.params.id, req.body);
+        const body = { ...req.body, konto_id: req.body.konto_id || req.body.account_id || null };
+        await db.updateHaushaltTransaktion(haushalt.id, req.params.id, body);
         res.json({ message: 'Aktualisiert' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.get('/haushalt/pending-deletes', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.json([]);
+        const pending = await db.getAndCleanHaushaltPendingDeletes(haushalt.id);
+        res.json(pending);
+    } catch (err) { res.json([]); }
+});
+
+router.post('/haushalt/transaktionen/:id/pending-delete', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        await db.setHaushaltPendingDelete(haushalt.id, req.params.id);
+        res.json({ ok: true });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.post('/haushalt/transaktionen/:id/undo-delete', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        await db.undoHaushaltPendingDelete(haushalt.id, req.params.id);
+        res.json({ ok: true });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -3156,6 +3870,277 @@ router.delete('/haushalt/transaktionen/:id', requireLogin, async (req, res) => {
         await db.deleteHaushaltTransaktion(haushalt.id, req.params.id);
         db.logActivity(req.session.userId, 'gelöscht', 'Haushalt-Transaktion', parseInt(req.params.id), null);
         res.json({ message: 'Gelöscht' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// --- Haushalt Split Monats-Override ---
+
+router.get('/haushalt/split/monat/:monat', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.json(null);
+        res.json(await db.getHaushaltSplitMonat(haushalt.id, req.params.monat));
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.post('/haushalt/split/monat/:monat', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        await db.setHaushaltSplitMonat(haushalt.id, req.params.monat, req.body.split_user1);
+        res.json({ message: 'Gespeichert' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.delete('/haushalt/split/monat/:monat', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        await db.deleteHaushaltSplitMonat(haushalt.id, req.params.monat);
+        res.json({ message: 'Gelöscht' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// --- Haushalt Settings (globaler Split etc.) ---
+
+router.get('/haushalt/settings', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.json({ split_user1: 50, split_user2: 50 });
+        res.json(await db.getHaushaltSettings(haushalt.id));
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.post('/haushalt/settings', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        await db.saveHaushaltSettings(haushalt.id, req.body);
+        res.json({ message: 'Gespeichert' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// --- Haushalt Sparziele ---
+
+router.get('/haushalt/sparziele', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.json([]);
+        res.json(await db.getHaushaltSparziele(haushalt.id));
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.post('/haushalt/sparziele/add', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        const id = await db.createHaushaltSparziel(haushalt.id, req.body);
+        res.json({ id, message: 'Sparziel erstellt' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.put('/haushalt/sparziele/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        await db.updateHaushaltSparziel(haushalt.id, req.params.id, req.body);
+        res.json({ message: 'Aktualisiert' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.delete('/haushalt/sparziele/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        await db.deleteHaushaltSparziel(haushalt.id, req.params.id);
+        res.json({ message: 'Gelöscht' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// Einzahlung auf Sparziel (erstellt optional Haushalt-Transaktion)
+router.post('/haushalt/sparziele/:id/einzahlen', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        const { betrag, als_transaktion, konto_id } = req.body;
+        const goals = await db.getHaushaltSparziele(haushalt.id);
+        const goal = goals.find(g => g.id == req.params.id);
+        if (!goal) return res.status(404).json({ message: 'Sparziel nicht gefunden' });
+        const neuerStand = (parseFloat(goal.aktuell) || 0) + (parseFloat(betrag) || 0);
+        await db.updateHaushaltSparziel(haushalt.id, req.params.id, {
+            ...goal, aktuell: neuerStand
+        });
+        if (als_transaktion && konto_id) {
+            await db.addHaushaltTransaktion(haushalt.id, req.session.userId, {
+                type: 'outbound', name: 'Sparziel: ' + goal.name,
+                amount: parseFloat(betrag), category: 'Sparen',
+                date: new Date().toISOString().substring(0, 10), konto_id
+            });
+        }
+        res.json({ message: 'Einzahlung gebucht', aktuell: neuerStand });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// --- Haushalt Budgets ---
+
+router.get('/haushalt/budgets', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.json([]);
+        res.json(await db.getHaushaltBudgets(haushalt.id));
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.post('/haushalt/budgets/upsert', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        const { kategorie, betrag } = req.body;
+        if (!kategorie) return res.status(400).json({ message: 'Kategorie fehlt' });
+        await db.upsertHaushaltBudget(haushalt.id, kategorie, betrag);
+        res.json({ message: 'Budget gespeichert' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.delete('/haushalt/budgets/:id', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        await db.deleteHaushaltBudget(haushalt.id, req.params.id);
+        res.json({ message: 'Budget gelöscht' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// --- Settlement: Wer schuldet wem? ---
+
+router.get('/haushalt/settlement/:monat', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(403).json({ message: 'Kein Haushalt.' });
+
+        const monat = req.params.monat; // YYYY-MM
+        const mitglieder = await db.getHaushaltMitglieder(haushalt.id);
+        const ausgleiche = await db.getHaushaltAusgleiche(haushalt.id, monat);
+
+        if (mitglieder.length < 2) {
+            return res.json({ owes: null, ausgleiche, mitglieder, balance: 0 });
+        }
+
+        const user1 = mitglieder[0];
+        const user2 = mitglieder[1];
+
+        const txs = await db.getHaushaltTransaktionenFuerMonat(haushalt.id, monat);
+
+        // balance > 0 → user2 schuldet user1
+        // balance < 0 → user1 schuldet user2
+        let balance = 0;
+        for (const tx of txs) {
+            const a1 = parseFloat(tx.anteil_user1 ?? 50) / 100;
+            const a2 = parseFloat(tx.anteil_user2 ?? 50) / 100;
+            const amount = parseFloat(tx.amount) || 0;
+            if (tx.eingetragen_von === user1.user_id) {
+                balance += amount * a2; // user2 owes this share to user1
+            } else if (tx.eingetragen_von === user2.user_id) {
+                balance -= amount * a1; // user1 owes this share to user2
+            }
+        }
+
+        // Bereits gebuchte Ausgleiche dieses Monats verrechnen
+        for (const a of ausgleiche) {
+            if (a.von_user_id === user2.user_id && a.an_user_id === user1.user_id) {
+                balance -= parseFloat(a.betrag);
+            } else if (a.von_user_id === user1.user_id && a.an_user_id === user2.user_id) {
+                balance += parseFloat(a.betrag);
+            }
+        }
+
+        let owes = null;
+        if (Math.abs(balance) >= 0.01) {
+            owes = {
+                from: balance > 0 ? user2 : user1,
+                to:   balance > 0 ? user1 : user2,
+                amount: Math.abs(balance)
+            };
+        }
+
+        res.json({ owes, ausgleiche, mitglieder, balance });
+    } catch (err) {
+        console.error('Settlement Fehler:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.post('/haushalt/ausgleich', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(403).json({ message: 'Kein Haushalt.' });
+
+        const { von_user_id, an_user_id, betrag, monat, notiz, mit_transaktion } = req.body;
+        if (!von_user_id || !an_user_id || !betrag || !monat) {
+            return res.status(400).json({ message: 'Fehlende Pflichtfelder.' });
+        }
+
+        const id = await db.addHaushaltAusgleich(haushalt.id, { von_user_id, an_user_id, betrag, monat, notiz });
+
+        if (mit_transaktion) {
+            const mitglieder = await db.getHaushaltMitglieder(haushalt.id);
+            const anUser = mitglieder.find(m => m.user_id === an_user_id);
+            const anName = anUser?.anzeigename || 'Person';
+            const isUser1 = von_user_id === mitglieder[0]?.user_id;
+            await db.addHaushaltTransaktion(haushalt.id, von_user_id, {
+                name: `Ausgleich an ${anName}`,
+                category: 'Ausgleich',
+                amount: parseFloat(betrag),
+                type: 'Ausgaben',
+                date: monat + '-01',
+                notiz: notiz || '',
+                anteil_user1: isUser1 ? 100 : 0,
+                anteil_user2: isUser1 ? 0 : 100,
+            });
+        }
+
+        res.json({ success: true, id });
+    } catch (err) {
+        console.error('Ausgleich Fehler:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// --- Fixkosten als Transaktion buchen ---
+
+router.post('/haushalt/fixkosten/:id/buchen', requireLogin, async (req, res) => {
+    try {
+        const db = await Database.getInstance();
+        const haushalt = await db.getHaushaltForUser(req.session.userId);
+        if (!haushalt) return res.status(404).json({ message: 'Kein Haushalt' });
+        const fixkosten = await db.getHaushaltFixkosten(haushalt.id);
+        const f = fixkosten.find(x => x.id == req.params.id);
+        if (!f) return res.status(404).json({ message: 'Fixkosten nicht gefunden' });
+        const konten = await db.getHaushaltKonten(haushalt.id);
+        const konto = konten[0];
+        if (!konto) return res.status(400).json({ message: 'Kein Haushaltskonto vorhanden' });
+        const txId = await db.addHaushaltTransaktion(haushalt.id, req.session.userId, {
+            type: 'outbound', name: f.name,
+            amount: f.betrag, category: f.kategorie,
+            date: new Date().toISOString().substring(0, 10),
+            konto_id: konto.id
+        });
+        res.json({ message: 'Als Transaktion gebucht', id: txId });
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -3188,6 +4173,7 @@ router.get('/verify-email', async (req, res) => {
         // Auto-Login nach Bestätigung
         req.session.username = user.email;
         req.session.userId = user.id;
+        req.session.isNewUser = true;
         return res.redirect('/users/onboarding');
     } catch (err) {
         console.error(err);
@@ -3205,6 +4191,8 @@ router.post('/onboarding/complete', requireLogin, async (req, res) => {
     try {
         const db = await Database.getInstance();
         await db.completeOnboarding(req.session.userId);
+        await db.seedDefaultCategories(req.session.userId); // Default-Kategorien für neuen User anlegen
+        req.session.isNewUser = false;
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -3288,6 +4276,9 @@ router.post('/fixkosten/unified/:id/book', requireLogin, async (req, res) => {
         const result = await db.bookFixkostUnified(req.session.userId, req.params.id);
         res.json({ message: 'Gebucht', ...result });
     } catch (err) {
+        if (err.message === 'KEIN_KONTO') {
+            return res.status(400).json({ code: 'KEIN_KONTO', message: 'Kein Konto hinterlegt. Bitte Fixkost bearbeiten und ein Konto zuweisen.' });
+        }
         console.error('Fehler beim manuellen Buchen unified Fixkost:', err);
         res.status(500).json({ message: 'Interner Serverfehler', error: err.message });
     }

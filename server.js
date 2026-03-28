@@ -21,13 +21,22 @@ const PORT = process.env.PORT || 3001;
 
 // Body Parser Middleware
 app.use(bodyParser.urlencoded({ extended: true, limit: "15mb" }));
-app.use(bodyParser.json({ limit: "15mb" }));
+// Stripe Webhook braucht raw body — diesen Pfad vom JSON-Parser ausschließen
+app.use((req, res, next) => {
+    if (req.path === '/users/stripe/webhook') return next();
+    bodyParser.json({ limit: "15mb" })(req, res, next);
+});
 
 // Session Middleware
 app.use(session({
-    secret: 'secret_key',
+    secret: process.env.SESSION_SECRET || (() => { console.warn('[GGC] SESSION_SECRET nicht gesetzt — bitte in .env eintragen!'); return 'fallback_dev_secret'; })(),
     resave: false,
-    saveUninitialized: true,
+    saveUninitialized: false,
+    cookie: {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 Tage
+    },
 }));
 
 // Globale Template-Variablen
@@ -48,7 +57,8 @@ app.use('/users', usersRouter);
 app.use('/Startseite', infoRouter);
 
 app.get('/', (req, res) => {
-    res.render('startseite');
+    if (req.session.username) return res.redirect('/users/overview');
+    res.render('startseite', { isLoggedIn: false });
 });
 
 app.use(express.static(path.join(__dirname, 'public')));

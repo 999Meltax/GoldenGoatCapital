@@ -28,7 +28,12 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Passwort</label>
-                    <input type="password" name="pw" id="inputPasswort" placeholder="••••••••" required>
+                    <input type="password" name="pw" id="inputPasswort" placeholder="min. 8 Zeichen" required oninput="checkPwStrength(this.value)">
+                    <div id="pwChecks" style="margin-top:8px; font-size:0.8rem; display:none; flex-direction:column; gap:3px;">
+                        <span id="pwCheck1" style="color:var(--text-3);"><i class="ri-close-circle-line"></i> Mindestens 8 Zeichen</span>
+                        <span id="pwCheck2" style="color:var(--text-3);"><i class="ri-close-circle-line"></i> Mindestens ein Großbuchstabe</span>
+                        <span id="pwCheck3" style="color:var(--text-3);"><i class="ri-close-circle-line"></i> Mindestens eine Zahl oder ein Sonderzeichen</span>
+                    </div>
                 </div>
 
                 <% if (errors && errors.length > 0) { %>
@@ -58,6 +63,22 @@
     </div>
 
     <script src="/common.js"></script>
+    <script>
+    function checkPwStrength(val) {
+        const checks = document.getElementById('pwChecks');
+        if (!checks) return;
+        checks.style.display = val.length > 0 ? 'flex' : 'none';
+        const set = (id, ok) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.color = ok ? '#22c55e' : 'var(--text-3)';
+            el.innerHTML = (ok ? '<i class="ri-checkbox-circle-line"></i> ' : '<i class="ri-close-circle-line"></i> ') + el.textContent.replace(/^[^\s]+\s/, '');
+        };
+        set('pwCheck1', val.length >= 8);
+        set('pwCheck2', /[A-Z]/.test(val));
+        set('pwCheck3', /[0-9!@#$%^&*()\-_=+\[\]{};':"\\|,.<>\/?]/.test(val));
+    }
+    </script>
 </body>
 
 </html>

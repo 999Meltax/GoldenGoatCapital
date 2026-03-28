@@ -2,8 +2,8 @@
 //  OVERVIEW.JS  –  Golden Goat Capital Dashboard
 // ══════════════════════════════════════════════════════════════
 
-const fmtEur     = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-const fmtEurSign = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', signDisplay: 'always' });
+const fmtEur     = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
+const fmtEurSign = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR'), signDisplay: 'always' });
 
 const ACCOUNT_LABELS_OV = {
     girokonto: 'Girokonto', sparkonto: 'Sparkonto', haushaltskonto: 'Haushaltskonto',
@@ -23,6 +23,8 @@ let allEventsOv        = [];
 let wealthChartInst    = null;
 let allSchuldenOv      = [];
 let schuldenChartInst  = null;
+let allSparziele       = [];
+let allBudgetsOv       = [];
 
 // ── Filter / LocalStorage ────────────────────────────────────
 
@@ -168,21 +170,25 @@ function renderStats() {
     if (incEl) incEl.textContent = fmtEur.format(inc);
     if (expEl) expEl.textContent = fmtEur.format(exp);
 
-    // Offene Rechnungen
+    // Offene Rechnungen — nur anzeigen wenn > 0
     const openBills = allDokumenteOv.filter(d => d.typ === 'rechnungen' && getEffectiveStatus(d) !== 'bezahlt');
-    const billEl = document.getElementById('ovOpenBillsCount');
+    const billEl  = document.getElementById('ovOpenBillsCount');
+    const billCard = document.getElementById('ovBillsCard');
     if (billEl) {
         billEl.textContent = openBills.length;
         billEl.style.color = openBills.length > 0 ? '#f59e0b' : '';
     }
+    if (billCard) billCard.style.display = openBills.length > 0 ? '' : 'none';
 
-    // Gesamtschulden
+    // Gesamtschulden — nur anzeigen wenn > 0
     const totalDebt = allSchuldenOv.reduce((s, d) => s + (parseFloat(d.restbetrag) || 0), 0);
-    const debtEl = document.getElementById('ovTotalDebt');
+    const debtEl  = document.getElementById('ovTotalDebt');
+    const debtCard = document.getElementById('ovDebtCard');
     if (debtEl) {
         debtEl.textContent = fmtEur.format(totalDebt);
-        debtEl.style.color = totalDebt > 0 ? '#ef4444' : '#22c55e';
+        debtEl.style.color = '#ef4444';
     }
+    if (debtCard) debtCard.style.display = totalDebt > 0 ? '' : 'none';
 }
 
 function getEffectiveStatus(doc) {
@@ -199,7 +205,7 @@ function renderNetWorth() {
     const wrap = document.getElementById('widget-networth');
     if (!wrap) return;
 
-    const fmtOv = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtOv = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
     const active = getActiveAccountsOv();
 
     // ── Daten berechnen ──────────────────────────────────────
@@ -406,21 +412,42 @@ function renderAccountsList() {
         return;
     }
     el.innerHTML = active.map(a => {
-        const bal   = a.currentBalance != null ? a.currentBalance : (a.balance || 0);
-        const label = ACCOUNT_LABELS_OV[a.type] || a.type;
-        const color = bal >= 0 ? '#22c55e' : '#ef4444';
+        const bal      = a.currentBalance != null ? a.currentBalance : (a.balance || 0);
+        const label    = ACCOUNT_LABELS_OV[a.type] || a.type;
+        const color    = bal >= 0 ? '#22c55e' : '#ef4444';
+        const reserved = a.reserved || 0;
+        const free     = a.free != null ? a.free : bal;
+        const overReserved = reserved > 0 && free < 0;
+
+        const reservedRow = reserved > 0
+            ? '<div style="font-size:0.7rem;margin-top:5px;padding-top:5px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:2px;">' +
+                  '<div style="display:flex;justify-content:space-between;gap:8px;">' +
+                      '<span style="color:var(--text-3);">Davon reserviert (Sparziele)</span>' +
+                      '<span style="color:#f59e0b;font-weight:600;">' + fmtEur.format(reserved) + '</span>' +
+                  '</div>' +
+                  '<div style="display:flex;justify-content:space-between;gap:8px;">' +
+                      '<span style="color:var(--text-3);">Frei verfügbar</span>' +
+                      '<span style="color:' + (overReserved ? '#ef4444' : '#22c55e') + ';font-weight:600;">' + fmtEur.format(free) + '</span>' +
+                  '</div>' +
+              '</div>'
+            : '';
+
         return '<a class="ov-acc-item" href="/users/konto/' + a.id + '">' +
             '<div class="ov-acc-dot" style="background:' + a.color + ';"></div>' +
             '<div style="flex:1;min-width:0;">' +
                 '<div class="ov-acc-name">' + escHtml(a.name) + '</div>' +
                 '<div class="ov-acc-type">' + label + '</div>' +
+                reservedRow +
             '</div>' +
-            '<div class="ov-acc-balance" style="color:' + color + ';">' + fmtEur.format(bal) + '</div>' +
+            '<div style="text-align:right;">' +
+                '<div class="ov-acc-balance" style="color:' + color + ';">' + fmtEur.format(bal) + '</div>' +
+                (overReserved ? '<div style="font-size:0.68rem;color:#ef4444;">⚠ Überbucht</div>' : '') +
+            '</div>' +
         '</a>';
     }).join('');
 }
 
-// ── Anstehende Zahlungen (Fixkosten) ─────────────────────────
+// ── Anstehende Zahlungen (Fixkosten + Schulden) ──────────────
 
 function renderUpcoming() {
     const el = document.getElementById('ovUpcoming');
@@ -428,66 +455,99 @@ function renderUpcoming() {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const HORIZON = 14;
 
-    // Fixkosten auf die nächsten 7 Tage prüfen
+    function daysUntilDate(d) {
+        const t = new Date(d);
+        t.setHours(0, 0, 0, 0);
+        return Math.round((t - today) / 86400000);
+    }
+
+    function nextOccurrenceByDatumTag(datumTag, horizon) {
+        for (let offset = 0; offset <= horizon; offset++) {
+            const d = new Date(today);
+            d.setDate(today.getDate() + offset);
+            if (d.getDate() === parseInt(datumTag)) return { date: d, offset };
+        }
+        return null;
+    }
+
     const upcoming = [];
-    allFixkostenOv.forEach(f => {
-        if (!f.datum_tag) return;
-        // Prüfe: Welche Tage in den nächsten 7 Tagen hat diese Fixkost?
-        for (let offset = 0; offset <= 7; offset++) {
-            const checkDate = new Date(today);
-            checkDate.setDate(today.getDate() + offset);
-            let matches = false;
+    const rhythmusShort = { monatlich: 'mtl.', woechentlich: 'wöch.', jaehrlich: 'jährl.', vierteljaehrlich: 'quartl.', halbjaehrlich: 'halbj.' };
 
-            if (f.haeufigkeit === 'monatlich' && checkDate.getDate() === parseInt(f.datum_tag)) {
-                matches = true;
-            } else if (f.haeufigkeit === 'woechentlich' && checkDate.getDay() === parseInt(f.datum_tag)) {
-                matches = true;
-            } else if (f.haeufigkeit === 'jaehrlich') {
-                // datum_tag = Tag, ggf. monat aus name o.ä. – vereinfacht: nur Tag prüfen
-                if (checkDate.getDate() === parseInt(f.datum_tag)) matches = true;
-            } else if (f.haeufigkeit === 'vierteljaehrlich') {
-                if (checkDate.getDate() === parseInt(f.datum_tag)) matches = true;
+    // Fixkosten: naechste_faelligkeit bevorzugen, datum_tag als Fallback
+    (allFixkostenOv || []).forEach(f => {
+        if (!f.aktiv) return;
+        if (f.subtyp === 'transfer') return;
+
+        if (f.naechste_faelligkeit) {
+            const diff = daysUntilDate(f.naechste_faelligkeit);
+            if (diff >= 0 && diff <= HORIZON) {
+                upcoming.push({
+                    label: f.name, betrag: f.betrag, daysOffset: diff,
+                    dueDate: new Date(f.naechste_faelligkeit),
+                    sub: (rhythmusShort[f.haeufigkeit] || f.haeufigkeit) + (f.kategorie ? ' · ' + f.kategorie : ''),
+                    icon: 'ri-repeat-line', iconBg: 'rgba(99,88,230,0.12)', iconColor: 'var(--accent)',
+                    href: '/users/fixkosten'
+                });
             }
-
-            if (matches) {
-                upcoming.push({ ...f, dueDate: new Date(checkDate), daysOffset: offset });
-                break;
+        } else if (f.datum_tag) {
+            const occ = nextOccurrenceByDatumTag(f.datum_tag, HORIZON);
+            if (occ) {
+                upcoming.push({
+                    label: f.name, betrag: f.betrag, daysOffset: occ.offset,
+                    dueDate: occ.date,
+                    sub: (rhythmusShort[f.haeufigkeit] || f.haeufigkeit) + (f.kategorie ? ' · ' + f.kategorie : ''),
+                    icon: 'ri-repeat-line', iconBg: 'rgba(99,88,230,0.12)', iconColor: 'var(--accent)',
+                    href: '/users/fixkosten'
+                });
             }
         }
     });
 
-    // Sortierung: aufsteigend nach Datum
+    // Schulden-Monatsraten: faelligkeitstag = Tag des Monats
+    (allSchuldenOv || []).forEach(s => {
+        if (!s.monatsrate || !s.faelligkeitstag || s.restbetrag <= 0) return;
+        const occ = nextOccurrenceByDatumTag(s.faelligkeitstag, HORIZON);
+        if (occ) {
+            upcoming.push({
+                label: s.name, betrag: s.monatsrate, daysOffset: occ.offset,
+                dueDate: occ.date,
+                sub: 'Schulden-Rate' + (s.glaeubiger ? ' · ' + s.glaeubiger : ''),
+                icon: 'ri-bank-card-line', iconBg: 'rgba(239,68,68,0.12)', iconColor: '#ef4444',
+                href: '/users/schulden'
+            });
+        }
+    });
+
     upcoming.sort((a, b) => a.dueDate - b.dueDate);
 
     if (!upcoming.length) {
-        el.innerHTML = '<div class="ov-empty"><i class="ri-calendar-check-line"></i>Keine Zahlungen in den nächsten 7 Tagen</div>';
+        el.innerHTML = '<div class="ov-empty"><i class="ri-calendar-check-line"></i>Keine Zahlungen in den nächsten 14 Tagen</div>';
         return;
     }
 
     el.innerHTML = upcoming.map(f => {
-        const daysOffset = f.daysOffset;
-        let badgeClass = 'normal', badgeText = 'In ' + daysOffset + ' Tagen';
-        if (daysOffset === 0) { badgeClass = 'today'; badgeText = 'Heute'; }
-        else if (daysOffset === 1) { badgeClass = 'soon'; badgeText = 'Morgen'; }
-        else if (daysOffset <= 3) { badgeClass = 'soon'; badgeText = 'In ' + daysOffset + ' Tagen'; }
+        let badgeClass = 'normal', badgeText = 'In ' + f.daysOffset + ' Tagen';
+        if (f.daysOffset === 0) { badgeClass = 'today'; badgeText = 'Heute'; }
+        else if (f.daysOffset === 1) { badgeClass = 'soon'; badgeText = 'Morgen'; }
+        else if (f.daysOffset <= 3) { badgeClass = 'soon'; badgeText = 'In ' + f.daysOffset + ' Tagen'; }
 
         const dateStr = f.dueDate.toLocaleDateString('de-DE', { day: '2-digit', month: 'short' });
-        const rhythmusShort = { monatlich: 'mtl.', woechentlich: 'wöch.', jaehrlich: 'jährl.', vierteljaehrlich: 'quartl.' };
 
-        return '<div class="ov-row-item">' +
-            '<div class="ov-row-item-icon" style="background:rgba(99,88,230,0.12);color:var(--accent);">' +
-                '<i class="ri-repeat-line"></i>' +
+        return '<a class="ov-row-item" href="' + f.href + '" style="text-decoration:none;">' +
+            '<div class="ov-row-item-icon" style="background:' + f.iconBg + ';color:' + f.iconColor + ';">' +
+                '<i class="' + f.icon + '"></i>' +
             '</div>' +
             '<div class="ov-row-item-main">' +
-                '<div class="ov-row-item-name">' + escHtml(f.name) + '</div>' +
-                '<div class="ov-row-item-sub">' + dateStr + ' · ' + (rhythmusShort[f.haeufigkeit] || f.haeufigkeit) + (f.kategorie ? ' · ' + escHtml(f.kategorie) : '') + '</div>' +
+                '<div class="ov-row-item-name">' + escHtml(f.label) + '</div>' +
+                '<div class="ov-row-item-sub">' + dateStr + ' · ' + escHtml(f.sub) + '</div>' +
             '</div>' +
             '<div class="ov-row-item-right">' +
                 '<div class="ov-row-item-amount negative">−' + fmtEur.format(f.betrag) + '</div>' +
                 '<div class="ov-badge ' + badgeClass + '" style="margin-top:3px;">' + badgeText + '</div>' +
             '</div>' +
-        '</div>';
+        '</a>';
     }).join('');
 }
 
@@ -637,6 +697,11 @@ function renderSchulden() {
     renderSchuldenList();
     renderSchuldenChart();
     renderSchuldenRaten();
+    // Schulden-Widget ausblenden wenn keine Schulden vorhanden
+    const schuldenWidget = document.getElementById('widget-schulden');
+    if (schuldenWidget && allSchuldenOv.length === 0) {
+        schuldenWidget.style.display = 'none';
+    }
 }
 
 function renderSchuldenList() {
@@ -827,31 +892,100 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
         // Alle Daten parallel laden
-        const [txRes, accRes, fixRes, dokRes, todoRes, evRes, schuldenRes] = await Promise.all([
+        const [txRes, accRes, fixRes, dokRes, evRes, schuldenRes, sparRes, budgetRes] = await Promise.all([
             fetch('/users/getTransactions'),
             fetch('/users/accounts'),
             fetch('/users/fixkosten/unified'),
             fetch('/users/dokumente/data'),
-            fetch('/users/todos', { headers: { Accept: 'application/json' } }),
             fetch('/users/events'),
             fetch('/users/schulden/data'),
+            fetch('/users/sparziele'),
+            fetch('/users/budgets'),
         ]);
 
         allTransactionsOv = await txRes.json();
         allAccountsOv     = await accRes.json();
         allFixkostenOv    = await fixRes.json();
         allDokumenteOv    = dokRes.ok ? await dokRes.json() : [];
-        allTodosOv        = todoRes.ok ? await todoRes.json() : [];
+        allTodosOv        = []; // Privat-ToDo entfernt (Phase 0-A)
         allEventsOv       = evRes.ok  ? await evRes.json()  : [];
         allSchuldenOv     = schuldenRes.ok ? await schuldenRes.json() : [];
+        allSparziele      = sparRes.ok ? await sparRes.json() : [];
+        allBudgetsOv      = budgetRes.ok ? await budgetRes.json() : [];
 
         ensureNewAccountsActiveOv();
         buildOverviewFilterUI();
         renderAll();
+        renderEmptyState();
+        renderHaushaltPromo();
     } catch (err) {
         console.error('Dashboard Fehler:', err);
     }
 });
+
+async function renderHaushaltPromo() {
+    const promoEl = document.getElementById('haushaltPromoWidget');
+    if (!promoEl) return;
+    // Promo einmalig weggeklickt? Nicht mehr zeigen.
+    if (localStorage.getItem('ggc_haushalt_promo_dismissed') === '1') return;
+    try {
+        const res = await fetch('/users/haushalt/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.haushalt) return; // Haushalt existiert bereits → keine Promo
+    } catch { return; }
+    promoEl.style.display = '';
+    promoEl.innerHTML = `
+        <div style="background:linear-gradient(135deg,rgba(16,185,129,0.08) 0%,rgba(99,88,230,0.06) 100%);border:1px solid rgba(16,185,129,0.2);border-radius:16px;padding:20px 24px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+            <div style="width:44px;height:44px;border-radius:12px;background:rgba(16,185,129,0.12);color:#10b981;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;">
+                <i class="ri-home-heart-line"></i>
+            </div>
+            <div style="flex:1;min-width:200px;">
+                <div style="font-weight:700;font-size:0.95rem;color:var(--text-1);margin-bottom:3px;">Lebst du mit jemandem zusammen?</div>
+                <div style="font-size:0.82rem;color:var(--text-3);line-height:1.5;">Der Haushalt-Modus teilt eure Ausgaben fair auf, berechnet wer wem was schuldet und erinnert euch monatlich an den Ausgleich — alles automatisch.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;">
+                <a href="/users/haushalt" class="btn-primary" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:10px;font-size:0.85rem;font-weight:700;text-decoration:none;">
+                    <i class="ri-home-heart-line"></i> Haushalt einrichten
+                </a>
+                <button onclick="dismissHaushaltPromo()" style="padding:9px 14px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--text-3);font-size:0.82rem;cursor:pointer;">
+                    Nicht jetzt
+                </button>
+            </div>
+        </div>`;
+}
+
+function dismissHaushaltPromo() {
+    localStorage.setItem('ggc_haushalt_promo_dismissed', '1');
+    const el = document.getElementById('haushaltPromoWidget');
+    if (el) el.style.display = 'none';
+}
+
+function renderEmptyState() {
+    const existing = document.getElementById('ov-empty-state');
+    if (existing) existing.remove();
+    if (allAccountsOv.length > 0) return;
+
+    const container = document.getElementById('widgetsContainer');
+    if (!container) return;
+
+    const el = document.createElement('div');
+    el.id = 'ov-empty-state';
+    el.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 24px;text-align:center;';
+    el.innerHTML = `
+        <div style="width:72px;height:72px;border-radius:50%;background:rgba(99,88,230,0.12);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:2rem;margin-bottom:20px;">
+            <i class="ri-bank-line"></i>
+        </div>
+        <h2 style="font-size:1.3rem;font-weight:700;margin-bottom:8px;">Noch kein Konto angelegt</h2>
+        <p style="color:var(--text-3);font-size:0.9rem;max-width:340px;line-height:1.6;margin-bottom:24px;">
+            Lege dein erstes Konto an, um das Dashboard mit Leben zu füllen — Ausgaben, Budgets und Prognosen warten.
+        </p>
+        <a href="/users/konten" style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;background:var(--accent);color:#fff;border-radius:10px;font-weight:600;font-size:0.9rem;text-decoration:none;">
+            <i class="ri-add-line"></i> Erstes Konto anlegen
+        </a>
+    `;
+    container.prepend(el);
+}
 // ── Financial Insights ───────────────────────────────────────
 
 function renderInsights() {
@@ -1017,8 +1151,69 @@ function generateInsights() {
         }
     }
 
-    // ── 7. Sparziel fast erreicht ──
-    // (allSparziele nicht verfügbar im Overview — wäre ein separater Fetch nötig, daher weglassen)
+    // ── 7. Sparziel fast erreicht (≥90%) ──
+    const fastFertig = allSparziele.filter(sz =>
+        sz.zielbetrag > 0 && (sz.gespart / sz.zielbetrag) >= 0.9 && (sz.gespart / sz.zielbetrag) < 1
+    );
+    if (fastFertig.length > 0) {
+        const sz = fastFertig[0];
+        const pct = Math.round(sz.gespart / sz.zielbetrag * 100);
+        insights.push({
+            type: 'success', icon: 'ri-flag-line',
+            title: `Sparziel „${sz.name}" fast erreicht`,
+            sub: `${pct}% von ${fmtEur.format(sz.zielbetrag)} — noch ${fmtEur.format(sz.zielbetrag - sz.gespart)}.`,
+            url: '/users/budget'
+        });
+    }
+
+    // ── 7b. Fixkosten > 50% der Einnahmen ──
+    const monatlicheFixkosten = allFixkostenOv
+        .filter(f => f.rhythmus === 'monatlich' || f.haeufigkeit === 'monatlich')
+        .reduce((s, f) => s + parseFloat(f.betrag || 0), 0);
+    if (thisInc > 0 && monatlicheFixkosten > 0) {
+        const anteil = monatlicheFixkosten / thisInc;
+        if (anteil > 0.5) {
+            insights.push({
+                type: 'warning', icon: 'ri-repeat-line',
+                title: `Fixkosten: ${Math.round(anteil * 100)}% deiner Einnahmen`,
+                sub: `${fmtEur.format(monatlicheFixkosten)}/Monat an Fixkosten — wenig Spielraum.`,
+                url: '/users/fixkosten'
+            });
+        }
+    }
+
+    // ── 7c. Budget-Kategorie fast ausgeschöpft (≥80%) ──
+    if (allBudgetsOv.length > 0) {
+        const byKatBudget = {};
+        thisTx.filter(t => t.type === 'Ausgaben').forEach(t => {
+            byKatBudget[t.category] = (byKatBudget[t.category] || 0) + t.amount;
+        });
+        const nearLimit = allBudgetsOv
+            .filter(b => b.betrag > 0 && (byKatBudget[b.kategorie] || 0) / b.betrag >= 0.80)
+            .sort((a, b) => (byKatBudget[b.kategorie] || 0) / b.betrag - (byKatBudget[a.kategorie] || 0) / a.betrag);
+        if (nearLimit.length > 0) {
+            const b = nearLimit[0];
+            const pct = Math.round((byKatBudget[b.kategorie] || 0) / b.betrag * 100);
+            insights.push({
+                type: pct >= 100 ? 'danger' : 'warning', icon: 'ri-pie-chart-2-line',
+                title: `Budget „${b.kategorie}": ${pct}% verbraucht`,
+                sub: `${fmtEur.format(byKatBudget[b.kategorie] || 0)} von ${fmtEur.format(b.betrag)} Limit.`,
+                url: '/users/budget'
+            });
+        }
+    }
+
+    // ── 7d. Konto überbucht (Sparziele > Kontostand) ──
+    const ueberbuchteKonten = allAccountsOv.filter(a => a.reserved > 0 && a.free < 0);
+    if (ueberbuchteKonten.length > 0) {
+        const k = ueberbuchteKonten[0];
+        insights.push({
+            type: 'danger', icon: 'ri-bank-card-line',
+            title: `Sparziele übersteigen Kontostand`,
+            sub: `„${k.name}": ${fmtEur.format(k.reserved)} verplant, aber nur ${fmtEur.format(k.currentBalance)} verfügbar.`,
+            url: '/users/budget'
+        });
+    }
 
     // ── 8. Positiver Trend: Ausgaben gesunken ──
     if (prevExp > 50 && thisExp > 0 && thisExp < prevExp * 0.85) {
@@ -1052,7 +1247,8 @@ function renderFinanzScore() {
         return d.toISOString().substring(0, 7);
     })();
 
-    const monthTx = allTransactionsOv.filter(t => (t.date || '').startsWith(thisMonth));
+    const isRealScore = t => t.category !== 'Umbuchung' && t.category !== 'Kontostandskorrektur';
+    const monthTx = allTransactionsOv.filter(t => (t.date || '').startsWith(thisMonth) && isRealScore(t));
     const income  = monthTx.filter(t => t.type === 'Einnahmen').reduce((s, t) => s + t.amount, 0);
     const expense = monthTx.filter(t => t.type === 'Ausgaben').reduce((s, t) => s + t.amount, 0);
 
@@ -1137,9 +1333,75 @@ function renderFinanzScore() {
     fill('sdNotgroschen', '🛡 Notgroschen',      notgrosPts, 25);
     fill('sdSchulden',    '📉 Schuldenquote',    schuldenPts, 20);
 
-    // Tipp
+    // Einzelner kurzer Tipp (bleibt)
     const tip = sparTip || noTip || schulTip || 'Deine Finanzen sind auf einem guten Weg!';
     if (tipEl) tipEl.textContent = '💡 ' + tip;
+
+    // Handlungsempfehlungen — sortiert nach Handlungsbedarf (niedrigster Teilscore zuerst)
+    const recoEl = document.getElementById('scoreRecommendations');
+    if (!recoEl) return;
+
+    const recommendations = [];
+
+    const sparPct100 = Math.round(sparPts / 30 * 100);
+    const notPct100  = Math.round(notgrosPts / 25 * 100);
+    const schulPct100 = Math.round(schuldenPts / 20 * 100);
+
+    if (sparPct100 < 75) {
+        const target = income > 0 ? fmtEur.format(income * 0.20) : '20% deiner Einnahmen';
+        recommendations.push({
+            score: sparPct100,
+            icon: 'ri-money-euro-circle-line',
+            color: sparPct100 < 40 ? '#ef4444' : '#f59e0b',
+            text: sparPct100 < 40
+                ? `Sparquote kritisch (${Math.round(sparPct * 100)}%). Versuche mindestens 5% deiner Einnahmen zur Seite zu legen.`
+                : `Sparquote bei ${Math.round(sparPct * 100)}%. Ziel: 20% (${target}/Monat) — noch ${20 - Math.round(sparPct * 100)}% fehlen.`,
+            link: '/users/budget',
+            linkLabel: 'Budget ansehen'
+        });
+    }
+
+    if (notPct100 < 75) {
+        const missing = Math.max(0, notgroschenZiel - wealth);
+        recommendations.push({
+            score: notPct100,
+            icon: 'ri-shield-line',
+            color: notPct100 < 40 ? '#ef4444' : '#f59e0b',
+            text: notPct100 < 40
+                ? `Kein Notgroschen vorhanden. Ziel: ${fmtEur.format(notgroschenZiel)} (3 Monatsausgaben).`
+                : `Notgroschen fast erreicht. Noch ${fmtEur.format(missing)} bis zum Ziel von ${fmtEur.format(notgroschenZiel)}.`,
+            link: '/users/budget',
+            linkLabel: 'Sparziel anlegen'
+        });
+    }
+
+    if (schuldenPts < 15 && totalDebt > 0) {
+        recommendations.push({
+            score: schulPct100,
+            icon: 'ri-scales-line',
+            color: schulPct100 < 40 ? '#ef4444' : '#f59e0b',
+            text: `Schulden von ${fmtEur.format(totalDebt)} belasten deinen Score. Priorisiere Tilgung für schnellen Score-Anstieg.`,
+            link: '/users/schulden',
+            linkLabel: 'Schulden verwalten'
+        });
+    }
+
+    // Nur die 2 dringendsten anzeigen
+    recommendations.sort((a, b) => a.score - b.score);
+    const top = recommendations.slice(0, 2);
+
+    if (top.length === 0) {
+        recoEl.innerHTML = '<div style="font-size:0.8rem;color:#22c55e;display:flex;align-items:center;gap:6px;"><i class="ri-checkbox-circle-line"></i> Alle Bereiche im grünen Bereich – weiter so!</div>';
+    } else {
+        recoEl.innerHTML = top.map(r => `
+            <div style="display:flex;align-items:flex-start;gap:10px;background:var(--surface-2);border-radius:10px;padding:10px 12px;border-left:3px solid ${r.color};">
+                <i class="${r.icon}" style="color:${r.color};font-size:1rem;margin-top:1px;flex-shrink:0;"></i>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:0.78rem;color:var(--text-2);line-height:1.4;">${r.text}</div>
+                    <a href="${r.link}" style="font-size:0.75rem;color:var(--accent);font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:3px;margin-top:4px;">${r.linkLabel} <i class="ri-arrow-right-s-line"></i></a>
+                </div>
+            </div>`).join('');
+    }
 }
 
 function toggleScoreDetails() {
@@ -1162,7 +1424,8 @@ function renderCashflow() {
     if (!barsEl) return;
 
     const thisMonth = new Date().toISOString().substring(0, 7);
-    const monthTx   = allTransactionsOv.filter(t => (t.date || '').startsWith(thisMonth));
+    const isRealCashflow = t => t.category !== 'Umbuchung' && t.category !== 'Kontostandskorrektur';
+    const monthTx   = allTransactionsOv.filter(t => (t.date || '').startsWith(thisMonth) && isRealCashflow(t));
     const income    = monthTx.filter(t => t.type === 'Einnahmen').reduce((s, t) => s + t.amount, 0);
     const expense   = monthTx.filter(t => t.type === 'Ausgaben').reduce((s, t) => s + t.amount, 0);
     const net       = income - expense;
@@ -1376,20 +1639,29 @@ function renderPrognose() {
     const active  = getActiveAccountsOv();
     const startBalance = active.reduce((s, a) => s + (a.currentBalance ?? a.balance ?? 0), 0);
 
-    // ── Durchschnittliche monatliche Einnahmen (letzte 3 Monate) ─
+    // ── Ø Netto-Cashflow aus echten Transaktionen (letzte 3 Monate) ─
+    // Umbuchungen + Kontostandskorrekturen ausgeschlossen.
+    // Sowohl Einnahmen als auch Ausgaben werden berücksichtigt,
+    // damit variable Kosten (Lebensmittel, Freizeit etc.) in der Prognose enthalten sind.
     const now = new Date();
     const last3Months = [];
     for (let i = 1; i <= 3; i++) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         last3Months.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
     }
-    let totalInc3 = 0;
+    const isRealTx = t => t.category !== 'Umbuchung' && t.category !== 'Kontostandskorrektur';
+    let totalInc3 = 0, totalExp3 = 0;
     last3Months.forEach(m => {
         allTransactionsOv
-            .filter(t => (t.date || '').startsWith(m) && t.type === 'Einnahmen')
-            .forEach(t => { totalInc3 += t.amount; });
+            .filter(t => (t.date || '').startsWith(m) && isRealTx(t))
+            .forEach(t => {
+                if (t.type === 'Einnahmen') totalInc3 += t.amount;
+                else                        totalExp3 += t.amount;
+            });
     });
     const avgMonthlyInc = totalInc3 / 3;
+    const avgMonthlyExp = totalExp3 / 3;
+    const avgMonthlyNet = avgMonthlyInc - avgMonthlyExp;
 
     // ── Monatliche Fixkosten berechnen ────────────────────────
     let totalFixMonthly = 0;
@@ -1434,10 +1706,10 @@ function renderPrognose() {
     });
 
     // ── Netto pro Monat ───────────────────────────────────────
-    // Einnahmen = Ø historische Transaktionen + fixe Einnahmen (Gehalt etc.)
-    // Ausgaben  = Fixkosten-Ausgaben + Schuldenraten
-    const totalMonthlyInc = avgMonthlyInc + totalFixIncMonthly;
-    const netMonthly = totalMonthlyInc - totalFixMonthly - totalSchuldenMonthly;
+    // Basis: echter Ø-Netto aus den letzten 3 Monaten (Einnahmen − alle Ausgaben).
+    // Variable Kosten sind damit automatisch enthalten — keine Doppelzählung mit Fixkosten.
+    // Die Fixkosten- und Schulden-Breakdown-Sektionen sind rein informativ.
+    const netMonthly = avgMonthlyNet;
 
     // ── Prognose-Datenpunkte berechnen ────────────────────────
     const horizont = prognoseHorizont;
@@ -1540,21 +1812,26 @@ function renderPrognose() {
     // ── Aufschlüsselung rendern ───────────────────────────────
     const incRow = document.getElementById('progIncomeRows');
     if (incRow) {
-        let html = '';
-        if (avgMonthlyInc > 0) {
-            html += `<div class="prog-breakdown-row">
-                <span class="prog-breakdown-row-name">Ø Transaktionen</span>
-                <span class="prog-breakdown-row-val" style="color:#22c55e;">+${fmtEur.format(avgMonthlyInc)}</span>
-             </div>`;
+        const netColor = avgMonthlyNet >= 0 ? '#22c55e' : '#ef4444';
+        const netSign  = avgMonthlyNet >= 0 ? '+' : '';
+        const hasData  = avgMonthlyInc > 0 || avgMonthlyExp > 0;
+        if (!hasData) {
+            incRow.innerHTML = `<div class="prog-breakdown-row"><span class="prog-breakdown-row-name" style="color:var(--text-3);">Keine Transaktionen der letzten 3 Monate</span></div>`;
+        } else {
+            incRow.innerHTML =
+                `<div class="prog-breakdown-row">
+                    <span class="prog-breakdown-row-name" style="color:var(--text-3);font-size:0.72rem;">Ø Einnahmen</span>
+                    <span class="prog-breakdown-row-val" style="color:#22c55e;">+${fmtEur.format(avgMonthlyInc)}</span>
+                </div>` +
+                `<div class="prog-breakdown-row">
+                    <span class="prog-breakdown-row-name" style="color:var(--text-3);font-size:0.72rem;">Ø Ausgaben</span>
+                    <span class="prog-breakdown-row-val" style="color:#ef4444;">−${fmtEur.format(avgMonthlyExp)}</span>
+                </div>` +
+                `<div class="prog-breakdown-row" style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px;">
+                    <span class="prog-breakdown-row-name" style="font-weight:600;">Ø Netto / Monat</span>
+                    <span class="prog-breakdown-row-val" style="color:${netColor};font-weight:700;">${netSign}${fmtEur.format(avgMonthlyNet)}</span>
+                </div>`;
         }
-        fixIncDetails.forEach(f => {
-            html += `<div class="prog-breakdown-row">
-                <span class="prog-breakdown-row-name">${escHtml(f.name)}</span>
-                <span class="prog-breakdown-row-val" style="color:#22c55e;">+${fmtEur.format(f.monthly)}</span>
-            </div>`;
-        });
-        if (!html) html = `<div class="prog-breakdown-row"><span class="prog-breakdown-row-name" style="color:var(--text-3);">Keine Einnahmen erfasst</span></div>`;
-        incRow.innerHTML = html;
     }
 
     const fixRow = document.getElementById('progFixRows');
@@ -1639,78 +1916,196 @@ function renderPrognose() {
 //  WIDGET-KONFIGURATION
 // ══════════════════════════════════════════════════════════════
 
+const WIDGET_CONFIG_VERSION = 2;
+
+// Default: only stats + vermoegensverlauf visible — everything else must be added manually
 const WIDGETS = [
-    { id: 'widget-stats',            label: 'Stat-Karten',             icon: 'ri-dashboard-line',       default: true },
-    { id: 'widget-prognose',         label: 'Cashflow-Prognose',        icon: 'ri-funds-line',           default: true },
-    { id: 'widget-phase5',           label: 'Finanz-Score & Cashflow', icon: 'ri-award-line',           default: true },
-    { id: 'widget-insights',         label: 'Financial Insights',      icon: 'ri-lightbulb-flash-line', default: true },
-    { id: 'widget-vermoegensverlauf',label: 'Vermögensverlauf',         icon: 'ri-line-chart-line',      default: true },
-    { id: 'widget-aufgaben',         label: 'Aufgaben & Termine',       icon: 'ri-checkbox-line',        default: true },
-    { id: 'widget-schulden',         label: 'Schuldenübersicht',        icon: 'ri-scales-line',          default: true },
+    { id: 'widget-stats',            label: 'Stat-Karten',             icon: 'ri-dashboard-line',       default: true  },
+    { id: 'widget-vermoegensverlauf',label: 'Vermögensverlauf',         icon: 'ri-line-chart-line',      default: true  },
+    { id: 'widget-networth',         label: 'Net-Worth',                icon: 'ri-pie-chart-2-line',     default: false },
+    { id: 'widget-prognose',         label: 'Cashflow-Prognose',        icon: 'ri-funds-line',           default: false },
+    { id: 'widget-insights',         label: 'Financial Insights',       icon: 'ri-lightbulb-flash-line', default: false },
+    { id: 'widget-phase5',           label: 'Finanz-Score & Cashflow',  icon: 'ri-award-line',           default: false },
+    { id: 'widget-aufgaben',         label: 'Aufgaben & Termine',       icon: 'ri-checkbox-line',        default: false },
+    { id: 'widget-schulden',         label: 'Schuldenübersicht',        icon: 'ri-scales-line',          default: false },
 ];
+
+// ── Config (visibility) ──────────────────────────────────────
 
 function getWidgetConfig() {
     try {
         const raw = localStorage.getItem('ggc_widget_config');
-        return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
+        if (!raw) return null;
+        const cfg = JSON.parse(raw);
+        if (cfg.__version !== WIDGET_CONFIG_VERSION) return null; // version bump → reset to new defaults
+        return cfg;
+    } catch { return null; }
 }
 
 function saveWidgetConfig(cfg) {
+    cfg.__version = WIDGET_CONFIG_VERSION;
     localStorage.setItem('ggc_widget_config', JSON.stringify(cfg));
 }
 
+function isWidgetVisible(id, cfg) {
+    if (!cfg) {
+        const w = WIDGETS.find(ww => ww.id === id);
+        return w ? w.default : true;
+    }
+    if (cfg[id] !== undefined) return cfg[id];
+    const w = WIDGETS.find(ww => ww.id === id);
+    return w ? w.default : true;
+}
+
+// ── Order ────────────────────────────────────────────────────
+
+function getWidgetOrder() {
+    try {
+        const raw = localStorage.getItem('ggc_widget_order');
+        if (!raw) return WIDGETS.map(w => w.id);
+        const order = JSON.parse(raw);
+        // Append any new widgets not yet in saved order
+        WIDGETS.forEach(w => { if (!order.includes(w.id)) order.push(w.id); });
+        return order;
+    } catch { return WIDGETS.map(w => w.id); }
+}
+
+function saveWidgetOrder(order) {
+    localStorage.setItem('ggc_widget_order', JSON.stringify(order));
+}
+
+// ── Apply (visibility + DOM order) ───────────────────────────
+
 function applyWidgets() {
-    const cfg = getWidgetConfig();
+    const cfg       = getWidgetConfig();
+    const order     = getWidgetOrder();
+    const container = document.getElementById('widgetsContainer');
+
     WIDGETS.forEach(w => {
         const el = document.getElementById(w.id);
         if (!el) return;
-        const visible = cfg[w.id] !== false; // default sichtbar
-        el.style.display = visible ? '' : 'none';
+        el.style.display = isWidgetVisible(w.id, cfg) ? '' : 'none';
     });
+
+    if (container) {
+        order.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.parentElement === container) container.appendChild(el);
+        });
+    }
 }
 
-function openWidgetConfig() {
-    const cfg  = getWidgetConfig();
-    const list = document.getElementById('widgetToggleList');
+// ── Drawer ───────────────────────────────────────────────────
+
+let _dragWidgetId = null;
+
+function renderWidgetList() {
+    const cfg   = getWidgetConfig();
+    const order = getWidgetOrder();
+    const list  = document.getElementById('widgetToggleList');
     if (!list) return;
 
-    list.innerHTML = WIDGETS.map(w => {
-        const visible = cfg[w.id] !== false;
-        return `<label class="widget-toggle-row" onclick="toggleWidget('${w.id}', this.querySelector('.widget-toggle-switch'))">
+    const visibleCount = WIDGETS.filter(w => isWidgetVisible(w.id, cfg)).length;
+    const hiddenCount  = WIDGETS.length - visibleCount;
+
+    list.innerHTML = order.map(id => {
+        const w = WIDGETS.find(ww => ww.id === id);
+        if (!w) return '';
+        const visible = isWidgetVisible(id, cfg);
+        return `<div class="widget-toggle-row" draggable="true"
+            ondragstart="widgetDragStart('${w.id}')"
+            ondragover="widgetDragOver(event, this)"
+            ondrop="widgetDrop('${w.id}')"
+            ondragend="widgetDragEnd()"
+            data-id="${w.id}">
+            <div class="widget-drag-handle" title="Ziehen zum Sortieren"><i class="ri-draggable"></i></div>
             <div class="widget-toggle-info">
                 <div class="widget-toggle-icon"><i class="${w.icon}"></i></div>
                 <span>${w.label}</span>
             </div>
-            <div class="widget-toggle-switch ${visible ? 'on' : ''}" data-id="${w.id}">
+            <div class="widget-toggle-switch ${visible ? 'on' : ''}" data-id="${w.id}"
+                onclick="toggleWidget('${w.id}', this); event.stopPropagation();">
                 <div class="widget-toggle-knob"></div>
             </div>
-        </label>`;
+        </div>`;
     }).join('');
 
+    // Hinweis wenn viele Widgets ausgeblendet sind
+    if (hiddenCount >= 3) {
+        const hint = document.createElement('div');
+        hint.style.cssText = 'margin-top:14px;padding:12px 14px;background:rgba(99,88,230,0.07);border:1px solid rgba(99,88,230,0.18);border-radius:10px;display:flex;align-items:flex-start;gap:10px;';
+        hint.innerHTML = `
+            <i class="ri-lightbulb-line" style="color:var(--accent);font-size:1rem;flex-shrink:0;margin-top:1px;"></i>
+            <span style="font-size:0.8rem;color:var(--text-2);line-height:1.5;">
+                <strong style="color:var(--text-1);">${hiddenCount} Widget${hiddenCount > 1 ? 's' : ''} ausgeblendet.</strong>
+                Klicke auf einen Schalter rechts um es einzublenden — oder ziehe die Reihen um die Reihenfolge zu ändern.
+            </span>`;
+        list.appendChild(hint);
+    }
+}
+
+function openWidgetConfig() {
+    renderWidgetList();
     document.getElementById('widgetDrawerBackdrop').classList.add('open');
     document.getElementById('widgetDrawer').classList.add('open');
     document.body.style.overflow = 'hidden';
 }
 
-function closeWidgetConfig(e) {
+function closeWidgetConfig() {
     document.getElementById('widgetDrawerBackdrop').classList.remove('open');
     document.getElementById('widgetDrawer').classList.remove('open');
     document.body.style.overflow = '';
 }
 
 function toggleWidget(id, switchEl) {
-    const cfg     = getWidgetConfig();
-    const wasOn   = cfg[id] !== false;
-    cfg[id]       = !wasOn;
+    let cfg = getWidgetConfig();
+    if (!cfg) {
+        cfg = {};
+        WIDGETS.forEach(w => { cfg[w.id] = w.default; });
+    }
+    const wasVisible = isWidgetVisible(id, cfg);
+    cfg[id] = !wasVisible;
     saveWidgetConfig(cfg);
-    switchEl.classList.toggle('on', !wasOn);
+    if (switchEl) switchEl.classList.toggle('on', !wasVisible);
     const el = document.getElementById(id);
-    if (el) el.style.display = !wasOn ? '' : 'none';
+    if (el) el.style.display = !wasVisible ? '' : 'none';
 }
 
 function resetWidgets() {
-    saveWidgetConfig({});
+    localStorage.removeItem('ggc_widget_config');
+    localStorage.removeItem('ggc_widget_order');
     applyWidgets();
-    document.querySelectorAll('.widget-toggle-switch').forEach(sw => sw.classList.add('on'));
+    renderWidgetList();
+}
+
+// ── Drag & Drop ──────────────────────────────────────────────
+
+function widgetDragStart(id) {
+    _dragWidgetId = id;
+}
+
+function widgetDragOver(e, el) {
+    e.preventDefault();
+    document.querySelectorAll('.widget-toggle-row').forEach(r => r.classList.remove('drag-over'));
+    el.classList.add('drag-over');
+}
+
+function widgetDrop(targetId) {
+    document.querySelectorAll('.widget-toggle-row').forEach(r => r.classList.remove('drag-over'));
+    if (!_dragWidgetId || _dragWidgetId === targetId) { _dragWidgetId = null; return; }
+    const order   = getWidgetOrder();
+    const fromIdx = order.indexOf(_dragWidgetId);
+    const toIdx   = order.indexOf(targetId);
+    if (fromIdx === -1 || toIdx === -1) { _dragWidgetId = null; return; }
+    order.splice(fromIdx, 1);
+    order.splice(toIdx, 0, _dragWidgetId);
+    saveWidgetOrder(order);
+    applyWidgets();
+    renderWidgetList();
+    _dragWidgetId = null;
+}
+
+function widgetDragEnd() {
+    _dragWidgetId = null;
+    document.querySelectorAll('.widget-toggle-row').forEach(r => r.classList.remove('drag-over'));
 }

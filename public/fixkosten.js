@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════
 // GLOBAL STATE
 // ═══════════════════════════════════════════════════════════
-const fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+const fmt = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
 let allEintraege = [];
 let allAccounts  = [];
@@ -422,6 +422,11 @@ function openBuchModal(id) {
     buchId = id;
     document.getElementById('buchInfo').textContent =
         `„${e.name}" – ${fmt.format(e.betrag)} wird als Transaktion gebucht.`;
+    const warn = document.getElementById('buchKeinKontoWarn');
+    if (warn) {
+        const ohneKonto = e.subtyp !== 'transfer' && !e.account_id;
+        warn.style.display = ohneKonto ? 'flex' : 'none';
+    }
     document.getElementById('buchModal').style.display = 'flex';
 }
 
@@ -438,10 +443,19 @@ async function confirmBuchen() {
     buchId = null;
     try {
         const res = await fetch(`/users/fixkosten/unified/${id}/book`, { method: 'POST' });
-        if (!res.ok) throw new Error();
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            if (data.code === 'KEIN_KONTO') {
+                showMsg('Kein Konto hinterlegt – bitte Eintrag bearbeiten und ein Konto zuweisen.', true);
+            } else {
+                showMsg('Fehler beim Buchen.', true);
+            }
+            return;
+        }
         await loadEintraege();
+        showMsg('Erfolgreich gebucht.', false);
     } catch(e) {
-        alert('Fehler beim Buchen.');
+        showMsg('Fehler beim Buchen.', true);
     }
 }
 

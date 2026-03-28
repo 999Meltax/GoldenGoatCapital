@@ -171,19 +171,15 @@
             const status = getEffectiveStatus(d);
             const statusLabel = { offen: 'Offen', bezahlt: 'Bezahlt', ueberfaellig: 'Überfällig' };
 
-            // Vorschau-Bereich
-            let previewHtml = '';
-            if (d.file_data) {
-                const ext = (d.file_ext || '').toLowerCase();
-                if (d.file_mime === 'application/pdf' || ext === 'pdf') {
-                    previewHtml = '<iframe src="' + d.file_data + '" title="' + esc(d.name) + '"></iframe>';
-                } else if (['jpg','jpeg','png','gif','webp'].includes(ext) || (d.file_mime || '').startsWith('image/')) {
-                    previewHtml = '<img src="' + d.file_data + '" alt="' + esc(d.name) + '">';
-                } else {
-                    previewHtml = '<div class="dok-no-preview"><i class="ri-file-line"></i><div>Vorschau nicht verfügbar</div><div style="font-size:0.8rem;">' + esc(d.name) + '.' + esc(d.file_ext || '') + '</div></div>';
-                }
+            // Ablageort-Bereich
+            let ablageortHtml = '';
+            if (d.ablageort) {
+                const isUrl = /^https?:\/\//i.test(d.ablageort);
+                ablageortHtml = isUrl
+                    ? '<a href="' + esc(d.ablageort) + '" target="_blank" rel="noopener" style="color:var(--accent-2);word-break:break-all;">' + esc(d.ablageort) + '</a>'
+                    : '<span style="word-break:break-all;">' + esc(d.ablageort) + '</span>';
             } else {
-                previewHtml = '<div class="dok-no-preview"><i class="ri-file-unknow-line"></i><div>Keine Datei hochgeladen</div></div>';
+                ablageortHtml = '<span style="color:var(--text-3);font-style:italic;">Kein Ablageort angegeben</span>';
             }
 
             // Metafelder aufbauen
@@ -210,6 +206,7 @@
                 if (d.steuerjahr)  fields.push({ label: 'Steuerjahr',  value: d.steuerjahr });
             }
             if (d.notiz) fields.push({ label: 'Notiz', value: '<span style="white-space:pre-wrap;">' + esc(d.notiz) + '</span>' });
+            fields.push({ label: 'Ablageort', value: ablageortHtml });
 
             const fieldsHtml = fields.map(f =>
                 '<div class="dok-detail-field">' +
@@ -220,10 +217,10 @@
 
             // Aktionen
             let actionsHtml = '';
-            if (d.file_data) {
-                actionsHtml += '<button onclick="downloadDok()" class="btn-primary" style="width:100%;justify-content:center;">' +
-                    '<i class="ri-download-line"></i> Herunterladen' +
-                '</button>';
+            if (d.file_data && d.file_data.startsWith('uploads/')) {
+                actionsHtml += '<a href="/users/dokumente/' + d.id + '/download" target="_blank" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border-radius:var(--radius-md);background:rgba(99,88,230,0.1);color:var(--accent-2);border:1px solid rgba(99,88,230,0.25);cursor:pointer;font-size:0.85rem;font-family:\'Plus Jakarta Sans\',sans-serif;text-decoration:none;">' +
+                    '<i class="ri-file-download-line"></i> Datei öffnen / herunterladen' +
+                '</a>';
             }
             if (d.typ === 'rechnungen' && status !== 'bezahlt') {
                 actionsHtml += '<button onclick="markBezahlt()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border-radius:var(--radius-md);background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.25);cursor:pointer;font-size:0.85rem;font-family:\'Plus Jakarta Sans\',sans-serif;">' +
@@ -254,12 +251,7 @@
                 // Zweispalten-Layout
                 '<div class="dok-detail-layout">' +
 
-                    // Linke Seite: Vorschau
-                    '<div>' +
-                        '<div class="dok-detail-preview">' + previewHtml + '</div>' +
-                    '</div>' +
-
-                    // Rechte Seite: Metadaten + Aktionen
+                    // Linke Seite: Metadaten + Aktionen
                     '<div class="dok-meta-card">' +
                         '<div class="card" style="padding:20px;">' +
                             '<h4 style="margin:0 0 16px;font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;">Details</h4>' +
@@ -279,15 +271,6 @@
         } catch (err) {
             root.innerHTML = '<div class="card" style="text-align:center;padding:60px;color:#ef4444;">Dokument nicht gefunden oder Fehler beim Laden.</div>';
         }
-    }
-
-    function downloadDok() {
-        const d = window._dokData;
-        if (!d || !d.file_data) { alert('Keine Datei vorhanden.'); return; }
-        const a = document.createElement('a');
-        a.href = d.file_data;
-        a.download = d.name + '.' + (d.file_ext || 'pdf');
-        a.click();
     }
 
     async function markBezahlt() {

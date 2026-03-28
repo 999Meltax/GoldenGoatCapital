@@ -2,7 +2,7 @@
 //  EXPORT.JS  –  Golden Goat Capital Datenexport
 // ══════════════════════════════════════════════════════════════
 
-const fmtExp = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+const fmtExp = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
 let _exportData        = null; // gecachte Privat-Daten
 let _exportDataHaushalt = null; // gecachte Haushalt-Daten
@@ -135,7 +135,7 @@ function buildHaushaltFilters() {
 
 function _buildAccFilterFor(el, konten, txs, inputName, fallbackColor, onChangeFn) {
     if (!el) return;
-    const fmtLocal = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtLocal = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
     if (!konten.length) {
         el.innerHTML = '<div style="font-size:0.8rem;color:var(--text-3);">Keine Konten vorhanden</div>';
         return;
@@ -276,7 +276,7 @@ function buildAccountFilter() {
         return;
     }
 
-    const fmtLocal = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtLocal = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
 
     el.innerHTML = konten.map(acc => {
         const bal = acc.currentBalance ?? acc.balance ?? 0;
@@ -330,7 +330,7 @@ function buildPdfAccountFilter() {
     if (!el) return;
     const konten = _exportData?.konten || [];
     if (!konten.length) { el.innerHTML = '<div style="font-size:0.8rem;color:var(--text-3);">Keine Konten vorhanden</div>'; return; }
-    const fmtLocal = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+    const fmtLocal = new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') });
     el.innerHTML = konten.map(acc => {
         const bal = acc.currentBalance ?? acc.balance ?? 0;
         const balColor = bal >= 0 ? '#22c55e' : '#ef4444';
@@ -410,7 +410,7 @@ async function exportPDF() {
     const unassignedTx     = includeUnassigned ? allTx.filter(t => !t.account_id) : [];
 
     // ─── Designkonstanten ──────────────────────────────────────
-    const fmtEur  = v => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
+    const fmtEur  = v => new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') }).format(v);
     const fmtDate = s => s ? new Date(s).toLocaleDateString('de-DE') : '';
 
     const W = 210, H = 297, M = 16;
@@ -729,7 +729,7 @@ async function exportMonatsanalyse() {
     const greenBg    = [220, 252, 231];
     const redBg      = [254, 226, 226];
 
-    const fmtEur  = v => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v);
+    const fmtEur  = v => new Intl.NumberFormat(window.GGC_LOCALE||'de-DE', { style: 'currency', currency: (window.GGC_CURRENCY||'EUR') }).format(v);
     const fmtDate = s => s ? new Date(s).toLocaleDateString('de-DE') : '';
 
     const totalInc = monatTxs.filter(t => t.type === 'Einnahmen').reduce((s, t) => s + t.amount, 0);

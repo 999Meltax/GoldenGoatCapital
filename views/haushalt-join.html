@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haushalt beitreten – Golden Goat Capital</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/png" href="/assets/goldengoat.png">
+    <style>
+    .join-wrap {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 16px;
+        background: var(--bg);
+    }
+    .join-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-xl);
+        padding: 40px 36px;
+        width: 100%;
+        max-width: 480px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .join-logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 28px;
+    }
+    .join-logo img { width: 36px; height: 36px; border-radius: 8px; }
+    .join-logo span { font-weight: 800; font-size: 1rem; color: var(--text-1); }
+    .join-icon {
+        width: 64px; height: 64px;
+        background: rgba(34,197,94,0.12);
+        border: 2px solid rgba(34,197,94,0.25);
+        border-radius: 18px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 2rem;
+        color: #22c55e;
+        margin-bottom: 20px;
+    }
+    .join-title { font-size: 1.4rem; font-weight: 800; color: var(--text-1); margin-bottom: 6px; }
+    .join-sub   { font-size: 0.88rem; color: var(--text-3); margin-bottom: 24px; line-height: 1.5; }
+    .join-info-box {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 16px 18px;
+        margin-bottom: 24px;
+    }
+    .join-info-row {
+        display: flex; align-items: center; gap: 10px;
+        font-size: 0.85rem; color: var(--text-2);
+        padding: 5px 0;
+    }
+    .join-info-row i { color: var(--haus-accent, #22c55e); font-size: 1rem; }
+    .join-info-row strong { color: var(--text-1); }
+    .join-form { display: flex; flex-direction: column; gap: 14px; }
+    .join-btn {
+        width: 100%; padding: 13px;
+        border-radius: var(--radius-md);
+        background: var(--haus-accent, #22c55e);
+        color: #fff; border: none; cursor: pointer;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.95rem; font-weight: 700;
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        transition: opacity 0.15s;
+    }
+    .join-btn:hover { opacity: 0.9; }
+    .join-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .join-divider {
+        display: flex; align-items: center; gap: 12px;
+        margin: 20px 0; color: var(--text-3); font-size: 0.78rem;
+    }
+    .join-divider::before, .join-divider::after {
+        content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+    .join-alt-btn {
+        width: 100%; padding: 11px;
+        border-radius: var(--radius-md);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        color: var(--text-2); cursor: pointer;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.88rem; font-weight: 600;
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        text-decoration: none;
+        transition: border-color 0.15s, color 0.15s;
+    }
+    .join-alt-btn:hover { border-color: var(--accent); color: var(--text-1); }
+    .join-error {
+        background: rgba(239,68,68,0.08);
+        border: 1px solid rgba(239,68,68,0.2);
+        border-radius: var(--radius-md);
+        padding: 14px 16px;
+        color: #ef4444;
+        font-size: 0.88rem;
+        display: flex; align-items: flex-start; gap: 10px;
+    }
+    .join-success {
+        background: rgba(34,197,94,0.08);
+        border: 1px solid rgba(34,197,94,0.2);
+        border-radius: var(--radius-md);
+        padding: 16px 18px;
+        color: #22c55e;
+        font-size: 0.9rem;
+        text-align: center;
+    }
+    .join-msg { font-size: 0.82rem; margin-top: 8px; min-height: 18px; }
+    </style>
+</head>
+<body>
+<div class="join-wrap">
+    <div class="join-card">
+        <div class="join-logo">
+            <img src="/assets/goldengoat.png" alt="GGC">
+            <span>Golden Goat Capital</span>
+        </div>
+
+        <% if (error) { %>
+            <!-- ── Ungültige Einladung ── -->
+            <div class="join-icon" style="background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.2);color:#ef4444;">
+                <i class="ri-error-warning-line"></i>
+            </div>
+            <div class="join-title">Einladung ungültig</div>
+            <div class="join-sub"><%- error %></div>
+            <a href="/users/overview" class="join-alt-btn">
+                <i class="ri-home-line"></i> Zur Startseite
+            </a>
+
+        <% } else { %>
+            <!-- ── Gültige Einladung ── -->
+            <div class="join-icon">
+                <i class="ri-home-heart-line"></i>
+            </div>
+            <div class="join-title">Haushalt beitreten</div>
+            <div class="join-sub">
+                Du wurdest eingeladen, gemeinsam den Haushalt in Golden Goat Capital zu verwalten.
+            </div>
+
+            <div class="join-info-box">
+                <div class="join-info-row">
+                    <i class="ri-home-5-line"></i>
+                    <span>Haushalt: <strong><%= einladung.haushalt_name %></strong></span>
+                </div>
+                <div class="join-info-row">
+                    <i class="ri-user-line"></i>
+                    <span>Eingeladen von: <strong><%= einladung.eingeladen_von_name %></strong></span>
+                </div>
+                <div class="join-info-row">
+                    <i class="ri-time-line"></i>
+                    <span>Gültig bis: <strong id="expiresLabel"></strong></span>
+                </div>
+            </div>
+
+            <% if (isLoggedIn) { %>
+                <!-- Eingeloggt: Formular zum Beitreten -->
+                <div class="join-form" id="joinForm">
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label">Dein Anzeigename im Haushalt</label>
+                        <input type="text" id="anzeigeInput" placeholder="z.B. Max oder Lisa"
+                               value="<%= username %>" maxlength="40"
+                               style="width:100%;box-sizing:border-box;">
+                    </div>
+                    <button class="join-btn" onclick="joinHaushalt()" id="joinBtn">
+                        <i class="ri-home-heart-line"></i> Haushalt beitreten
+                    </button>
+                    <div class="join-msg" id="joinMsg"></div>
+                </div>
+
+            <% } else { %>
+                <!-- Nicht eingeloggt: Konto erstellen als primäre CTA -->
+                <div style="background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:20px;font-size:0.83rem;color:var(--text-2);line-height:1.6;">
+                    <strong style="color:var(--haus-accent,#22c55e);">Neu bei Golden Goat Capital?</strong><br>
+                    Persönliche Finanzen und gemeinsamer Haushalt in einer App — Ausgaben tracken, Fixkosten fair aufteilen, monatliche Abrechnung automatisch. Kostenlos starten.
+                </div>
+                <a href="/users/register?redirect=/users/haushalt/join/<%= code %>" class="join-btn" style="text-decoration:none;margin-bottom:10px;display:flex;">
+                    <i class="ri-user-add-line"></i> Kostenloses Konto erstellen & beitreten
+                </a>
+                <div class="join-divider">Du hast schon ein Konto?</div>
+                <a href="/users/login?redirect=/users/haushalt/join/<%= code %>" class="join-alt-btn" style="text-decoration:none;">
+                    <i class="ri-login-box-line"></i> Einloggen & beitreten
+                </a>
+            <% } %>
+        <% } %>
+    </div>
+</div>
+
+<script type="application/json" id="__join_data"><%- JSON.stringify({ code: code || '', expiresAt: (einladung && einladung.expires_at) ? String(einladung.expires_at) : null }) %></script>
+<script>
+const _page = JSON.parse(document.getElementById('__join_data').textContent);
+const CODE = _page.code;
+const _expiresEl = document.getElementById('expiresLabel');
+if (_expiresEl) {
+    if (_page.expiresAt) {
+        const _d = new Date(_page.expiresAt.includes('T') ? _page.expiresAt : _page.expiresAt + 'Z');
+        _expiresEl.textContent = _d.toLocaleDateString('de-DE', { day:'2-digit', month:'long', year:'numeric' });
+    } else {
+        _expiresEl.textContent = '—';
+    }
+}
+
+async function joinHaushalt() {
+    const anzeigename = document.getElementById('anzeigeInput').value.trim();
+    const btn = document.getElementById('joinBtn');
+    const msg = document.getElementById('joinMsg');
+    if (!anzeigename) { msg.style.color = '#ef4444'; msg.textContent = 'Bitte einen Anzeigenamen eingeben.'; return; }
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ri-loader-4-line"></i> Beitreten…';
+    try {
+        const res = await fetch(`/users/haushalt/einladung/${CODE}/accept`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ anzeigename })
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.message);
+        document.getElementById('joinForm').innerHTML =
+            '<div class="join-success">' +
+            '<i class="ri-check-double-line" style="font-size:1.5rem;display:block;margin-bottom:8px;"></i>' +
+            '<strong>Willkommen im Haushalt!</strong><br>' +
+            '<span style="font-size:0.85rem;opacity:0.85;">Du wirst gleich weitergeleitet…</span>' +
+            '</div>';
+        setTimeout(() => { window.location.href = '/users/haushalt'; }, 1800);
+    } catch (err) {
+        msg.style.color = '#ef4444';
+        msg.textContent = err.message;
+        btn.disabled = false;
+        btn.innerHTML = '<i class="ri-home-heart-line"></i> Haushalt beitreten';
+    }
+}
+</script>
+</body>
+</html>

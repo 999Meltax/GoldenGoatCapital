@@ -46,72 +46,11 @@
 <body>
     <%- include('navheader.html') %>
 
-    <!-- Schnelleintrag-Overlay -->
-    <div id="schnellOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:420px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-                <h3 style="margin:0;">Schnelleintrag</h3>
-                <button onclick="document.getElementById('schnellOverlay').style.display='none'" style="width:32px;height:32px;border-radius:8px;background:var(--surface-2);border:none;color:var(--text-2);cursor:pointer;"><i class="ri-close-line"></i></button>
-            </div>
-            <!-- Typ-Toggle -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;">
-                <button id="schnellTypAusg" onclick="schnellSetTyp('Ausgaben')"
-                    style="padding:10px;border-radius:var(--radius-md);background:rgba(239,68,68,0.15);color:#ef4444;border:2px solid #ef4444;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;">
-                    <i class="ri-arrow-down-circle-line"></i> Ausgabe
-                </button>
-                <button id="schnellTypEinn" onclick="schnellSetTyp('Einnahmen')"
-                    style="padding:10px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-3);border:2px solid var(--border);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;">
-                    <i class="ri-arrow-up-circle-line"></i> Einnahme
-                </button>
-            </div>
-            <div class="form-group" style="margin-bottom:12px;">
-                <label class="form-label">Beschreibung</label>
-                <input type="text" id="schnellName" placeholder="z.B. Rewe, Miete…" autofocus>
-                <div id="schnellRegelHint" style="font-size:0.74rem;color:var(--haus-accent);margin-top:4px;min-height:14px;display:flex;align-items:center;gap:4px;"></div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div class="form-group">
-                    <label class="form-label">Betrag</label>
-                    <input type="number" id="schnellBetrag" step="0.01" placeholder="0,00">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Kategorie</label>
-                    <input type="text" id="schnellKat" placeholder="z.B. Lebensmittel" list="schnellKatList">
-                    <datalist id="schnellKatList">
-                        <option value="Lebensmittel"><option value="Wohnen"><option value="Transport">
-                        <option value="Freizeit"><option value="Restaurants"><option value="Gesundheit">
-                        <option value="Versicherung"><option value="Sonstiges">
-                    </datalist>
-                </div>
-            </div>
-            <!-- Split-Slider -->
-            <div class="form-group" style="margin-bottom:14px;">
-                <label class="form-label" style="display:flex;justify-content:space-between;">
-                    <span>Kostenaufteilung</span>
-                    <span id="schnellSplitInfo" style="color:var(--haus-accent);font-weight:700;"></span>
-                </label>
-                <div class="split-slider-row">
-                    <span class="split-label" id="schnellSplitLabel1">50%</span>
-                    <input type="range" min="0" max="100" step="5" value="50" id="schnellSplit"
-                           class="split-slider" oninput="updateSchnellSplit()">
-                    <span class="split-label" id="schnellSplitLabel2">50%</span>
-                </div>
-            </div>
-            <button onclick="schnellSave()" style="width:100%;padding:11px;border-radius:var(--radius-md);background:var(--haus-accent);color:#fff;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.95rem;font-weight:700;">
-                <i class="ri-save-line"></i> Speichern
-            </button>
-            <div id="schnellMsg" style="margin-top:8px;font-size:0.83rem;text-align:center;"></div>
-        </div>
-    </div>
-
     <div class="page-header">
         <div>
             <h1><i class="ri-exchange-2-line" style="color:var(--haus-accent);margin-right:8px;"></i>Transaktionen</h1>
             <p>Verwalte deine Einnahmen und Ausgaben</p>
         </div>
-        <button onclick="document.getElementById('schnellOverlay').style.display='flex'" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:var(--radius-md);background:var(--haus-accent);color:#fff;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.88rem;font-weight:700;box-shadow:0 0 20px var(--haus-glow);">
-            <i class="ri-flashlight-line"></i> Schnelleintrag
-        </button>
         <!-- Account Filter Pill -->
         <div class="account-filter-wrap" id="trackerFilterWrap" style="display:none;">
             <button class="account-filter-btn" id="trackerFilterBtn" onclick="toggleTrackerFilter()">
@@ -356,6 +295,34 @@
 
             <!-- Listenansicht -->
             <div id="viewList">
+                <!-- Bulk-Select Toggle -->
+                <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:4px 0 8px;">
+                    <button id="bulkSelectAllBtn" onclick="toggleSelectAll()" style="display:none;align-items:center;gap:6px;padding:5px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);font-size:0.8rem;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;cursor:pointer;">
+                        <i class="ri-checkbox-line"></i> Alle auswählen
+                    </button>
+                    <button id="bulkToggleBtn" onclick="toggleBulkMode()" style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);font-size:0.8rem;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;cursor:pointer;">
+                        <i class="ri-checkbox-multiple-line"></i> Auswählen
+                    </button>
+                </div>
+                <!-- Bulk-Action-Bar -->
+                <div id="bulkActionBar" style="display:none;position:sticky;bottom:12px;z-index:50;background:var(--surface);border:1px solid var(--haus-accent);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:10px;box-shadow:0 4px 20px rgba(16,185,129,0.18);align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span id="bulkCount" style="font-size:0.88rem;font-weight:700;color:var(--haus-accent);white-space:nowrap;"></span>
+                    <select id="bulkCategory" style="flex:1;min-width:120px;max-width:180px;height:32px;padding:0 8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-size:0.82rem;">
+                        <option value="">Kategorie…</option>
+                    </select>
+                    <select id="bulkKonto" style="flex:1;min-width:120px;max-width:180px;height:32px;padding:0 8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-size:0.82rem;">
+                        <option value="__none__">Konto…</option>
+                        <option value="">Kein Konto</option>
+                    </select>
+                    <select id="bulkType" style="flex:1;min-width:110px;max-width:150px;height:32px;padding:0 8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-size:0.82rem;">
+                        <option value="">Typ…</option>
+                        <option value="Ausgaben">Ausgaben</option>
+                        <option value="Einnahmen">Einnahmen</option>
+                    </select>
+                    <button onclick="applyBulkUpdate()" style="padding:6px 14px;border-radius:8px;background:var(--haus-accent);color:#fff;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.83rem;font-weight:700;white-space:nowrap;"><i class="ri-check-line"></i> Anwenden</button>
+                    <button onclick="bulkDeleteHaus()" style="padding:6px 14px;border-radius:8px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#ef4444;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.83rem;font-weight:600;white-space:nowrap;"><i class="ri-delete-bin-line"></i> Löschen</button>
+                    <button onclick="toggleBulkMode()" style="padding:6px 14px;border-radius:8px;background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.83rem;font-weight:600;white-space:nowrap;"><i class="ri-close-line"></i> Abbrechen</button>
+                </div>
                 <!-- Pending-Delete-Bar -->
                 <div id="pendingDeleteBar" style="display:none;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-left:3px solid #ef4444;border-radius:var(--radius-md);padding:10px 14px;margin-bottom:10px;font-size:0.85rem;flex-wrap:wrap;"></div>
                 <!-- Sortier-Header -->
@@ -900,47 +867,18 @@
     .recur-icon-btn:hover { color: var(--text-1); border-color: var(--border-accent); }
     .recur-icon-btn.book { background: rgba(99,88,230,0.1); color: var(--accent); border-color: rgba(99,88,230,0.25); }
     .recur-icon-btn.book:hover { background: var(--accent); color: #fff; }
+
+    /* ── Bulk-Edit ── */
+    li.transaction.bulk-selected {
+        background: rgba(16,185,129,0.07) !important;
+        border-left: 2px solid var(--haus-accent);
+    }
     </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="/haushalt-tracker.js?v=5"></script>
+    <script src="/haushalt-tracker.js?v=6"></script>
     <script src="/navheader.js?v=2"></script>
     <script>
-    let _schnellTyp = 'Ausgaben';
-    function schnellSetTyp(typ) {
-        _schnellTyp = typ;
-        const ausgBtn = document.getElementById('schnellTypAusg');
-        const einnBtn = document.getElementById('schnellTypEinn');
-        if (typ === 'Ausgaben') {
-            ausgBtn.style.background = 'rgba(239,68,68,0.15)'; ausgBtn.style.color = '#ef4444'; ausgBtn.style.borderColor = '#ef4444';
-            einnBtn.style.background = 'var(--surface-2)'; einnBtn.style.color = 'var(--text-3)'; einnBtn.style.borderColor = 'var(--border)';
-        } else {
-            einnBtn.style.background = 'rgba(34,197,94,0.12)'; einnBtn.style.color = '#22c55e'; einnBtn.style.borderColor = '#22c55e';
-            ausgBtn.style.background = 'var(--surface-2)'; ausgBtn.style.color = 'var(--text-3)'; ausgBtn.style.borderColor = 'var(--border)';
-        }
-    }
-
-    // Regel-Live-Preview im Schnelleintrag
-    let _schnellDebounce = null;
-    document.addEventListener('DOMContentLoaded', () => {
-        const nameInput = document.getElementById('schnellName');
-        if (!nameInput) return;
-        nameInput.addEventListener('input', () => {
-            clearTimeout(_schnellDebounce);
-            _schnellDebounce = setTimeout(() => {
-                const matched = typeof applyRegelLocal === 'function' ? applyRegelLocal(nameInput.value) : null;
-                const hintEl  = document.getElementById('schnellRegelHint');
-                if (matched) {
-                    if (matched.category) document.getElementById('schnellKat').value = matched.category;
-                    if (matched.type)     schnellSetTyp(matched.type);
-                    if (hintEl) hintEl.innerHTML = '<i class="ri-magic-line"></i> Regel: ' + [matched.category, matched.type].filter(Boolean).join(', ');
-                } else {
-                    if (hintEl) hintEl.innerHTML = '';
-                }
-            }, 250);
-        });
-    });
-
     function updateFormSplit() {
         const val = parseInt(document.getElementById('formSplit').value);
         const l1 = document.getElementById('formSplitLabel1');
@@ -951,53 +889,10 @@
         if (info) info.textContent = val === 50 ? 'gleich' : val + ' / ' + (100 - val);
     }
 
-    function updateSchnellSplit() {
-        const val  = parseInt(document.getElementById('schnellSplit').value);
-        document.getElementById('schnellSplitLabel1').textContent = val + '%';
-        document.getElementById('schnellSplitLabel2').textContent = (100 - val) + '%';
-        const infoEl = document.getElementById('schnellSplitInfo');
-        if (infoEl) infoEl.textContent = val === 50 ? 'gleich' : val + ' / ' + (100 - val);
-    }
-
-    // Slider beim Öffnen mit globalSettings initialisieren
-    document.addEventListener('DOMContentLoaded', () => {
-        const openBtns = document.querySelectorAll('[onclick*="schnellOverlay"]');
-        openBtns.forEach(btn => {
-            const orig = btn.getAttribute('onclick');
-            btn.setAttribute('onclick', orig + '; initSchnellSplit();');
-        });
-    });
-
-    function initSchnellSplit() {
-        const defaultSplit = (typeof globalSettings !== 'undefined' ? globalSettings.split_user1 : null) ?? 50;
-        const slider = document.getElementById('schnellSplit');
-        if (slider) { slider.value = defaultSplit; updateSchnellSplit(); }
-    }
-
-    async function schnellSave() {
-        const name      = document.getElementById('schnellName').value.trim();
-        const betrag    = parseFloat(document.getElementById('schnellBetrag').value);
-        const kat       = document.getElementById('schnellKat').value.trim() || 'Sonstiges';
-        const anteil1   = parseInt(document.getElementById('schnellSplit')?.value ?? 50);
-        const msg       = document.getElementById('schnellMsg');
-        if (!name) { msg.style.color='#ef4444'; msg.textContent='Bitte Beschreibung eingeben.'; return; }
-        if (!betrag || betrag <= 0) { msg.style.color='#ef4444'; msg.textContent='Bitte Betrag eingeben.'; return; }
-        const res = await fetch('/users/haushalt/transaktionen/add', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, amount: betrag, type: _schnellTyp, category: kat,
-                date: new Date().toISOString().substring(0,10),
-                anteil_user1: anteil1, anteil_user2: 100 - anteil1 })
-        });
-        if (!res.ok) { msg.style.color='#ef4444'; msg.textContent='Fehler beim Speichern.'; return; }
-        document.getElementById('schnellName').value = '';
-        document.getElementById('schnellBetrag').value = '';
-        document.getElementById('schnellKat').value = '';
-        msg.style.color = '#10b981'; msg.textContent = 'Gespeichert!';
-        setTimeout(() => { document.getElementById('schnellOverlay').style.display='none'; msg.textContent=''; }, 800);
-        if (typeof loadData === 'function') loadData();
-    }
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') document.getElementById('schnellOverlay').style.display = 'none';
+        if (e.key === 'Escape') {
+            document.getElementById('addModal')?.style && (document.getElementById('addModal').style.display = 'none');
+        }
     });
     </script>
 </body>

@@ -11,21 +11,42 @@
 <body>
     <%- include('navheader.html') %>
 
-    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
         <div>
             <h1><i class="ri-checkbox-line" style="color:var(--haus-accent);margin-right:8px;"></i>Haushalt Aufgaben</h1>
             <p>Gemeinsame To-do-Liste für den Haushalt</p>
         </div>
         <button onclick="openTodoModal()" class="btn-primary">
-            <i class="ri-add-line"></i> Aufgabe hinzufügen
+            <i class="ri-settings-3-line"></i> Detailliert hinzufügen
         </button>
     </div>
 
-    <!-- Filter-Tabs -->
-    <div style="display:flex;gap:4px;background:var(--surface-2);border-radius:var(--radius-md);padding:4px;margin-bottom:20px;width:fit-content;">
-        <button class="aus-tab active" id="tabOffen" onclick="setFilter('offen',this)">Offen</button>
-        <button class="aus-tab" id="tabAlle" onclick="setFilter('alle',this)">Alle</button>
-        <button class="aus-tab" id="tabErledigt" onclick="setFilter('erledigt',this)">Erledigt</button>
+    <!-- Quick-Add-Bar -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <input type="text" id="quickAddInput" placeholder="Neue Aufgabe… (Enter zum Hinzufügen)"
+            style="flex:1;padding:11px 16px;border-radius:var(--radius-md);background:var(--surface-2);border:1.5px solid var(--border);color:var(--text-1);font-family:'Plus Jakarta Sans',sans-serif;font-size:0.9rem;outline:none;transition:border-color 0.2s;"
+            onfocus="this.style.borderColor='var(--haus-accent)'" onblur="this.style.borderColor='var(--border)'"
+            onkeydown="if(event.key==='Enter')quickAdd()">
+        <button onclick="quickAdd()" style="padding:11px 18px;border-radius:var(--radius-md);background:var(--haus-accent);color:#fff;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:0.88rem;font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:6px;">
+            <i class="ri-add-line"></i> Hinzufügen
+        </button>
+    </div>
+
+    <!-- Filter-Tabs (Status) -->
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+        <div style="display:flex;gap:4px;background:var(--surface-2);border-radius:var(--radius-md);padding:4px;">
+            <button class="aus-tab active" id="tabOffen" onclick="setFilter('offen',this)">Offen</button>
+            <button class="aus-tab" id="tabAlle" onclick="setFilter('alle',this)">Alle</button>
+            <button class="aus-tab" id="tabErledigt" onclick="setFilter('erledigt',this)">Erledigt</button>
+        </div>
+    </div>
+
+    <!-- Label-Filter-Pills -->
+    <div id="labelPills" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">
+        <button class="label-pill active" onclick="setLabelFilter('',this)"><i class="ri-price-tag-3-line"></i> Alle Labels</button>
+        <button class="label-pill" onclick="setLabelFilter('einkaufen',this)"><i class="ri-shopping-cart-line"></i> Einkaufen</button>
+        <button class="label-pill" onclick="setLabelFilter('haushalt',this)"><i class="ri-home-3-line"></i> Haushalt</button>
+        <button class="label-pill" onclick="setLabelFilter('sonstiges',this)"><i class="ri-more-line"></i> Sonstiges</button>
     </div>
 
     <div id="todoRoot"></div>
@@ -69,6 +90,41 @@
     .prio-hoch    { background: rgba(239,68,68,0.15);  color: #ef4444; }
     .prio-mittel  { background: rgba(245,158,11,0.15); color: #f59e0b; }
     .prio-niedrig { background: rgba(34,197,94,0.12);  color: #22c55e; }
+    /* Label Pills */
+    .label-pill {
+        display: flex; align-items: center; gap: 5px;
+        padding: 6px 14px; border-radius: 20px;
+        border: 1.5px solid var(--border); background: var(--surface-2);
+        color: var(--text-3); cursor: pointer;
+        font-size: 0.8rem; font-family: 'Plus Jakarta Sans', sans-serif;
+        font-weight: 600; transition: var(--transition);
+    }
+    .label-pill:hover { border-color: var(--haus-accent); color: var(--haus-accent); }
+    .label-pill.active { background: rgba(16,185,129,0.12); border-color: var(--haus-accent); color: var(--haus-accent); }
+
+    /* Grocery-Style (label: einkaufen) */
+    .htodo-grocery {
+        display: flex; align-items: center; gap: 14px;
+        padding: 14px 12px;
+        border-bottom: 1px solid var(--border);
+        transition: var(--transition);
+    }
+    .htodo-grocery:last-child { border-bottom: none; }
+    .htodo-grocery-check {
+        width: 32px; height: 32px; border-radius: 8px;
+        border: 2px solid var(--border);
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; flex-shrink: 0;
+        transition: var(--transition); font-size: 1rem;
+    }
+    .htodo-grocery-check:hover { border-color: var(--haus-accent); background: rgba(16,185,129,0.08); }
+    .htodo-grocery-check.done { background: var(--haus-accent); border-color: var(--haus-accent); color: #fff; }
+    .htodo-grocery-label {
+        flex: 1; font-size: 1rem; font-weight: 600; min-width: 0;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .htodo-grocery-label.done { text-decoration: line-through; color: var(--text-3); font-weight: 400; }
+
     @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 
@@ -76,8 +132,11 @@
     <script>
     let todos = [];
     let currentFilter = 'offen';
+    let currentLabelFilter = '';
     let mitglieder = [];
     let user1 = {}, user2 = null;
+
+    let currentUserId = null;
 
     async function init() {
         const res = await fetch('/users/haushalt/status');
@@ -85,6 +144,7 @@
         mitglieder = data.mitglieder || [];
         user1 = mitglieder[0] || {};
         user2 = mitglieder[1] || null;
+        currentUserId = data.current_user_id || null;
         await loadTodos();
     }
 
@@ -100,11 +160,41 @@
         render();
     }
 
+    function setLabelFilter(label, btn) {
+        currentLabelFilter = label;
+        document.querySelectorAll('.label-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        render();
+    }
+
+    async function quickAdd() {
+        const input = document.getElementById('quickAddInput');
+        const task = input.value.trim();
+        if (!task) { input.focus(); return; }
+        const payload = {
+            task,
+            priority: 'mittel',
+            label: currentLabelFilter || '',
+            notes: '', due_date: null, zugewiesen_an: null, wiederholung: 'keine'
+        };
+        await fetch('/users/haushalt/todos/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        input.value = '';
+        input.focus();
+        await loadTodos();
+    }
+
     function render() {
         const root = document.getElementById('todoRoot');
         let filtered = todos;
         if (currentFilter === 'offen')    filtered = todos.filter(t => !t.completed);
         if (currentFilter === 'erledigt') filtered = todos.filter(t => t.completed);
+        if (currentLabelFilter) {
+            filtered = filtered.filter(t => (t.label || '').toLowerCase() === currentLabelFilter.toLowerCase());
+        }
 
         // Sortierung: Priorität, dann Fälligkeit
         const prioOrder = { hoch: 0, mittel: 1, niedrig: 2 };
@@ -120,32 +210,44 @@
         });
 
         if (filtered.length === 0) {
-            root.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:var(--text-3);">' +
-                (currentFilter === 'erledigt' ? '<i class="ri-checkbox-blank-circle-line" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.3;"></i>Noch keine erledigten Aufgaben.' :
-                 '<i class="ri-checkbox-line" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.3;color:var(--haus-accent);"></i>Keine offenen Aufgaben 🎉') +
-                '</div>';
+            const emptyMsg = currentLabelFilter === 'einkaufen'
+                ? '<i class="ri-shopping-cart-line" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.3;color:var(--haus-accent);"></i>Keine Einkaufsaufgaben — alles im Schrank!'
+                : currentFilter === 'erledigt'
+                    ? '<i class="ri-checkbox-blank-circle-line" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.3;"></i>Noch keine erledigten Aufgaben.'
+                    : '<i class="ri-checkbox-line" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.3;color:var(--haus-accent);"></i>Keine offenen Aufgaben 🎉';
+            root.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:var(--text-3);">' + emptyMsg + '</div>';
             return;
         }
 
         const offenCount = todos.filter(t=>!t.completed).length;
         const erlCount   = todos.filter(t=>t.completed).length;
 
+        const isGroceryView = currentLabelFilter === 'einkaufen';
+        const groceryBanner = isGroceryView
+            ? '<div style="display:flex;align-items:center;gap:10px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-md);padding:10px 16px;margin-bottom:14px;font-size:0.83rem;color:#047857;">' +
+                '<i class="ri-shopping-cart-2-line" style="font-size:1.1rem;flex-shrink:0;"></i>' +
+                '<span><strong>Einkaufsliste</strong> — ' + filtered.filter(f=>!f.completed).length + ' Artikel noch offen, ' + filtered.filter(f=>f.completed).length + ' bereits erledigt</span>' +
+              '</div>'
+            : '';
+
         root.innerHTML =
-            '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">' +
+            (isGroceryView ? groceryBanner : '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">' +
                 '<div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-md);padding:10px 18px;font-size:0.83rem;">' +
                     '<span style="font-weight:700;color:#10b981;">' + offenCount + '</span> offen' +
                 '</div>' +
                 '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.15);border-radius:var(--radius-md);padding:10px 18px;font-size:0.83rem;">' +
                     '<span style="font-weight:700;color:#22c55e;">' + erlCount + '</span> erledigt' +
                 '</div>' +
-            '</div>' +
-            '<div class="card" style="padding:20px;">' +
+            '</div>') +
+            '<div class="card" style="padding:' + (isGroceryView ? '8px 16px' : '20px') + ';">' +
                 filtered.map(t => renderTodo(t)).join('') +
             '</div>';
     }
 
     function renderTodo(t) {
-        const today = new Date().toISOString().substring(0,10);
+        const isGrocery = (t.label || '').toLowerCase() === 'einkaufen';
+        if (isGrocery) return renderGroceryTodo(t);
+
         let dateLabel = '';
         let dateColor = 'var(--text-3)';
         if (t.due_date) {
@@ -158,8 +260,11 @@
 
         const ersteller = mitglieder.find(m => m.user_id === t.erstellt_von);
         const erstellerName = ersteller ? (ersteller.anzeigename || ersteller.display_name || 'Unbekannt') : 'Unbekannt';
+        const zugewiesen = t.zugewiesen_an ? mitglieder.find(m => m.user_id === t.zugewiesen_an) : null;
+        const zugewiesenName = zugewiesen ? (zugewiesen.anzeigename || zugewiesen.display_name || '') : null;
+        const isMyTask = t.zugewiesen_an === currentUserId;
 
-        return '<div class="htodo-item">' +
+        return '<div class="htodo-item" style="' + (isMyTask ? 'background:rgba(16,185,129,0.04);border-radius:var(--radius-md);padding:14px 10px;' : '') + '">' +
             '<div class="htodo-check ' + (t.completed ? 'done' : '') + '" onclick="toggleTodo(' + t.id + ',' + t.completed + ')">' +
                 (t.completed ? '<i class="ri-check-line" style="font-size:0.8rem;"></i>' : '') +
             '</div>' +
@@ -169,6 +274,8 @@
                     '<span class="prio-badge prio-' + (t.priority||'mittel') + '">' + (t.priority||'mittel') + '</span>' +
                     (t.label ? '<span style="background:rgba(99,88,230,0.1);color:var(--accent);padding:1px 7px;border-radius:10px;font-size:0.7rem;font-weight:600;">' + escHtml(t.label) + '</span>' : '') +
                     (dateLabel ? '<span style="color:' + dateColor + ';">' + dateLabel + '</span>' : '') +
+                    (zugewiesenName ? '<span style="background:rgba(16,185,129,0.1);color:#047857;padding:1px 7px;border-radius:10px;font-weight:600;"><i class="ri-user-line" style="font-size:0.7rem;"></i> ' + escHtml(zugewiesenName) + '</span>' : '') +
+                    (t.wiederholung && t.wiederholung !== 'keine' ? '<span style="background:rgba(59,130,246,0.1);color:#1d4ed8;padding:1px 7px;border-radius:10px;"><i class="ri-loop-right-line" style="font-size:0.7rem;"></i> ' + escHtml(t.wiederholung) + '</span>' : '') +
                     '<span>Von: ' + escHtml(erstellerName) + '</span>' +
                 '</div>' +
                 (t.notes ? '<div style="font-size:0.78rem;color:var(--text-3);margin-top:4px;background:var(--surface-2);padding:6px 10px;border-radius:var(--radius-md);">' + escHtml(t.notes) + '</div>' : '') +
@@ -176,6 +283,20 @@
             '<div style="display:flex;gap:6px;">' +
                 '<button onclick="openTodoModal(' + t.id + ')" style="width:28px;height:28px;border-radius:8px;background:var(--surface-2);color:var(--text-2);border:none;cursor:pointer;"><i class="ri-edit-line"></i></button>' +
                 '<button onclick="deleteTodo(' + t.id + ')" style="width:28px;height:28px;border-radius:8px;background:rgba(239,68,68,0.1);color:#ef4444;border:none;cursor:pointer;"><i class="ri-delete-bin-line"></i></button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    function renderGroceryTodo(t) {
+        return '<div class="htodo-grocery">' +
+            '<div class="htodo-grocery-check ' + (t.completed ? 'done' : '') + '" onclick="toggleTodo(' + t.id + ',' + t.completed + ')">' +
+                (t.completed ? '<i class="ri-check-line"></i>' : '') +
+            '</div>' +
+            '<span class="htodo-grocery-label ' + (t.completed ? 'done' : '') + '">' + escHtml(t.task) + '</span>' +
+            (t.notes ? '<span style="font-size:0.78rem;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;">' + escHtml(t.notes) + '</span>' : '') +
+            '<div style="display:flex;gap:4px;margin-left:auto;flex-shrink:0;">' +
+                '<button onclick="openTodoModal(' + t.id + ')" style="width:32px;height:32px;border-radius:8px;background:var(--surface-2);color:var(--text-2);border:none;cursor:pointer;font-size:0.9rem;"><i class="ri-edit-line"></i></button>' +
+                '<button onclick="deleteTodo(' + t.id + ')" style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.1);color:#ef4444;border:none;cursor:pointer;font-size:0.9rem;"><i class="ri-delete-bin-line"></i></button>' +
             '</div>' +
         '</div>';
     }
@@ -212,9 +333,30 @@
                         '<input type="date" id="ttDate" value="' + (existing?.due_date||'') + '">' +
                     '</div>' +
                 '</div>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Zugewiesen an</label>' +
+                        '<select id="ttZugewiesen">' +
+                            '<option value="">— Niemand —</option>' +
+                            mitglieder.map(m => '<option value="' + m.user_id + '"' + (existing?.zugewiesen_an===m.user_id?' selected':'') + '>' + escHtml(m.anzeigename||m.display_name||'?') + '</option>').join('') +
+                        '</select>' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Wiederholung</label>' +
+                        '<select id="ttWiederholung">' +
+                            ['keine','täglich','wöchentlich','monatlich'].map(w => '<option value="' + w + '"' + (existing?.wiederholung===w?' selected':'') + '>' + w.charAt(0).toUpperCase()+w.slice(1) + '</option>').join('') +
+                        '</select>' +
+                    '</div>' +
+                '</div>' +
                 '<div class="form-group" style="margin-bottom:12px;">' +
                     '<label class="form-label">Label</label>' +
-                    '<input type="text" id="ttLabel" value="' + escHtml(existing?.label||'') + '" placeholder="z.B. Küche, Einkauf…">' +
+                    '<select id="ttLabel">' +
+                        '<option value=""' + (!existing?.label ? ' selected' : '') + '>— Kein Label —</option>' +
+                        ['einkaufen','haushalt','sonstiges'].map(l =>
+                            '<option value="' + l + '"' + (existing?.label?.toLowerCase() === l ? ' selected' : '') + '>' +
+                            l.charAt(0).toUpperCase() + l.slice(1) + '</option>'
+                        ).join('') +
+                    '</select>' +
                 '</div>' +
                 '<div class="form-group" style="margin-bottom:20px;">' +
                     '<label class="form-label">Notizen</label>' +
@@ -228,12 +370,15 @@
         document.body.appendChild(overlay);
         overlay.addEventListener('click', e => { if (e.target===overlay) overlay.remove(); });
         document.getElementById('ttSave').onclick = async () => {
+            const zwVal = document.getElementById('ttZugewiesen').value;
             const payload = {
-                task:     document.getElementById('ttTask').value.trim(),
-                priority: document.getElementById('ttPrio').value,
-                due_date: document.getElementById('ttDate').value || null,
-                label:    document.getElementById('ttLabel').value.trim(),
-                notes:    document.getElementById('ttNotes').value.trim(),
+                task:          document.getElementById('ttTask').value.trim(),
+                priority:      document.getElementById('ttPrio').value,
+                due_date:      document.getElementById('ttDate').value || null,
+                label:         document.getElementById('ttLabel').value.trim(),
+                notes:         document.getElementById('ttNotes').value.trim(),
+                zugewiesen_an: zwVal ? parseInt(zwVal) : null,
+                wiederholung:  document.getElementById('ttWiederholung').value,
             };
             if (!payload.task) { alert('Bitte Aufgabe eingeben.'); return; }
             const url    = id ? '/users/haushalt/todos/' + id : '/users/haushalt/todos/add';

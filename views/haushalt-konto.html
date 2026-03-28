@@ -240,7 +240,8 @@
                         '<div class="hk-konto-card-type">' + (k.linked_account_id ? '<i class="ri-link" style="color:var(--haus-accent);"></i> Verknüpft' : 'Haushaltskonto') + '</div>' +
                     '</div>' +
                     '<div class="hk-konto-card-actions">' +
-                        '<button class="hk-konto-icon-btn" onclick="openEditModal(' + k.id + ')" title="Bearbeiten"><i class="ri-settings-3-line"></i></button>' +
+                        '<button class="hk-konto-icon-btn" onclick="openBalanceModal(' + k.id + ')" title="Kontostand anpassen" style="color:var(--haus-accent);border-color:rgba(16,185,129,0.25);"><i class="ri-edit-2-line"></i></button>' +
+                        '<button class="hk-konto-icon-btn" onclick="openEditModal(' + k.id + ')" title="Einstellungen"><i class="ri-settings-3-line"></i></button>' +
                         (kontenData.length > 1 ? '<button class="hk-konto-icon-btn" onclick="deleteKonto(' + k.id + ',\'' + escHtml(k.name).replace(/'/g, "\\'") + '\')" title="Löschen" style="color:#ef4444;border-color:rgba(239,68,68,0.2);"><i class="ri-delete-bin-line"></i></button>' : '') +
                     '</div>' +
                 '</div>' +
@@ -309,6 +310,80 @@
         });
     }
 
+    function openBalanceModal(kontoId) {
+        const k = kontenData.find(k => k.id === kontoId);
+        if (!k) return;
+        const currentBal = k.currentBalance ?? k.balance ?? 0;
+
+        const ex = document.getElementById('hkBalOverlay');
+        if (ex) ex.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'hkBalOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+        overlay.innerHTML =
+            '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:400px;">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+                    '<h3 style="margin:0;">Kontostand anpassen</h3>' +
+                    '<button id="hkBClose" style="width:32px;height:32px;border-radius:8px;background:var(--surface-2);border:none;color:var(--text-2);cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;"><i class="ri-close-line"></i></button>' +
+                '</div>' +
+                '<p style="font-size:0.83rem;color:var(--text-3);margin:0 0 20px;">' + escHtml(k.name) + '</p>' +
+                '<div class="form-group" style="margin-bottom:6px;">' +
+                    '<label class="form-label">Neuer Kontostand (€)</label>' +
+                    '<input type="number" id="hkBNewBal" value="' + currentBal.toFixed(2) + '" step="0.01" style="width:100%;padding:10px 14px;border-radius:var(--radius-md);background:var(--surface-2);border:1px solid var(--border);color:var(--text-1);font-size:1rem;font-family:\'Plus Jakarta Sans\',sans-serif;">' +
+                '</div>' +
+                '<div id="hkBDiff" style="font-size:0.82rem;color:var(--text-3);margin-bottom:16px;min-height:1.3em;"></div>' +
+                '<div id="hkBMsg" style="font-size:0.82rem;margin-bottom:10px;min-height:1.2em;"></div>' +
+                '<div style="display:flex;gap:8px;">' +
+                    '<button id="hkBSave" class="btn-primary" style="flex:1;justify-content:center;background:var(--haus-accent);"><i class="ri-check-line"></i> Übernehmen</button>' +
+                    '<button id="hkBCancel" style="padding:10px 20px;border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;">Abbrechen</button>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(overlay);
+
+        const close = () => overlay.remove();
+        document.getElementById('hkBClose').onclick  = close;
+        document.getElementById('hkBCancel').onclick = close;
+        overlay.onclick = e => { if (e.target === overlay) close(); };
+
+        const input   = document.getElementById('hkBNewBal');
+        const diffEl  = document.getElementById('hkBDiff');
+        const updateDiff = () => {
+            const newVal = parseFloat(input.value);
+            if (isNaN(newVal)) { diffEl.textContent = ''; return; }
+            const diff = newVal - currentBal;
+            if (Math.abs(diff) < 0.005) { diffEl.textContent = 'Keine Änderung.'; diffEl.style.color = 'var(--text-3)'; return; }
+            diffEl.textContent = (diff > 0 ? '+' : '') + fmt.format(diff) + ' gegenüber aktuellem Stand';
+            diffEl.style.color = diff > 0 ? '#22c55e' : '#ef4444';
+        };
+        input.addEventListener('input', updateDiff);
+        updateDiff();
+
+        document.getElementById('hkBSave').onclick = async () => {
+            const newVal = parseFloat(input.value);
+            const msg    = document.getElementById('hkBMsg');
+            if (isNaN(newVal)) { msg.style.color='#ef4444'; msg.textContent='Bitte einen gültigen Betrag eingeben.'; return; }
+            msg.style.color = 'var(--text-3)'; msg.textContent = 'Speichern…';
+            try {
+                const res = await fetch('/users/haushalt/konto/' + kontoId + '/set-balance', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ balance: newVal })
+                });
+                if (!res.ok) {
+                    const ct = res.headers.get('content-type') || '';
+                    const errMsg = ct.includes('json')
+                        ? (await res.json()).message
+                        : 'Serverfehler (' + res.status + ')';
+                    throw new Error(errMsg || 'Fehler');
+                }
+                close();
+                await loadKonten();
+            } catch(err) {
+                msg.style.color='#ef4444'; msg.textContent = err.message || 'Fehler.';
+            }
+        };
+    }
+
     function openAddKontoModal() {
         openKontoModal({
             title: 'Neues Konto hinzufügen',
@@ -372,7 +447,7 @@
     }
 
     async function deleteKonto(kontoId, kontoName) {
-        if (!confirm('Konto "' + kontoName + '" löschen?\n\nDie Transaktionen bleiben erhalten, werden aber keinem Konto mehr zugeordnet.')) return;
+        if (!confirm('Konto "' + kontoName + '" löschen?\n\nAlle zugehörigen Transaktionen werden ebenfalls unwiderruflich gelöscht.')) return;
         try {
             const res = await fetch('/users/haushalt/konto/' + kontoId, { method: 'DELETE' });
             const data = await res.json();
